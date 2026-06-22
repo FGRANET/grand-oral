@@ -75,6 +75,7 @@ const SUPABASE_URL = "https://bolmwalxiqsuimuagrhx.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJvbG13YWx4aXFzdWltdWFncmh4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEwNzA0NTYsImV4cCI6MjA5NjY0NjQ1Nn0.z0SEaKiN1islvPPU_gfypU9i8qhPWXUW4DooBoxcq5Q";
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
 // ─── Palette & styles globaux ────────────────────────────────────────
 const CSS = `
   @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap');
@@ -685,7 +686,7 @@ export default function App() {
   const [unreadCounts, setUnreadCounts] = useState({});
   const [loading, setLoading] = useState(true);
 
-  // Vérifier session existante
+  // Vérifier session existante + écouter les changements (login/logout)
   useEffect(() => {
     supabase.auth.getSession().then(async ({ data: { session } }) => {
       if (session) {
@@ -694,6 +695,19 @@ export default function App() {
       }
       setLoading(false);
     });
+
+    const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === "SIGNED_OUT" || !session) {
+        // Réinitialise tout l'état local quand la session se termine
+        setUser(null);
+        setProfile(null);
+        setAllProfiles([]);
+        setSelectedEleve(null);
+        setUnreadCounts({});
+      }
+    });
+
+    return () => listener.subscription.unsubscribe();
   }, []);
 
   // Charger tous les profils si prof + realtime sur les sujets
