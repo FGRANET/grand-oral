@@ -75,7 +75,6 @@ const SUPABASE_URL = "https://bolmwalxiqsuimuagrhx.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJvbG13YWx4aXFzdWltdWFncmh4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEwNzA0NTYsImV4cCI6MjA5NjY0NjQ1Nn0.z0SEaKiN1islvPPU_gfypU9i8qhPWXUW4DooBoxcq5Q";
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-
 // ─── Palette & styles globaux ────────────────────────────────────────
 const CSS = `
   @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap');
@@ -176,7 +175,7 @@ const CSS = `
   .eleve-sujet { font-size: 11px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px; }
 
   /* ── Zone chat ── */
-  .chat-area { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  .chat-area { flex: 1; display: flex; flex-direction: column; min-width: 0; position: relative; }
 
   .chat-header {
     padding: 14px 20px; background: var(--surface); border-bottom: 1px solid var(--border);
@@ -235,6 +234,46 @@ const CSS = `
     border-radius: 6px; padding: 3px 8px; color: var(--text);
     font-family: var(--font); font-size: 12px; outline: none; width: 280px;
   }
+
+  /* ── Bouton clé + modale changement mot de passe ── */
+  .btn-key {
+    background: transparent; border: 1px solid var(--border); color: var(--text-muted);
+    border-radius: 8px; padding: 6px 10px; font-family: var(--font); font-size: 12px;
+    cursor: pointer; transition: all .2s; display: flex; align-items: center; gap: 5px;
+  }
+  .btn-key:hover { border-color: var(--accent); color: var(--accent-light); }
+  .header-actions { display: flex; align-items: center; gap: 8px; }
+
+  .modal-overlay {
+    position: absolute; inset: 0; background: #00000099;
+    display: flex; align-items: center; justify-content: center; z-index: 50;
+  }
+  .modal-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 16px; padding: 28px 28px; width: 340px;
+    box-shadow: 0 24px 64px #00000088;
+  }
+  .modal-title { font-size: 16px; font-weight: 600; margin-bottom: 4px; }
+  .modal-sub { font-size: 12px; color: var(--text-muted); margin-bottom: 20px; }
+  .modal-field { display: flex; flex-direction: column; gap: 5px; margin-bottom: 14px; }
+  .modal-field label { font-size: 11px; font-weight: 500; color: var(--text-muted); text-transform: uppercase; letter-spacing: .05em; }
+  .modal-field input {
+    background: var(--surface2); border: 1px solid var(--border); border-radius: 8px;
+    padding: 10px 12px; color: var(--text); font-family: var(--font); font-size: 14px; outline: none;
+  }
+  .modal-field input:focus { border-color: var(--accent); }
+  .modal-actions { display: flex; gap: 8px; margin-top: 18px; }
+  .modal-btn {
+    flex: 1; border: none; border-radius: 8px; padding: 10px; font-family: var(--font);
+    font-size: 13px; font-weight: 600; cursor: pointer; transition: opacity .15s;
+  }
+  .modal-btn:disabled { opacity: .4; cursor: not-allowed; }
+  .modal-btn-cancel { background: var(--surface2); color: var(--text-muted); }
+  .modal-btn-cancel:hover { color: var(--text); }
+  .modal-btn-confirm { background: var(--accent); color: #fff; }
+  .modal-btn-confirm:hover { background: var(--accent-light); }
+  .modal-error { font-size: 12px; color: var(--red); margin-top: 4px; }
+  .modal-success { font-size: 12px; color: var(--green); margin-top: 4px; }
 
   .chat-empty {
     flex: 1; display: flex; align-items: center; justify-content: center;
@@ -378,7 +417,7 @@ function Login({ onLogin }) {
   return (
     <div className="login-wrap">
       <div className="login-card">
-        <div className="login-logo">Terminale Spé · F. Granet</div>
+        <div className="login-logo">Terminale Spé · M. Granet</div>
         <div className="login-title">Grand Oral</div>
         <div className="login-sub">Espace de préparation individuelle</div>
         <div className="field">
@@ -420,7 +459,7 @@ function SaisieSubject({ profile, onSave }) {
         <div className="sujet-title">Bonjour {profile.prenom} !</div>
         <div className="sujet-sub">
           Avant de démarrer, renseigne le sujet de ton Grand Oral.<br />
-          Il apparaîtra dans ton espace et aidera M. / Mme Granet à préparer tes réponses.
+          Il apparaîtra dans ton espace et aidera M. Granet à préparer tes réponses.
         </div>
         <textarea
           className="sujet-input"
@@ -434,6 +473,53 @@ function SaisieSubject({ profile, onSave }) {
         <button className="btn-sujet" onClick={handleSave} disabled={!sujet.trim() || saving}>
           {saving ? "Enregistrement…" : "Accéder à mon espace →"}
         </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Composant ChangePasswordModal ────────────────────────────────────
+function ChangePasswordModal({ onClose }) {
+  const [pwd1, setPwd1] = useState("");
+  const [pwd2, setPwd2] = useState("");
+  const [err, setErr] = useState("");
+  const [success, setSuccess] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  async function handleChange() {
+    setErr("");
+    if (pwd1.length < 6) { setErr("Le mot de passe doit faire au moins 6 caractères."); return; }
+    if (pwd1 !== pwd2) { setErr("Les deux mots de passe ne correspondent pas."); return; }
+    setSaving(true);
+    const { error } = await supabase.auth.updateUser({ password: pwd1 });
+    setSaving(false);
+    if (error) { setErr("Erreur : " + error.message); return; }
+    setSuccess(true);
+    setTimeout(onClose, 1500);
+  }
+
+  return (
+    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal-card">
+        <div className="modal-title">Changer mon mot de passe</div>
+        <div className="modal-sub">Choisis un nouveau mot de passe, facile à retenir mais difficile à deviner.</div>
+        <div className="modal-field">
+          <label>Nouveau mot de passe</label>
+          <input type="password" value={pwd1} onChange={e => setPwd1(e.target.value)} placeholder="••••••••" autoFocus />
+        </div>
+        <div className="modal-field">
+          <label>Confirmer le mot de passe</label>
+          <input type="password" value={pwd2} onChange={e => setPwd2(e.target.value)} placeholder="••••••••"
+            onKeyDown={e => e.key === "Enter" && handleChange()} />
+        </div>
+        {err && <div className="modal-error">{err}</div>}
+        {success && <div className="modal-success">✓ Mot de passe mis à jour !</div>}
+        <div className="modal-actions">
+          <button className="modal-btn modal-btn-cancel" onClick={onClose}>Annuler</button>
+          <button className="modal-btn modal-btn-confirm" onClick={handleChange} disabled={saving || success}>
+            {saving ? "Enregistrement…" : "Valider"}
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -479,6 +565,7 @@ function ChatZone({ eleveId, currentUser, currentProfile, allProfiles }) {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [editingSubject, setEditingSubject] = useState(false);
   const [subjectDraft, setSubjectDraft] = useState("");
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
   const bottomRef = useRef(null);
   const fileRef = useRef(null);
   const textRef = useRef(null);
@@ -579,7 +666,7 @@ function ChatZone({ eleveId, currentUser, currentProfile, allProfiles }) {
 
   const displayName = currentProfile?.role === "professeur"
     ? `${eleveProfile?.prenom} ${eleveProfile?.nom}`
-    : "M. / Mme Granet";
+    : "M. Granet";
 
   const sujetActuel = currentProfile?.role === "professeur"
     ? eleveProfile?.sujet
@@ -592,7 +679,7 @@ function ChatZone({ eleveId, currentUser, currentProfile, allProfiles }) {
           <div className="avatar avatar-sm">
             {currentProfile?.role === "professeur"
               ? initials(eleveProfile?.nom, eleveProfile?.prenom)
-              : "FG"}
+              : "MG"}
           </div>
           <div>
             <div className="chat-header-name">{displayName}</div>
@@ -629,8 +716,15 @@ function ChatZone({ eleveId, currentUser, currentProfile, allProfiles }) {
             )}
           </div>
         </div>
-        <button className="btn-logout" onClick={() => supabase.auth.signOut()}>Déconnexion</button>
+        <div className="header-actions">
+          <button className="btn-key" onClick={() => setShowPasswordModal(true)} title="Changer mon mot de passe">
+            🔑 Mot de passe
+          </button>
+          <button className="btn-logout" onClick={() => supabase.auth.signOut()}>Déconnexion</button>
+        </div>
       </div>
+
+      {showPasswordModal && <ChangePasswordModal onClose={() => setShowPasswordModal(false)} />}
 
       <div className="messages-list">
         {grouped.map((item, i) =>
@@ -760,7 +854,9 @@ export default function App() {
     );
   }
 
-  const eleves = allProfiles.filter(p => p.role === "eleve").sort((a, b) => a.nom.localeCompare(b.nom));
+  const eleves = allProfiles
+    .filter(p => p.role === "eleve" && p.prof_id === profile.id)
+    .sort((a, b) => a.nom.localeCompare(b.nom));
   const totalUnread = Object.values(unreadCounts).reduce((a, b) => a + b, 0);
 
   return (
