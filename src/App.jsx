@@ -75,6 +75,7 @@ const SUPABASE_URL = "https://bolmwalxiqsuimuagrhx.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJvbG13YWx4aXFzdWltdWFncmh4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEwNzA0NTYsImV4cCI6MjA5NjY0NjQ1Nn0.z0SEaKiN1islvPPU_gfypU9i8qhPWXUW4DooBoxcq5Q";
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
 // ─── Palette & styles globaux ────────────────────────────────────────
 const CSS = `
   @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap');
@@ -440,7 +441,7 @@ function Login({ onLogin }) {
 }
 
 // ─── Composant SaisieSubject (première connexion élève) ──────────────
-function SaisieSubject({ profile, onSave }) {
+function SaisieSubject({ profile, onSave, nomProf }) {
   const [sujet, setSujet] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -459,7 +460,7 @@ function SaisieSubject({ profile, onSave }) {
         <div className="sujet-title">Bonjour {profile.prenom} !</div>
         <div className="sujet-sub">
           Avant de démarrer, renseigne le sujet de ton Grand Oral.<br />
-          Il apparaîtra dans ton espace et aidera M. Granet à préparer tes réponses.
+          Il apparaîtra dans ton espace et aidera {nomProf || "ton professeur"} à préparer tes réponses.
         </div>
         <textarea
           className="sujet-input"
@@ -664,9 +665,13 @@ function ChatZone({ eleveId, currentUser, currentProfile, allProfiles }) {
     );
   }
 
+  const monProf = currentProfile?.role === "eleve"
+    ? allProfiles.find(p => p.id === currentProfile.prof_id)
+    : null;
+
   const displayName = currentProfile?.role === "professeur"
     ? `${eleveProfile?.prenom} ${eleveProfile?.nom}`
-    : "M. Granet";
+    : (monProf ? `${monProf.prenom} ${monProf.nom}` : "Ton professeur");
 
   const sujetActuel = currentProfile?.role === "professeur"
     ? eleveProfile?.sujet
@@ -679,7 +684,7 @@ function ChatZone({ eleveId, currentUser, currentProfile, allProfiles }) {
           <div className="avatar avatar-sm">
             {currentProfile?.role === "professeur"
               ? initials(eleveProfile?.nom, eleveProfile?.prenom)
-              : "MG"}
+              : (monProf ? initials(monProf.nom, monProf.prenom) : "?")}
           </div>
           <div>
             <div className="chat-header-name">{displayName}</div>
@@ -843,11 +848,14 @@ export default function App() {
 
   // Première connexion élève : sujet non renseigné
   if (profile.role === "eleve" && !profile.sujet) {
+    const monProf = allProfiles.find(p => p.id === profile.prof_id);
+    const nomProf = monProf ? `${monProf.prenom} ${monProf.nom}` : null;
     return (
       <>
         <style>{CSS}</style>
         <SaisieSubject
           profile={profile}
+          nomProf={nomProf}
           onSave={(sujet) => setProfile({ ...profile, sujet })}
         />
       </>
