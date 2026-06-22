@@ -76,6 +76,7 @@ const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+
 // ─── Palette & styles globaux ────────────────────────────────────────
 const CSS = `
   @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap');
@@ -174,6 +175,80 @@ const CSS = `
   .eleve-info { flex: 1; min-width: 0; }
   .eleve-name { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .eleve-sujet { font-size: 11px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px; }
+
+  /* ── Onglets sidebar (Élèves / Ressources) ── */
+  .sidebar-tabs { display: flex; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+  .sidebar-tabs.eleve-tabs { max-width: 360px; background: var(--surface); }
+  .sidebar-tab {
+    flex: 1; padding: 12px 0; text-align: center; font-size: 12px; font-weight: 600;
+    color: var(--text-muted); cursor: pointer; background: none; border: none;
+    font-family: var(--font); border-bottom: 2px solid transparent; transition: all .15s;
+  }
+  .sidebar-tab.active { color: var(--accent-light); border-bottom-color: var(--accent); }
+  .sidebar-tab:hover { color: var(--text); }
+
+  /* ── Zone ressources ── */
+  .ressources-area { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  .ressources-list { flex: 1; overflow-y: auto; padding: 24px; display: flex; flex-direction: column; gap: 14px; max-width: 720px; }
+  .ressource-card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
+    padding: 18px 20px; position: relative;
+  }
+  .ressource-titre { font-size: 15px; font-weight: 600; margin-bottom: 8px; padding-right: 28px; }
+  .ressource-contenu { font-size: 13px; line-height: 1.6; color: var(--text); white-space: pre-wrap; }
+  .ressource-lien {
+    display: inline-flex; align-items: center; gap: 6px; margin-top: 10px;
+    color: var(--accent-light); font-size: 13px; text-decoration: none; word-break: break-all;
+  }
+  .ressource-lien:hover { text-decoration: underline; }
+  .ressource-fichier {
+    display: flex; align-items: center; gap: 10px; margin-top: 10px;
+    background: var(--surface2); border: 1px solid var(--border); border-radius: 10px;
+    padding: 10px 14px; text-decoration: none; color: var(--text); max-width: 320px;
+  }
+  .ressource-fichier:hover { border-color: var(--accent); }
+  .ressource-fichier img { max-width: 100%; max-height: 240px; border-radius: 8px; margin-top: 10px; display: block; }
+  .ressource-date { font-size: 11px; color: var(--text-muted); margin-top: 12px; }
+  .ressource-delete {
+    position: absolute; top: 16px; right: 16px; background: none; border: none;
+    color: var(--text-muted); cursor: pointer; font-size: 14px; padding: 4px;
+  }
+  .ressource-delete:hover { color: var(--red); }
+  .ressources-empty {
+    flex: 1; display: flex; align-items: center; justify-content: center;
+    flex-direction: column; gap: 10px; color: var(--text-muted); font-size: 13px;
+  }
+
+  /* ── Formulaire de publication (prof) ── */
+  .publish-form {
+    border-top: 1px solid var(--border); padding: 16px 24px; flex-shrink: 0;
+    max-width: 720px; width: 100%;
+  }
+  .publish-row { display: flex; gap: 8px; margin-bottom: 8px; }
+  .publish-input, .publish-textarea {
+    background: var(--surface2); border: 1px solid var(--border); border-radius: 10px;
+    padding: 10px 14px; color: var(--text); font-family: var(--font); font-size: 13px; outline: none; width: 100%;
+  }
+  .publish-input:focus, .publish-textarea:focus { border-color: var(--accent); }
+  .publish-textarea { resize: vertical; min-height: 70px; line-height: 1.5; }
+  .publish-actions { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+  .publish-attach-label {
+    display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-muted);
+    cursor: pointer; padding: 7px 12px; border: 1px solid var(--border); border-radius: 8px; transition: all .15s;
+  }
+  .publish-attach-label:hover { border-color: var(--accent); color: var(--text); }
+  .publish-btn {
+    margin-left: auto; background: var(--accent); color: #fff; border: none;
+    border-radius: 8px; padding: 9px 18px; font-family: var(--font); font-size: 13px;
+    font-weight: 600; cursor: pointer; transition: background .15s;
+  }
+  .publish-btn:hover { background: var(--accent-light); }
+  .publish-btn:disabled { opacity: .4; cursor: not-allowed; }
+  .publish-file-chip {
+    display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-muted);
+    background: var(--surface2); border-radius: 8px; padding: 6px 10px; max-width: 240px;
+  }
+  .publish-file-chip button { background: none; border: none; color: var(--red); cursor: pointer; margin-left: 4px; }
 
   /* ── Zone chat ── */
   .chat-area { flex: 1; display: flex; flex-direction: column; min-width: 0; position: relative; }
@@ -558,6 +633,144 @@ function Message({ msg, isMe, profile }) {
 }
 
 // ─── Composant Chat ──────────────────────────────────────────────────
+// ─── Composant RessourcesZone ──────────────────────────────────────────
+function RessourcesZone({ currentUser, currentProfile }) {
+  const [ressources, setRessources] = useState([]);
+  const [titre, setTitre] = useState("");
+  const [contenu, setContenu] = useState("");
+  const [lien, setLien] = useState("");
+  const [file, setFile] = useState(null);
+  const [publishing, setPublishing] = useState(false);
+  const fileRef = useRef(null);
+
+  const profId = currentProfile.role === "professeur" ? currentUser.id : currentProfile.prof_id;
+
+  const fetchRessources = useCallback(async () => {
+    if (!profId) return;
+    const { data } = await supabase.from("ressources")
+      .select("*").eq("prof_id", profId).order("created_at", { ascending: false });
+    setRessources(data || []);
+  }, [profId]);
+
+  useEffect(() => { fetchRessources(); }, [fetchRessources]);
+
+  useEffect(() => {
+    if (!profId) return;
+    const channel = supabase.channel(`ressources-${profId}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "ressources", filter: `prof_id=eq.${profId}` },
+        () => fetchRessources())
+      .subscribe();
+    return () => supabase.removeChannel(channel);
+  }, [profId, fetchRessources]);
+
+  async function publier() {
+    if (!titre.trim() && !contenu.trim() && !lien.trim() && !file) return;
+    setPublishing(true);
+    let fichierUrl = null, fichierNom = null, fichierType = null;
+
+    if (file) {
+      const path = `ressources/${currentUser.id}/${Date.now()}_${file.name}`;
+      const { error: upErr } = await supabase.storage.from("grand-oral").upload(path, file, { contentType: file.type });
+      if (!upErr) {
+        const { data: { publicUrl } } = supabase.storage.from("grand-oral").getPublicUrl(path);
+        fichierUrl = publicUrl; fichierNom = file.name; fichierType = file.type;
+      }
+    }
+
+    await supabase.from("ressources").insert({
+      prof_id: currentUser.id,
+      titre: titre.trim() || null,
+      contenu: contenu.trim() || null,
+      lien_url: lien.trim() || null,
+      fichier_url: fichierUrl,
+      fichier_nom: fichierNom,
+      fichier_type: fichierType,
+    });
+
+    setTitre(""); setContenu(""); setLien(""); setFile(null); setPublishing(false);
+    fetchRessources();
+  }
+
+  async function supprimer(id) {
+    await supabase.from("ressources").delete().eq("id", id);
+    fetchRessources();
+  }
+
+  return (
+    <div className="ressources-area">
+      {ressources.length === 0 ? (
+        <div className="ressources-empty">
+          <div style={{ fontSize: 32, opacity: .3 }}>📚</div>
+          <div>Aucune ressource publiée pour l'instant.</div>
+        </div>
+      ) : (
+        <div className="ressources-list">
+          {ressources.map(r => (
+            <div key={r.id} className="ressource-card">
+              {currentProfile.role === "professeur" && (
+                <button className="ressource-delete" onClick={() => supprimer(r.id)} title="Supprimer">✕</button>
+              )}
+              {r.titre && <div className="ressource-titre">{r.titre}</div>}
+              {r.contenu && <div className="ressource-contenu">{r.contenu}</div>}
+              {r.lien_url && (
+                <a className="ressource-lien" href={r.lien_url} target="_blank" rel="noreferrer">🔗 {r.lien_url}</a>
+              )}
+              {r.fichier_url && r.fichier_type?.startsWith("image") && (
+                <a href={r.fichier_url} target="_blank" rel="noreferrer">
+                  <img src={r.fichier_url} alt={r.fichier_nom} />
+                </a>
+              )}
+              {r.fichier_url && !r.fichier_type?.startsWith("image") && (
+                <a className="ressource-fichier" href={r.fichier_url} target="_blank" rel="noreferrer">
+                  <span style={{ fontSize: 20 }}>{fileIcon(r.fichier_type)}</span>
+                  <span style={{ fontSize: 13 }}>{r.fichier_nom}</span>
+                </a>
+              )}
+              <div className="ressource-date">{formatDate(r.created_at)} à {formatTime(r.created_at)}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {currentProfile.role === "professeur" && (
+        <div className="publish-form">
+          <div className="publish-row">
+            <input className="publish-input" placeholder="Titre (optionnel)" value={titre}
+              onChange={e => setTitre(e.target.value)} />
+          </div>
+          <div className="publish-row">
+            <textarea className="publish-textarea" placeholder="Texte, consigne, idée de sujet…"
+              value={contenu} onChange={e => setContenu(e.target.value)} />
+          </div>
+          <div className="publish-row">
+            <input className="publish-input" placeholder="Lien (optionnel) — https://…" value={lien}
+              onChange={e => setLien(e.target.value)} />
+          </div>
+          <div className="publish-actions">
+            {!file ? (
+              <label className="publish-attach-label">
+                📎 Joindre un fichier
+                <input ref={fileRef} type="file" style={{ display: "none" }}
+                  onChange={e => setFile(e.target.files[0])} />
+              </label>
+            ) : (
+              <div className="publish-file-chip">
+                {fileIcon(file.type)} {file.name}
+                <button onClick={() => setFile(null)}>✕</button>
+              </div>
+            )}
+            <button className="publish-btn" onClick={publier}
+              disabled={publishing || (!titre.trim() && !contenu.trim() && !lien.trim() && !file)}>
+              {publishing ? "Publication…" : "Publier"}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Composant ChatZone ─────────────────────────────────────────────────
 function ChatZone({ eleveId, currentUser, currentProfile, allProfiles }) {
   const [messages, setMessages] = useState([]);
   const [text, setText] = useState("");
@@ -784,6 +997,7 @@ export default function App() {
   const [selectedEleve, setSelectedEleve] = useState(null);
   const [unreadCounts, setUnreadCounts] = useState({});
   const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState("chat"); // "chat" ou "ressources"
 
   // Vérifier session existante + écouter les changements (login/logout)
   useEffect(() => {
@@ -873,33 +1087,66 @@ export default function App() {
       <div className="app">
         {profile.role === "professeur" && (
           <div className="sidebar">
-            <div className="sidebar-header">
-              <div className="sidebar-title">Élèves</div>
-              {totalUnread > 0 && <div className="badge-count">{totalUnread}</div>}
+            <div className="sidebar-tabs">
+              <button className={`sidebar-tab${activeTab === "chat" ? " active" : ""}`}
+                onClick={() => setActiveTab("chat")}>Élèves</button>
+              <button className={`sidebar-tab${activeTab === "ressources" ? " active" : ""}`}
+                onClick={() => setActiveTab("ressources")}>Ressources</button>
             </div>
-            <div className="sidebar-list">
-              {eleves.map(el => (
-                <div key={el.id} className={`eleve-item${selectedEleve === el.id ? " active" : ""}`}
-                  onClick={() => setSelectedEleve(el.id)}>
-                  <div className="avatar">
-                    {initials(el.nom, el.prenom)}
-                    {unreadCounts[el.id] > 0 && <div className="unread-dot" />}
-                  </div>
-                  <div className="eleve-info">
-                    <div className="eleve-name">{el.prenom} {el.nom}</div>
-                    <div className="eleve-sujet">{el.sujet || "Sujet non défini"}</div>
-                  </div>
+            {activeTab === "chat" && (
+              <>
+                <div className="sidebar-header">
+                  <div className="sidebar-title">Élèves</div>
+                  {totalUnread > 0 && <div className="badge-count">{totalUnread}</div>}
                 </div>
-              ))}
-            </div>
+                <div className="sidebar-list">
+                  {eleves.map(el => (
+                    <div key={el.id} className={`eleve-item${selectedEleve === el.id ? " active" : ""}`}
+                      onClick={() => setSelectedEleve(el.id)}>
+                      <div className="avatar">
+                        {initials(el.nom, el.prenom)}
+                        {unreadCounts[el.id] > 0 && <div className="unread-dot" />}
+                      </div>
+                      <div className="eleve-info">
+                        <div className="eleve-name">{el.prenom} {el.nom}</div>
+                        <div className="eleve-sujet">{el.sujet || "Sujet non défini"}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
         )}
-        <ChatZone
-          eleveId={profile.role === "professeur" ? selectedEleve : user.id}
-          currentUser={user}
-          currentProfile={profile}
-          allProfiles={allProfiles}
-        />
+
+        {profile.role === "eleve" && (
+          <div style={{ display: "flex", flexDirection: "column", flex: 1, minWidth: 0 }}>
+            <div className="sidebar-tabs eleve-tabs">
+              <button className={`sidebar-tab${activeTab === "chat" ? " active" : ""}`}
+                onClick={() => setActiveTab("chat")}>💬 Discussion</button>
+              <button className={`sidebar-tab${activeTab === "ressources" ? " active" : ""}`}
+                onClick={() => setActiveTab("ressources")}>📚 Ressources</button>
+            </div>
+            {activeTab === "chat" && (
+              <ChatZone eleveId={user.id} currentUser={user} currentProfile={profile} allProfiles={allProfiles} />
+            )}
+            {activeTab === "ressources" && (
+              <RessourcesZone currentUser={user} currentProfile={profile} />
+            )}
+          </div>
+        )}
+
+        {profile.role === "professeur" && activeTab === "chat" && (
+          <ChatZone
+            eleveId={selectedEleve}
+            currentUser={user}
+            currentProfile={profile}
+            allProfiles={allProfiles}
+          />
+        )}
+        {profile.role === "professeur" && activeTab === "ressources" && (
+          <RessourcesZone currentUser={user} currentProfile={profile} />
+        )}
       </div>
     </>
   );
