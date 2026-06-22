@@ -75,7 +75,6 @@ const SUPABASE_URL = "https://bolmwalxiqsuimuagrhx.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJvbG13YWx4aXFzdWltdWFncmh4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEwNzA0NTYsImV4cCI6MjA5NjY0NjQ1Nn0.z0SEaKiN1islvPPU_gfypU9i8qhPWXUW4DooBoxcq5Q";
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-
 // ─── Palette & styles globaux ────────────────────────────────────────
 const CSS = `
   @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap');
@@ -360,14 +359,15 @@ function fileIcon(type) {
 
 // ─── Composant Login ─────────────────────────────────────────────────
 function Login({ onLogin }) {
-  const [email, setEmail] = useState("");
+  const [identifiant, setIdentifiant] = useState("");
   const [pwd, setPwd] = useState("");
   const [err, setErr] = useState("");
   const [loading, setLoading] = useState(false);
 
   async function handleLogin() {
     setLoading(true); setErr("");
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password: pwd });
+    const emailInterne = identifiant.trim().toLowerCase() + "@grandoral.local";
+    const { data, error } = await supabase.auth.signInWithPassword({ email: emailInterne, password: pwd });
     if (error) { setErr("Identifiant ou mot de passe incorrect."); setLoading(false); return; }
     const { data: profile } = await supabase.from("profiles").select("*").eq("id", data.user.id).single();
     onLogin(data.user, profile);
@@ -381,9 +381,9 @@ function Login({ onLogin }) {
         <div className="login-title">Grand Oral</div>
         <div className="login-sub">Espace de préparation individuelle</div>
         <div className="field">
-          <label>Email</label>
-          <input type="email" value={email} onChange={e => setEmail(e.target.value)}
-            placeholder="prenom.nom@..." onKeyDown={e => e.key === "Enter" && handleLogin()} />
+          <label>Identifiant</label>
+          <input type="text" value={identifiant} onChange={e => setIdentifiant(e.target.value)}
+            placeholder="prenom.nom" onKeyDown={e => e.key === "Enter" && handleLogin()} />
         </div>
         <div className="field">
           <label>Mot de passe</label>
