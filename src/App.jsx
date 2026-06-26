@@ -312,7 +312,15 @@ const CSS = `
   .gen-selected-item {
     display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px;
     background: var(--surface); border: 1px solid var(--border); border-radius: 10px; margin-bottom: 8px;
+    transition: opacity .15s, border-color .15s, transform .1s;
   }
+  .gen-selected-item.dragging { opacity: .4; }
+  .gen-selected-item.drag-over { border-color: var(--accent); border-style: dashed; }
+  .gen-drag-handle {
+    color: var(--text-muted); cursor: grab; flex-shrink: 0; font-size: 14px;
+    padding: 2px 2px 2px 0; margin-top: 1px; user-select: none; line-height: 1;
+  }
+  .gen-drag-handle:active { cursor: grabbing; }
   .gen-selected-num {
     width: 22px; height: 22px; border-radius: 50%; background: var(--surface2);
     display: flex; align-items: center; justify-content: center; font-size: 11px;
@@ -784,6 +792,8 @@ function GenerateurZone() {
   const [questionsDetail, setQuestionsDetail] = useState({});          // { question_id: bool } détail ouvert
   const [reponsesVisibles, setReponsesVisibles] = useState({});        // { question_id: bool } réponse révélée (masquée par défaut)
   const [selection, setSelection] = useState([]);                       // [question objects, dans l'ordre de sélection]
+  const [dragIndex, setDragIndex] = useState(null);
+  const [overIndex, setOverIndex] = useState(null);
   const [loading, setLoading] = useState(true);
 
   // Charger la liste des chapitres au montage
@@ -837,6 +847,15 @@ function GenerateurZone() {
     setSelection(prev => prev.filter(q => q.id !== questionId));
   }
 
+  function deplacerSelection(indexDepart, indexArrivee) {
+    setSelection(prev => {
+      const copie = [...prev];
+      const [item] = copie.splice(indexDepart, 1);
+      copie.splice(indexArrivee, 0, item);
+      return copie;
+    });
+  }
+
   function nomChapitre(chapitreId) {
     return chapitres.find(c => c.id === chapitreId)?.nom || "";
   }
@@ -859,7 +878,9 @@ function GenerateurZone() {
     lignes.push("\\chead{Interrogation" + (avecCorrige ? " — Corrigé" : "") + "}");
     lignes.push("\\rhead{Durée : 30 min}");
     lignes.push("\\newcounter{qnum}");
+    lignes.push("\\newcounter{linectr}");
     lignes.push("\\newcommand{\\reponse}[1]{");
+    lignes.push("  \\setcounter{linectr}{0}");
     lignes.push("  \\forloop{linectr}{0}{\\value{linectr} < #1}{\\par\\vspace{4mm}\\hrulefill}");
     lignes.push("}");
     lignes.push("\\begin{document}");
@@ -974,7 +995,20 @@ function GenerateurZone() {
         ) : (
           <div className="gen-selection-list">
             {selection.map((q, idx) => (
-              <div key={q.id} className="gen-selected-item">
+              <div
+                key={q.id}
+                className={`gen-selected-item${dragIndex === idx ? " dragging" : ""}${overIndex === idx && dragIndex !== null && dragIndex !== idx ? " drag-over" : ""}`}
+                draggable
+                onDragStart={() => setDragIndex(idx)}
+                onDragEnter={() => { if (dragIndex !== null) setOverIndex(idx); }}
+                onDragEnd={() => { setDragIndex(null); setOverIndex(null); }}
+                onDragOver={e => e.preventDefault()}
+                onDrop={() => {
+                  if (dragIndex !== null && dragIndex !== idx) deplacerSelection(dragIndex, idx);
+                  setDragIndex(null); setOverIndex(null);
+                }}
+              >
+                <span className="gen-drag-handle" title="Glisser pour réordonner">⠿</span>
                 <div className="gen-selected-num">{idx + 1}</div>
                 <div className="gen-selected-content">
                   <div className="gen-selected-chapitre">{nomChapitre(q.chapitre_id)}</div>
