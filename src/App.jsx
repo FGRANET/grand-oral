@@ -732,6 +732,44 @@ function formatDate(ts) {
   if (d.toDateString() === yesterday.toDateString()) return "Hier";
   return d.toLocaleDateString("fr-FR", { day: "numeric", month: "long" });
 }
+
+// ─── Convention de numérotation des questions : PREFIXE_AUTEUR_NN ──────
+// Préfixe officiel par nom de chapitre (clé en minuscules)
+const PREFIXES_CHAPITRES = {
+  "rappels sur les suites": "SUI",
+  "dérivation": "DER",
+  "géométrie dans l'espace 1": "GEO1",
+  "équations différentielles": "EQD1",
+  "fonction ln": "LN",
+  "probabilités conditionnelles": "PCOND",
+  "raisonnement par récurrence": "REC",
+  "combinatoire et dénombrement": "COMB",
+  "loi binomiale": "BINOM",
+  "limite d'une suite": "LIMS",
+  "convexité": "CONV",
+  "géométrie dans l'espace 2": "GEO2",
+  "fonctions sinus et cosinus": "TRIGO",
+  "limites de fonctions": "LIMF",
+  "continuité": "CONT",
+  "primitives et équations différentielles y'=f": "EQD2",
+  "calcul intégral": "INT",
+  "compléments sur les variables aléatoires.": "VA",
+  "concentration et loi des grands nombres": "LGN",
+};
+
+function prefixeChapitre(nomChapitre) {
+  return PREFIXES_CHAPITRES[(nomChapitre || "").trim().toLowerCase()] || null;
+}
+
+function initialesAuteur(prenom, nom) {
+  return `${(prenom || "?")[0]}${(nom || "?")[0]}`.toUpperCase();
+}
+
+function idRespecteConvention(id, prefixeAttendu, initialesAttendues) {
+  const motif = new RegExp(`^${prefixeAttendu}_${initialesAttendues}_\\d{2,}$`);
+  return motif.test(id || "");
+}
+
 function fileIcon(type) {
   if (!type) return "📄";
   if (type.startsWith("image")) return "🖼️";
@@ -1131,7 +1169,7 @@ function DiapoViewer({ questions, mode, delai, nomChapitre, onFermer }) {
 }
 
 // ─── Composant ImportQuestions ──────────────────────────────────────────
-function ImportQuestions({ currentUser, chapitres, onFermer, onImportTermine }) {
+function ImportQuestions({ currentUser, currentProfile, chapitres, onFermer, onImportTermine }) {
   const [fichier, setFichier] = useState(null);
   const [analyse, setAnalyse] = useState(null); // { valides, conflits, chapitresInconnus }
   const [analysing, setAnalysing] = useState(false);
@@ -1139,15 +1177,16 @@ function ImportQuestions({ currentUser, chapitres, onFermer, onImportTermine }) 
   const [resultat, setResultat] = useState(null); // { nbImportees, nbErreurs }
   const fileRef = useRef(null);
 
-  // Trouve le prochain id libre en suivant le motif PREFIXE_NN du même chapitre
-  function suggererId(idConflit, idsExistants) {
-    const match = idConflit.match(/^(.+_)(\d+)$/);
-    if (!match) return idConflit + "_2";
-    const [, prefixe, nombreStr] = match;
-    const largeur = nombreStr.length;
-    let n = parseInt(nombreStr, 10) + 1;
-    while (idsExistants.has(`${prefixe}${String(n).padStart(largeur, "0")}`)) n++;
-    return `${prefixe}${String(n).padStart(largeur, "0")}`;
+  // Calcule le prochain numéro libre pour un préfixe+auteur donné, en tenant compte
+  // à la fois des ids déjà en base ET de ceux déjà attribués plus tôt dans ce même import
+  function prochainNumeroLibre(prefixeComplet, idsExistants, idsDejaAttribuesDansCetImport) {
+    let n = 1;
+    let idCandidat;
+    do {
+      idCandidat = `${prefixeComplet}_${String(n).padStart(2, "0")}`;
+      n++;
+    } while (idsExistants.has(idCandidat) || idsDejaAttribuesDansCetImport.has(idCandidat));
+    return idCandidat;
   }
 
   async function analyserFichier(file) {
@@ -1158,16 +1197,19 @@ function ImportQuestions({ currentUser, chapitres, onFermer, onImportTermine }) 
       const data = JSON.parse(texte);
       const liste = Array.isArray(data) ? data : (data.questions || []);
 
-      // Récupérer tous les ids déjà en base pour détecter les conflits
       const { data: existantes } = await supabase.from("questions").select("id");
       const idsExistants = new Set((existantes || []).map(q => q.id));
+      const idsAttribues = new Set(); // suivi au fil de CET import, pour éviter 2 suggestions identiques
 
       const chapitresParNom = {};
       chapitres.forEach(c => { chapitresParNom[c.nom.trim().toLowerCase()] = c.id; });
 
-      const valides = [];
-      const conflits = [];
+      const initiales = initialesAuteur(currentProfile?.prenom, currentProfile?.nom);
+
+      const valides = [];        // id déjà conforme à la convention, pas de conflit
+      const corrections = [];    // id non conforme et/ou en conflit → id recalculé proposé
       const chapitresInconnus = [];
+      const prefixesManquants = [];
 
       liste.forEach((q, idx) => {
         const nomChap = (q.chapitre || "").trim().toLowerCase();
@@ -1177,18 +1219,36 @@ function ImportQuestions({ currentUser, chapitres, onFermer, onImportTermine }) 
           chapitresInconnus.push({ ...q, _ligne: idx + 1 });
           return;
         }
-        if (idsExistants.has(q.id)) {
-          conflits.push({
-            ...q,
-            _chapitreId: chapitreId,
-            _suggestion: suggererId(q.id, idsExistants),
-          });
+
+        const prefixe = prefixeChapitre(q.chapitre);
+        if (!prefixe) {
+          // Chapitre reconnu mais sans préfixe officiel défini (cas normalement impossible
+          // si la table PREFIXES_CHAPITRES est à jour avec les 19 chapitres)
+          prefixesManquants.push({ ...q, _ligne: idx + 1 });
           return;
         }
-        valides.push({ ...q, _chapitreId: chapitreId });
+
+        const prefixeComplet = `${prefixe}_${initiales}`;
+        const conforme = idRespecteConvention(q.id, prefixe, initiales);
+        const enConflit = idsExistants.has(q.id) || idsAttribues.has(q.id);
+
+        if (conforme && !enConflit) {
+          idsAttribues.add(q.id);
+          valides.push({ ...q, _chapitreId: chapitreId });
+        } else {
+          const idCorrige = prochainNumeroLibre(prefixeComplet, idsExistants, idsAttribues);
+          idsAttribues.add(idCorrige);
+          corrections.push({
+            ...q,
+            _chapitreId: chapitreId,
+            _idOriginal: q.id,
+            _idCorrige: idCorrige,
+            _raison: enConflit ? "id déjà utilisé" : "ne respecte pas la convention",
+          });
+        }
       });
 
-      setAnalyse({ valides, conflits, chapitresInconnus, idsExistants });
+      setAnalyse({ valides, corrections, chapitresInconnus, prefixesManquants });
     } catch (e) {
       setAnalyse({ erreurParsing: e.message });
     }
@@ -1204,15 +1264,15 @@ function ImportQuestions({ currentUser, chapitres, onFermer, onImportTermine }) 
     if (!analyse) return;
     setImporting(true);
 
-    // On importe : toutes les valides + les conflits avec leur id suggéré accepté
+    // On importe : toutes les valides (id déjà conforme) + les corrections (id recalculé)
     const aInserer = [
       ...analyse.valides.map(q => ({
         id: q.id, chapitre_id: q._chapitreId, type: q.type,
         enonce: q.enonce, reponse: q.reponse, niveau: q.niveau || 2,
         prof_id: currentUser.id,
       })),
-      ...analyse.conflits.map(q => ({
-        id: q._suggestion, chapitre_id: q._chapitreId, type: q.type,
+      ...analyse.corrections.map(q => ({
+        id: q._idCorrige, chapitre_id: q._chapitreId, type: q.type,
         enonce: q.enonce, reponse: q.reponse, niveau: q.niveau || 2,
         prof_id: currentUser.id,
       })),
@@ -1233,7 +1293,7 @@ function ImportQuestions({ currentUser, chapitres, onFermer, onImportTermine }) 
     onImportTermine();
   }
 
-  const totalAImporter = analyse ? analyse.valides.length + analyse.conflits.length : 0;
+  const totalAImporter = analyse ? analyse.valides.length + analyse.corrections.length : 0;
 
   return (
     <div className="import-overlay" onClick={e => e.target === e.currentTarget && onFermer()}>
@@ -1269,16 +1329,16 @@ function ImportQuestions({ currentUser, chapitres, onFermer, onImportTermine }) 
               </div>
             </div>
 
-            {analyse.conflits.length > 0 && (
+            {analyse.corrections.length > 0 && (
               <div className="import-report-section">
                 <div className="import-report-header warn">
-                  ⚠️ {analyse.conflits.length} id déjà utilisé{analyse.conflits.length !== 1 ? "s" : ""} — id de remplacement proposé
+                  ⚠️ {analyse.corrections.length} id corrigé{analyse.corrections.length !== 1 ? "s" : ""} pour respecter la convention
                 </div>
-                {analyse.conflits.map((q, i) => (
+                {analyse.corrections.map((q, i) => (
                   <div key={i} className="import-report-item">
-                    <span className="import-report-item-id">{q.id}</span>
-                    <span className="import-report-item-detail">{q.enonce}</span>
-                    <span className="import-report-suggestion">→ {q._suggestion}</span>
+                    <span className="import-report-item-id">{q._idOriginal || "(vide)"}</span>
+                    <span className="import-report-item-detail">{q._raison} — {q.enonce}</span>
+                    <span className="import-report-suggestion">→ {q._idCorrige}</span>
                   </div>
                 ))}
               </div>
@@ -1293,6 +1353,20 @@ function ImportQuestions({ currentUser, chapitres, onFermer, onImportTermine }) 
                   <div key={i} className="import-report-item">
                     <span className="import-report-item-id">{q.id || `ligne ${q._ligne}`}</span>
                     <span className="import-report-item-detail">Chapitre indiqué : "{q.chapitre}"</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {analyse.prefixesManquants?.length > 0 && (
+              <div className="import-report-section">
+                <div className="import-report-header warn">
+                  ❌ {analyse.prefixesManquants.length} question{analyse.prefixesManquants.length !== 1 ? "s" : ""} sans préfixe officiel défini pour ce chapitre (non importée{analyse.prefixesManquants.length !== 1 ? "s" : ""})
+                </div>
+                {analyse.prefixesManquants.map((q, i) => (
+                  <div key={i} className="import-report-item">
+                    <span className="import-report-item-id">{q.id || `ligne ${q._ligne}`}</span>
+                    <span className="import-report-item-detail">Chapitre : "{q.chapitre}" — contacter F. Granet pour ajouter ce préfixe</span>
                   </div>
                 ))}
               </div>
@@ -1329,7 +1403,7 @@ function ImportQuestions({ currentUser, chapitres, onFermer, onImportTermine }) 
 }
 
 // ─── Composant GenerateurZone ──────────────────────────────────────────
-function GenerateurZone({ currentUser }) {
+function GenerateurZone({ currentUser, currentProfile }) {
   const [chapitres, setChapitres] = useState([]);
   const [questionsParChapitre, setQuestionsParChapitre] = useState({}); // { chapitre_id: [questions] }
   const [chapitresOuverts, setChapitresOuverts] = useState({});        // { chapitre_id: bool }
@@ -1646,6 +1720,7 @@ function GenerateurZone({ currentUser }) {
       {afficherImport && (
         <ImportQuestions
           currentUser={currentUser}
+          currentProfile={currentProfile}
           chapitres={chapitres}
           onFermer={() => setAfficherImport(false)}
           onImportTermine={() => {
@@ -2196,7 +2271,7 @@ export default function App() {
           <RessourcesZone currentUser={user} currentProfile={profile} />
         )}
         {profile.role === "professeur" && activeTab === "generateur" && (
-          <GenerateurZone currentUser={user} />
+          <GenerateurZone currentUser={user} currentProfile={profile} />
         )}
       </div>
     </>
