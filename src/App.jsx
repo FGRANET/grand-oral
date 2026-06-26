@@ -720,6 +720,11 @@ const CSS = `
 function initials(nom, prenom) {
   return `${(prenom || "?")[0]}${(nom || "?")[0]}`.toUpperCase();
 }
+// Affichage standard d'un prof côté élève : "F. Granet" (initiale du prénom + nom entier)
+function formatNomProf(prenom, nom) {
+  if (!prenom || !nom) return "Ton professeur";
+  return `${prenom[0].toUpperCase()}. ${nom}`;
+}
 function formatTime(ts) {
   const d = new Date(ts);
   return d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
@@ -1994,7 +1999,7 @@ function ChatZone({ eleveId, currentUser, currentProfile, allProfiles }) {
 
   const displayName = currentProfile?.role === "professeur"
     ? `${eleveProfile?.prenom} ${eleveProfile?.nom}`
-    : (monProf ? `${monProf.prenom} ${monProf.nom}` : "Ton professeur");
+    : formatNomProf(monProf?.prenom, monProf?.nom);
 
   const sujetActuel = currentProfile?.role === "professeur"
     ? eleveProfile?.sujet
@@ -2184,7 +2189,7 @@ export default function App() {
   // Première connexion élève : sujet non renseigné
   if (profile.role === "eleve" && !profile.sujet) {
     const monProf = allProfiles.find(p => p.id === profile.prof_id);
-    const nomProf = monProf ? `${monProf.prenom} ${monProf.nom}` : null;
+    const nomProf = monProf ? formatNomProf(monProf.prenom, monProf.nom) : null;
     return (
       <>
         <style>{CSS}</style>
