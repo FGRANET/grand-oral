@@ -513,6 +513,21 @@ const CSS = `
   }
   .gen-import-btn:hover { border-color: var(--accent); color: var(--accent-light); }
 
+  .gen-import-bar-row { display: flex; gap: 8px; }
+  .gen-export-all-btn {
+    background: var(--surface2); border: 1px solid var(--border); color: var(--text);
+    border-radius: 10px; padding: 10px; font-family: var(--font); font-size: 13px; font-weight: 500;
+    cursor: pointer; transition: all .15s; display: flex; align-items: center; justify-content: center; gap: 8px;
+    flex-shrink: 0;
+  }
+  .gen-export-all-btn:hover { border-color: var(--accent); color: var(--accent-light); }
+
+  .gen-chapitre-export-btn {
+    background: none; border: none; color: var(--text-muted); cursor: pointer;
+    font-size: 13px; padding: 4px 6px; border-radius: 6px; transition: all .15s; flex-shrink: 0;
+  }
+  .gen-chapitre-export-btn:hover { color: var(--accent-light); background: var(--surface2); }
+
   .import-overlay {
     position: fixed; inset: 0; background: #000000cc; z-index: 200;
     display: flex; align-items: center; justify-content: center; padding: 20px;
@@ -1663,6 +1678,51 @@ function GenerateurZone({ currentUser, currentProfile }) {
     URL.revokeObjectURL(url);
   }
 
+  // Nettoie une question pour l'export : retire les champs internes à la base
+  // (chapitre_id, prof_id, created_at) et remet le nom de chapitre en texte,
+  // exactement le format attendu pour un futur réimport.
+  function questionVersJson(q, nomCh) {
+    return {
+      id: q.id,
+      chapitre: nomCh,
+      type: q.type,
+      enonce: q.enonce,
+      reponse: q.reponse,
+      niveau: q.niveau,
+    };
+  }
+
+  function telechargerJson(contenu, nomFichier) {
+    const blob = new Blob([JSON.stringify(contenu, null, 2)], { type: "application/json;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = nomFichier;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  async function exporterChapitre(ch) {
+    // Réutilise le cache si déjà chargé, sinon recharge depuis Supabase
+    let questions = questionsParChapitre[ch.id];
+    if (!questions) {
+      const { data } = await supabase.from("questions").select("*").eq("chapitre_id", ch.id).order("id");
+      questions = data || [];
+    }
+    const contenu = questions.map(q => questionVersJson(q, ch.nom));
+    const slug = ch.nom.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "_");
+    telechargerJson(contenu, `questions_${slug}.json`);
+  }
+
+  async function exporterToutLaBanque() {
+    const { data } = await supabase.from("questions").select("*").order("chapitre_id").order("id");
+    const chapitresParId = {};
+    chapitres.forEach(c => { chapitresParId[c.id] = c.nom; });
+    const contenu = (data || []).map(q => questionVersJson(q, chapitresParId[q.chapitre_id] || "?"));
+    const date = new Date().toISOString().slice(0, 10);
+    telechargerJson(contenu, `banque_questions_complete_${date}.json`);
+  }
+
   if (loading) {
     return <div className="generateur-area"><div className="gen-selection-empty">Chargement des chapitres…</div></div>;
   }
@@ -1671,9 +1731,14 @@ function GenerateurZone({ currentUser, currentProfile }) {
     <div className="generateur-area">
       <div className="gen-chapitres-col">
         <div className="gen-import-bar">
-          <button className="gen-import-btn" onClick={() => setAfficherImport(true)}>
-            📂 Importer des questions (JSON)
-          </button>
+          <div className="gen-import-bar-row">
+            <button className="gen-import-btn" onClick={() => setAfficherImport(true)}>
+              📂 Importer
+            </button>
+            <button className="gen-export-all-btn" onClick={exporterToutLaBanque}>
+              ⬇️ Tout exporter
+            </button>
+          </div>
         </div>
         {chapitres.map(ch => {
           const ouvert = chapitresOuverts[ch.id];
@@ -1685,6 +1750,12 @@ function GenerateurZone({ currentUser, currentProfile }) {
                 <span className={`gen-chevron${ouvert ? " open" : ""}`}>▶</span>
                 <span className="gen-chapitre-nom">{ch.nom}</span>
                 {nbSelectionnees > 0 && <span className="gen-chapitre-count">{nbSelectionnees} sélectionnée{nbSelectionnees > 1 ? "s" : ""}</span>}
+                {ouvert && questions.length > 0 && (
+                  <button className="gen-chapitre-export-btn" title="Exporter ce chapitre en JSON"
+                    onClick={e => { e.stopPropagation(); exporterChapitre(ch); }}>
+                    ⬇️
+                  </button>
+                )}
               </div>
               {ouvert && (
                 <div className="gen-questions-list">
