@@ -77,6 +77,7 @@ const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+
 // ─── Palette & styles globaux ────────────────────────────────────────
 const CSS = `
   @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap');
@@ -303,6 +304,38 @@ const CSS = `
     cursor: pointer; transition: all .15s;
   }
   .gen-delete-question-btn:hover { border-color: var(--red); color: var(--red); }
+  .gen-edit-question-btn {
+    background: none; border: 1px solid var(--border); color: var(--text-muted);
+    border-radius: 8px; padding: 6px 12px; font-family: var(--font); font-size: 11px;
+    cursor: pointer; transition: all .15s; margin-right: 8px;
+  }
+  .gen-edit-question-btn:hover { border-color: var(--accent); color: var(--accent-light); }
+
+  .gen-edit-form { display: flex; flex-direction: column; gap: 10px; }
+  .gen-edit-row { display: flex; gap: 10px; }
+  .gen-edit-field { flex: 1; display: flex; flex-direction: column; gap: 4px; }
+  .gen-edit-field label { font-size: 10px; font-weight: 700; text-transform: uppercase; color: var(--text-muted); letter-spacing: .04em; }
+  .gen-edit-field select, .gen-edit-field input[type="number"] {
+    background: var(--surface2); border: 1px solid var(--border); border-radius: 8px;
+    padding: 7px 10px; color: var(--text); font-family: var(--font); font-size: 12px; outline: none;
+  }
+  .gen-edit-textarea {
+    background: var(--surface2); border: 1px solid var(--border); border-radius: 8px;
+    padding: 10px 12px; color: var(--text); font-family: var(--mono); font-size: 12px; outline: none;
+    resize: vertical; min-height: 70px; line-height: 1.5; width: 100%;
+  }
+  .gen-edit-textarea:focus, .gen-edit-field select:focus, .gen-edit-field input:focus { border-color: var(--accent); }
+  .gen-edit-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
+  .gen-edit-save-btn {
+    background: var(--accent); color: #fff; border: none; border-radius: 8px;
+    padding: 8px 16px; font-family: var(--font); font-size: 12px; font-weight: 600; cursor: pointer;
+  }
+  .gen-edit-save-btn:hover { background: var(--accent-light); }
+  .gen-edit-save-btn:disabled { opacity: .4; cursor: not-allowed; }
+  .gen-edit-cancel-btn {
+    background: none; border: 1px solid var(--border); color: var(--text-muted);
+    border-radius: 8px; padding: 8px 16px; font-family: var(--font); font-size: 12px; cursor: pointer;
+  }
   .gen-reveal-btn {
     background: var(--surface2); border: 1px solid var(--border); color: var(--text-muted);
     border-radius: 8px; padding: 7px 14px; font-family: var(--font); font-size: 12px;
@@ -1430,6 +1463,9 @@ function GenerateurZone({ currentUser, currentProfile }) {
   const [overIndex, setOverIndex] = useState(null);
   const [overZone, setOverZone] = useState(null); // "top" | "middle" | "bottom"
   const [loading, setLoading] = useState(true);
+  const [questionEnEdition, setQuestionEnEdition] = useState(null); // id de la question en cours d'édition
+  const [brouillonEdition, setBrouillonEdition] = useState(null);    // { type, enonce, reponse, niveau }
+  const [sauvegardeEnCours, setSauvegardeEnCours] = useState(false);
 
   // Charger la liste des chapitres au montage
   useEffect(() => {
@@ -1485,6 +1521,52 @@ function GenerateurZone({ currentUser, currentProfile }) {
     }));
     setSelection(prev => prev.filter(q => q.id !== question.id));
   }
+
+  function commencerEdition(question) {
+    setQuestionEnEdition(question.id);
+    setBrouillonEdition({
+      type: question.type,
+      enonce: question.enonce,
+      reponse: question.reponse,
+      niveau: question.niveau,
+    });
+    // S'assurer que la réponse est visible pendant l'édition, plus pratique pour corriger
+    setReponsesVisibles(prev => ({ ...prev, [question.id]: true }));
+  }
+
+  function annulerEdition() {
+    setQuestionEnEdition(null);
+    setBrouillonEdition(null);
+  }
+
+  async function enregistrerEdition(question) {
+    if (!brouillonEdition?.enonce?.trim() || !brouillonEdition?.reponse?.trim()) return;
+    setSauvegardeEnCours(true);
+
+    const { error } = await supabase.from("questions").update({
+      type: brouillonEdition.type,
+      enonce: brouillonEdition.enonce.trim(),
+      reponse: brouillonEdition.reponse.trim(),
+      niveau: Number(brouillonEdition.niveau) || question.niveau,
+    }).eq("id", question.id);
+
+    setSauvegardeEnCours(false);
+    if (error) {
+      alert("Erreur lors de l'enregistrement : " + error.message);
+      return;
+    }
+
+    // Mettre à jour l'état local (liste du chapitre + sélection éventuelle)
+    const questionMaj = { ...question, ...brouillonEdition, niveau: Number(brouillonEdition.niveau) || question.niveau };
+    setQuestionsParChapitre(prev => ({
+      ...prev,
+      [question.chapitre_id]: (prev[question.chapitre_id] || []).map(q => q.id === question.id ? questionMaj : q),
+    }));
+    setSelection(prev => prev.map(q => q.id === question.id ? questionMaj : q));
+    setQuestionEnEdition(null);
+    setBrouillonEdition(null);
+  }
+
 
   function estSelectionnee(questionId) {
     return selection.some(q => q.id === questionId);
@@ -1624,31 +1706,75 @@ function GenerateurZone({ currentUser, currentProfile }) {
                       </div>
                       {questionsDetail[q.id] && (
                         <div className="gen-question-detail">
-                          <div className="gen-question-detail-label">Énoncé</div>
-                          <MathText inline={false}>{q.enonce}</MathText>
-                          <div className="gen-question-detail-reponse">
-                            {reponsesVisibles[q.id] ? (
-                              <>
-                                <div className="gen-question-detail-reponse-header">
-                                  <div className="gen-question-detail-label">Réponse</div>
-                                  <button className="gen-hide-btn" onClick={() => toggleReponseVisible(q.id)}>
-                                    🙈 Masquer
+                          {questionEnEdition === q.id ? (
+                            <div className="gen-edit-form">
+                              <div className="gen-edit-row">
+                                <div className="gen-edit-field" style={{ flex: "0 0 160px" }}>
+                                  <label>Type</label>
+                                  <select value={brouillonEdition.type}
+                                    onChange={e => setBrouillonEdition(prev => ({ ...prev, type: e.target.value }))}>
+                                    <option value="formule">Formule</option>
+                                    <option value="méthode">Méthode</option>
+                                    <option value="définition">Définition</option>
+                                    <option value="théorème">Théorème</option>
+                                  </select>
+                                </div>
+                                <div className="gen-edit-field" style={{ flex: "0 0 100px" }}>
+                                  <label>Niveau</label>
+                                  <input type="number" min={1} max={3} value={brouillonEdition.niveau}
+                                    onChange={e => setBrouillonEdition(prev => ({ ...prev, niveau: e.target.value }))} />
+                                </div>
+                              </div>
+                              <div className="gen-edit-field">
+                                <label>Énoncé</label>
+                                <textarea className="gen-edit-textarea" value={brouillonEdition.enonce}
+                                  onChange={e => setBrouillonEdition(prev => ({ ...prev, enonce: e.target.value }))} />
+                              </div>
+                              <div className="gen-edit-field">
+                                <label>Réponse</label>
+                                <textarea className="gen-edit-textarea" value={brouillonEdition.reponse}
+                                  onChange={e => setBrouillonEdition(prev => ({ ...prev, reponse: e.target.value }))} />
+                              </div>
+                              <div className="gen-edit-actions">
+                                <button className="gen-edit-cancel-btn" onClick={annulerEdition}>Annuler</button>
+                                <button className="gen-edit-save-btn" onClick={() => enregistrerEdition(q)}
+                                  disabled={sauvegardeEnCours || !brouillonEdition.enonce?.trim() || !brouillonEdition.reponse?.trim()}>
+                                  {sauvegardeEnCours ? "Enregistrement…" : "Enregistrer"}
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <>
+                              <div className="gen-question-detail-label">Énoncé</div>
+                              <MathText inline={false}>{q.enonce}</MathText>
+                              <div className="gen-question-detail-reponse">
+                                {reponsesVisibles[q.id] ? (
+                                  <>
+                                    <div className="gen-question-detail-reponse-header">
+                                      <div className="gen-question-detail-label">Réponse</div>
+                                      <button className="gen-hide-btn" onClick={() => toggleReponseVisible(q.id)}>
+                                        🙈 Masquer
+                                      </button>
+                                    </div>
+                                    <MathText inline={false}>{q.reponse}</MathText>
+                                  </>
+                                ) : (
+                                  <button className="gen-reveal-btn" onClick={() => toggleReponseVisible(q.id)}>
+                                    👁️ Révéler la réponse
+                                  </button>
+                                )}
+                              </div>
+                              {q.prof_id === currentUser.id && (
+                                <div className="gen-question-detail-footer">
+                                  <button className="gen-edit-question-btn" onClick={() => commencerEdition(q)}>
+                                    ✏️ Modifier
+                                  </button>
+                                  <button className="gen-delete-question-btn" onClick={() => supprimerQuestion(q)}>
+                                    🗑️ Supprimer cette question
                                   </button>
                                 </div>
-                                <MathText inline={false}>{q.reponse}</MathText>
-                              </>
-                            ) : (
-                              <button className="gen-reveal-btn" onClick={() => toggleReponseVisible(q.id)}>
-                                👁️ Révéler la réponse
-                              </button>
-                            )}
-                          </div>
-                          {q.prof_id === currentUser.id && (
-                            <div className="gen-question-detail-footer">
-                              <button className="gen-delete-question-btn" onClick={() => supprimerQuestion(q)}>
-                                🗑️ Supprimer cette question
-                              </button>
-                            </div>
+                              )}
+                            </>
                           )}
                         </div>
                       )}
