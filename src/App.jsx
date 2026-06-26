@@ -367,6 +367,103 @@ const CSS = `
   .gen-export-btn-secondary:hover { border-color: var(--accent); }
   .gen-export-btn-secondary:disabled { opacity: .35; cursor: not-allowed; }
 
+  /* ── Écran de réglages avant lancement du diaporama ── */
+  .diapo-settings-overlay {
+    position: fixed; inset: 0; background: #000000cc; z-index: 200;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .diapo-settings-card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 20px;
+    padding: 36px 36px; width: 420px; box-shadow: 0 24px 64px #00000088;
+  }
+  .diapo-settings-title { font-size: 18px; font-weight: 600; margin-bottom: 4px; }
+  .diapo-settings-sub { font-size: 13px; color: var(--text-muted); margin-bottom: 24px; }
+  .diapo-settings-section { margin-bottom: 20px; }
+  .diapo-settings-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; color: var(--text-muted); margin-bottom: 10px; }
+  .diapo-mode-options { display: flex; flex-direction: column; gap: 8px; }
+  .diapo-mode-option {
+    display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px;
+    border: 1px solid var(--border); border-radius: 10px; cursor: pointer; transition: all .15s;
+  }
+  .diapo-mode-option:hover { border-color: var(--accent); }
+  .diapo-mode-option.selected { border-color: var(--accent); background: var(--surface2); }
+  .diapo-mode-option input[type="radio"] { margin-top: 3px; accent-color: var(--accent); cursor: pointer; }
+  .diapo-mode-option-title { font-size: 13px; font-weight: 600; }
+  .diapo-mode-option-desc { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+  .diapo-timer-row { display: flex; align-items: center; gap: 10px; }
+  .diapo-timer-input {
+    width: 80px; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px;
+    padding: 9px 12px; color: var(--text); font-family: var(--font); font-size: 14px; outline: none; text-align: center;
+  }
+  .diapo-timer-input:focus { border-color: var(--accent); }
+  .diapo-timer-unit { font-size: 13px; color: var(--text-muted); }
+  .diapo-timer-presets { display: flex; gap: 6px; margin-left: auto; }
+  .diapo-timer-preset {
+    background: var(--surface2); border: 1px solid var(--border); color: var(--text-muted);
+    border-radius: 6px; padding: 5px 10px; font-size: 12px; cursor: pointer; transition: all .15s;
+  }
+  .diapo-timer-preset:hover, .diapo-timer-preset.active { border-color: var(--accent); color: var(--accent-light); }
+  .diapo-settings-actions { display: flex; gap: 10px; margin-top: 8px; }
+  .diapo-launch-btn {
+    flex: 1; background: var(--accent); color: #fff; border: none; border-radius: 10px;
+    padding: 12px; font-family: var(--font); font-size: 14px; font-weight: 600; cursor: pointer;
+    transition: background .15s; display: flex; align-items: center; justify-content: center; gap: 8px;
+  }
+  .diapo-launch-btn:hover { background: var(--accent-light); }
+  .diapo-cancel-btn {
+    background: var(--surface2); color: var(--text-muted); border: 1px solid var(--border);
+    border-radius: 10px; padding: 12px 18px; font-family: var(--font); font-size: 14px; cursor: pointer;
+  }
+  .diapo-cancel-btn:hover { color: var(--text); }
+
+  /* ── Visionneuse plein écran ── */
+  .diapo-viewer {
+    position: fixed; inset: 0; background: #0a0b10; z-index: 300;
+    display: flex; flex-direction: column; color: var(--text);
+  }
+  .diapo-topbar {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 16px 24px; flex-shrink: 0;
+  }
+  .diapo-progress { font-size: 13px; color: var(--text-muted); font-family: var(--mono); }
+  .diapo-topbar-actions { display: flex; align-items: center; gap: 10px; }
+  .diapo-pause-btn, .diapo-close-btn {
+    background: var(--surface); border: 1px solid var(--border); color: var(--text);
+    border-radius: 8px; padding: 8px 14px; font-family: var(--font); font-size: 12px;
+    cursor: pointer; transition: all .15s; display: flex; align-items: center; gap: 6px;
+  }
+  .diapo-pause-btn:hover, .diapo-close-btn:hover { border-color: var(--accent); }
+  .diapo-timer-display {
+    font-family: var(--mono); font-size: 13px; color: var(--text-muted);
+    background: var(--surface); border-radius: 20px; padding: 6px 14px;
+    display: flex; align-items: center; gap: 8px; min-width: 70px; justify-content: center;
+  }
+  .diapo-timer-ring { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+
+  .diapo-progress-bar { height: 3px; background: var(--border); flex-shrink: 0; }
+  .diapo-progress-bar-fill { height: 100%; background: var(--accent); transition: width .3s linear; }
+
+  .diapo-content {
+    flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    padding: 40px 80px; text-align: center; cursor: pointer; user-select: none;
+  }
+  .diapo-chapitre-tag {
+    font-size: 13px; color: var(--accent-light); font-weight: 600; text-transform: uppercase;
+    letter-spacing: .06em; margin-bottom: 28px;
+  }
+  .diapo-enonce { font-size: 28px; line-height: 1.5; max-width: 900px; }
+  .diapo-enonce .katex { font-size: 1.15em; }
+  .diapo-reponse-divider { width: 80px; height: 2px; background: var(--accent); margin: 32px 0; }
+  .diapo-reponse { font-size: 24px; line-height: 1.6; max-width: 900px; color: var(--accent-light); }
+  .diapo-hint { font-size: 12px; color: var(--text-muted); margin-top: 40px; }
+
+  .diapo-recap { flex: 1; overflow-y: auto; padding: 40px 60px; max-width: 900px; margin: 0 auto; width: 100%; }
+  .diapo-recap-title { font-size: 22px; font-weight: 600; margin-bottom: 24px; text-align: center; }
+  .diapo-recap-item { margin-bottom: 24px; padding-bottom: 20px; border-bottom: 1px solid var(--border); }
+  .diapo-recap-num { font-size: 11px; color: var(--text-muted); font-weight: 600; margin-bottom: 6px; }
+  .diapo-recap-enonce { font-size: 15px; margin-bottom: 10px; }
+  .diapo-recap-reponse { font-size: 15px; color: var(--accent-light); }
+
   .katex-render { font-size: 1em; }
   .katex-render .katex { font-size: 1.05em; }
 
@@ -797,6 +894,192 @@ function Message({ msg, isMe, profile }) {
 }
 
 // ─── Composant Chat ──────────────────────────────────────────────────
+// ─── Composant DiapoSettings (réglages avant lancement) ──────────────
+function DiapoSettings({ nbQuestions, onLancer, onAnnuler }) {
+  const [mode, setMode] = useState("apres_chaque_question");
+  const [delai, setDelai] = useState(20);
+
+  return (
+    <div className="diapo-settings-overlay" onClick={e => e.target === e.currentTarget && onAnnuler()}>
+      <div className="diapo-settings-card">
+        <div className="diapo-settings-title">Lancer le diaporama</div>
+        <div className="diapo-settings-sub">{nbQuestions} question{nbQuestions !== 1 ? "s" : ""} dans la sélection actuelle</div>
+
+        <div className="diapo-settings-section">
+          <div className="diapo-settings-label">Affichage des réponses</div>
+          <div className="diapo-mode-options">
+            <label className={`diapo-mode-option${mode === "apres_chaque_question" ? " selected" : ""}`}>
+              <input type="radio" name="mode" checked={mode === "apres_chaque_question"}
+                onChange={() => setMode("apres_chaque_question")} />
+              <div>
+                <div className="diapo-mode-option-title">Réponse après chaque question</div>
+                <div className="diapo-mode-option-desc">La réponse s'affiche avant de passer à la question suivante</div>
+              </div>
+            </label>
+            <label className={`diapo-mode-option${mode === "recap_final" ? " selected" : ""}`}>
+              <input type="radio" name="mode" checked={mode === "recap_final"}
+                onChange={() => setMode("recap_final")} />
+              <div>
+                <div className="diapo-mode-option-title">Récapitulatif à la fin</div>
+                <div className="diapo-mode-option-desc">Toutes les questions défilent sans réponse, puis un récapitulatif final les regroupe toutes</div>
+              </div>
+            </label>
+          </div>
+        </div>
+
+        <div className="diapo-settings-section">
+          <div className="diapo-settings-label">Délai avant avancée automatique</div>
+          <div className="diapo-timer-row">
+            <input type="number" className="diapo-timer-input" value={delai} min={5} max={180}
+              onChange={e => setDelai(Math.max(5, Math.min(180, Number(e.target.value) || 5)))} />
+            <span className="diapo-timer-unit">secondes</span>
+            <div className="diapo-timer-presets">
+              {[10, 15, 20, 30].map(s => (
+                <button key={s} className={`diapo-timer-preset${delai === s ? " active" : ""}`} onClick={() => setDelai(s)}>{s}s</button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="diapo-settings-actions">
+          <button className="diapo-cancel-btn" onClick={onAnnuler}>Annuler</button>
+          <button className="diapo-launch-btn" onClick={() => onLancer({ mode, delai })}>
+            ▶ Lancer le diaporama
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Composant DiapoViewer (visionneuse plein écran) ───────────────────
+function DiapoViewer({ questions, mode, delai, nomChapitre, onFermer }) {
+  const [index, setIndex] = useState(0);
+  const [etape, setEtape] = useState("question"); // "question" | "reponse" | "recap"
+  const [enPause, setEnPause] = useState(false);
+  const [tempsRestant, setTempsRestant] = useState(delai);
+  const intervalRef = useRef(null);
+
+  const question = questions[index];
+  const estDerniereQuestion = index === questions.length - 1;
+
+  // Logique d'avancée automatique
+  const avancer = useCallback(() => {
+    if (mode === "apres_chaque_question") {
+      if (etape === "question") {
+        setEtape("reponse");
+        setTempsRestant(delai);
+      } else {
+        if (estDerniereQuestion) {
+          setEtape("recap"); // fin : petit récap même en mode "après chaque question"
+        } else {
+          setIndex(i => i + 1);
+          setEtape("question");
+          setTempsRestant(delai);
+        }
+      }
+    } else {
+      // mode recap_final : on ne montre jamais la réponse en cours de route
+      if (estDerniereQuestion) {
+        setEtape("recap");
+      } else {
+        setIndex(i => i + 1);
+        setTempsRestant(delai);
+      }
+    }
+  }, [mode, etape, estDerniereQuestion, delai]);
+
+  // Minuteur automatique
+  useEffect(() => {
+    if (etape === "recap" || enPause) return;
+    if (intervalRef.current) clearInterval(intervalRef.current);
+    intervalRef.current = setInterval(() => {
+      setTempsRestant(t => {
+        if (t <= 1) {
+          avancer();
+          return delai;
+        }
+        return t - 1;
+      });
+    }, 1000);
+    return () => clearInterval(intervalRef.current);
+  }, [etape, enPause, avancer, delai]);
+
+  // Avancée manuelle (clic ou touche)
+  function avancerManuel() {
+    if (etape === "recap") return;
+    clearInterval(intervalRef.current);
+    avancer();
+  }
+
+  useEffect(() => {
+    function onKeyDown(e) {
+      if (e.key === "Escape") { onFermer(); return; }
+      if (e.key === " " || e.key === "ArrowRight" || e.key === "Enter") {
+        e.preventDefault();
+        avancerManuel();
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  });
+
+  const progressionPct = ((index + (etape === "reponse" ? 0.5 : 0)) / questions.length) * 100;
+
+  return (
+    <div className="diapo-viewer">
+      <div className="diapo-topbar">
+        <div className="diapo-progress">
+          {etape === "recap" ? "Récapitulatif" : `Question ${index + 1} / ${questions.length}`}
+        </div>
+        <div className="diapo-topbar-actions">
+          {etape !== "recap" && (
+            <>
+              <div className="diapo-timer-display">
+                <span className="diapo-timer-ring" style={{ opacity: enPause ? 0.3 : 1 }} />
+                {tempsRestant}s
+              </div>
+              <button className="diapo-pause-btn" onClick={() => setEnPause(p => !p)}>
+                {enPause ? "▶ Reprendre" : "⏸ Pause"}
+              </button>
+            </>
+          )}
+          <button className="diapo-close-btn" onClick={onFermer}>✕ Fermer</button>
+        </div>
+      </div>
+
+      <div className="diapo-progress-bar">
+        <div className="diapo-progress-bar-fill" style={{ width: `${etape === "recap" ? 100 : progressionPct}%` }} />
+      </div>
+
+      {etape !== "recap" ? (
+        <div className="diapo-content" onClick={avancerManuel}>
+          <div className="diapo-chapitre-tag">{nomChapitre(question.chapitre_id)}</div>
+          <div className="diapo-enonce"><MathText inline={false}>{question.enonce}</MathText></div>
+          {etape === "reponse" && (
+            <>
+              <div className="diapo-reponse-divider" />
+              <div className="diapo-reponse"><MathText inline={false}>{question.reponse}</MathText></div>
+            </>
+          )}
+          <div className="diapo-hint">Clic, Espace ou → pour avancer · Échap pour fermer</div>
+        </div>
+      ) : (
+        <div className="diapo-recap">
+          <div className="diapo-recap-title">📋 Récapitulatif des réponses</div>
+          {questions.map((q, i) => (
+            <div key={q.id} className="diapo-recap-item">
+              <div className="diapo-recap-num">Question {i + 1} · {nomChapitre(q.chapitre_id)}</div>
+              <div className="diapo-recap-enonce"><MathText inline={false}>{q.enonce}</MathText></div>
+              <div className="diapo-recap-reponse"><MathText inline={false}>{q.reponse}</MathText></div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Composant GenerateurZone ──────────────────────────────────────────
 function GenerateurZone() {
   const [chapitres, setChapitres] = useState([]);
@@ -806,6 +1089,8 @@ function GenerateurZone() {
   const [questionsDetail, setQuestionsDetail] = useState({});          // { question_id: bool } détail ouvert
   const [reponsesVisibles, setReponsesVisibles] = useState({});        // { question_id: bool } réponse révélée (masquée par défaut)
   const [selection, setSelection] = useState([]);                       // [question objects, dans l'ordre de sélection]
+  const [afficherReglagesDiapo, setAfficherReglagesDiapo] = useState(false);
+  const [diapoActive, setDiapoActive] = useState(null); // { mode, delai } ou null
   const [dragIndex, setDragIndex] = useState(null);
   const [overIndex, setOverIndex] = useState(null);
   const [overZone, setOverZone] = useState(null); // "top" | "middle" | "bottom"
@@ -1074,11 +1359,35 @@ function GenerateurZone() {
           <button className="gen-export-btn-secondary" onClick={() => telechargerTex(false)} disabled={selection.length === 0}>
             📝 .tex élève
           </button>
-          <button className="gen-export-btn" onClick={() => telechargerTex(true)} disabled={selection.length === 0}>
+          <button className="gen-export-btn-secondary" onClick={() => telechargerTex(true)} disabled={selection.length === 0}>
             📝 .tex corrigé
+          </button>
+          <button className="gen-export-btn" onClick={() => setAfficherReglagesDiapo(true)} disabled={selection.length === 0}>
+            ▶ Diaporama
           </button>
         </div>
       </div>
+
+      {afficherReglagesDiapo && (
+        <DiapoSettings
+          nbQuestions={selection.length}
+          onAnnuler={() => setAfficherReglagesDiapo(false)}
+          onLancer={(reglages) => {
+            setDiapoActive(reglages);
+            setAfficherReglagesDiapo(false);
+          }}
+        />
+      )}
+
+      {diapoActive && (
+        <DiapoViewer
+          questions={selection}
+          mode={diapoActive.mode}
+          delai={diapoActive.delai}
+          nomChapitre={nomChapitre}
+          onFermer={() => setDiapoActive(null)}
+        />
+      )}
     </div>
   );
 }
