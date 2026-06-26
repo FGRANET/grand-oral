@@ -302,6 +302,12 @@ const CSS = `
     font-weight: 500; cursor: pointer; transition: all .15s;
   }
   .gen-reveal-btn:hover { border-color: var(--accent); color: var(--accent-light); }
+  .gen-question-detail-reponse-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+  .gen-hide-btn {
+    background: none; border: none; color: var(--text-muted); cursor: pointer;
+    font-size: 11px; font-family: var(--font); padding: 2px 6px; border-radius: 6px; transition: all .15s;
+  }
+  .gen-hide-btn:hover { color: var(--red); background: var(--surface2); }
 
   .gen-empty-chapitre { font-size: 12px; color: var(--text-muted); padding: 8px 10px 8px 30px; font-style: italic; }
 
@@ -978,7 +984,12 @@ function GenerateurZone() {
                           <div className="gen-question-detail-reponse">
                             {reponsesVisibles[q.id] ? (
                               <>
-                                <div className="gen-question-detail-label">Réponse</div>
+                                <div className="gen-question-detail-reponse-header">
+                                  <div className="gen-question-detail-label">Réponse</div>
+                                  <button className="gen-hide-btn" onClick={() => toggleReponseVisible(q.id)}>
+                                    🙈 Masquer
+                                  </button>
+                                </div>
                                 <MathText inline={false}>{q.reponse}</MathText>
                               </>
                             ) : (
