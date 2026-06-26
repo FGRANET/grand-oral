@@ -315,7 +315,15 @@ const CSS = `
     transition: opacity .15s, border-color .15s, transform .1s;
   }
   .gen-selected-item.dragging { opacity: .4; }
-  .gen-selected-item.drag-over { border-color: var(--accent); border-style: dashed; }
+  .gen-selected-item { position: relative; }
+  .gen-selected-item.drag-over-middle { border-color: var(--accent); background: var(--surface2); }
+  .gen-selected-item.drag-over-top::before,
+  .gen-selected-item.drag-over-bottom::after {
+    content: ""; position: absolute; left: 8px; right: 8px; height: 3px;
+    background: var(--accent); border-radius: 2px;
+  }
+  .gen-selected-item.drag-over-top::before { top: -5px; }
+  .gen-selected-item.drag-over-bottom::after { bottom: -5px; }
   .gen-drag-handle {
     color: var(--text-muted); cursor: grab; flex-shrink: 0; font-size: 14px;
     padding: 2px 2px 2px 0; margin-top: 1px; user-select: none; line-height: 1;
@@ -794,6 +802,7 @@ function GenerateurZone() {
   const [selection, setSelection] = useState([]);                       // [question objects, dans l'ordre de sélection]
   const [dragIndex, setDragIndex] = useState(null);
   const [overIndex, setOverIndex] = useState(null);
+  const [overZone, setOverZone] = useState(null); // "top" | "middle" | "bottom"
   const [loading, setLoading] = useState(true);
 
   // Charger la liste des chapitres au montage
@@ -852,6 +861,14 @@ function GenerateurZone() {
       const copie = [...prev];
       const [item] = copie.splice(indexDepart, 1);
       copie.splice(indexArrivee, 0, item);
+      return copie;
+    });
+  }
+
+  function intervertirSelection(indexA, indexB) {
+    setSelection(prev => {
+      const copie = [...prev];
+      [copie[indexA], copie[indexB]] = [copie[indexB], copie[indexA]];
       return copie;
     });
   }
@@ -997,15 +1014,34 @@ function GenerateurZone() {
             {selection.map((q, idx) => (
               <div
                 key={q.id}
-                className={`gen-selected-item${dragIndex === idx ? " dragging" : ""}${overIndex === idx && dragIndex !== null && dragIndex !== idx ? " drag-over" : ""}`}
+                className={`gen-selected-item${dragIndex === idx ? " dragging" : ""}${overIndex === idx && dragIndex !== null && dragIndex !== idx ? ` drag-over-${overZone}` : ""}`}
                 draggable
                 onDragStart={() => setDragIndex(idx)}
-                onDragEnter={() => { if (dragIndex !== null) setOverIndex(idx); }}
-                onDragEnd={() => { setDragIndex(null); setOverIndex(null); }}
-                onDragOver={e => e.preventDefault()}
+                onDragEnter={() => { if (dragIndex !== null && dragIndex !== idx) setOverIndex(idx); }}
+                onDragEnd={() => { setDragIndex(null); setOverIndex(null); setOverZone(null); }}
+                onDragOver={e => {
+                  e.preventDefault();
+                  if (dragIndex === null || dragIndex === idx) return;
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  const positionY = e.clientY - rect.top;
+                  const ratio = positionY / rect.height;
+                  // Tiers supérieur/inférieur = insertion, tiers central = interversion
+                  const zone = ratio < 0.3 ? "top" : ratio > 0.7 ? "bottom" : "middle";
+                  setOverIndex(idx);
+                  setOverZone(zone);
+                }}
                 onDrop={() => {
-                  if (dragIndex !== null && dragIndex !== idx) deplacerSelection(dragIndex, idx);
-                  setDragIndex(null); setOverIndex(null);
+                  if (dragIndex !== null && dragIndex !== idx) {
+                    if (overZone === "middle") {
+                      intervertirSelection(dragIndex, idx);
+                    } else {
+                      const indexArrivee = overZone === "top"
+                        ? idx
+                        : (dragIndex < idx ? idx : idx + 1);
+                      deplacerSelection(dragIndex, indexArrivee);
+                    }
+                  }
+                  setDragIndex(null); setOverIndex(null); setOverZone(null);
                 }}
               >
                 <span className="gen-drag-handle" title="Glisser pour réordonner">⠿</span>
