@@ -77,6 +77,7 @@ const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+
 // ─── Palette & styles globaux ────────────────────────────────────────
 const CSS = `
   @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap');
@@ -295,6 +296,12 @@ const CSS = `
   }
   .gen-question-detail-label { font-size: 10px; font-weight: 700; text-transform: uppercase; color: var(--text-muted); margin-bottom: 4px; letter-spacing: .05em; }
   .gen-question-detail-reponse { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
+  .gen-reveal-btn {
+    background: var(--surface2); border: 1px solid var(--border); color: var(--text-muted);
+    border-radius: 8px; padding: 7px 14px; font-family: var(--font); font-size: 12px;
+    font-weight: 500; cursor: pointer; transition: all .15s;
+  }
+  .gen-reveal-btn:hover { border-color: var(--accent); color: var(--accent-light); }
 
   .gen-empty-chapitre { font-size: 12px; color: var(--text-muted); padding: 8px 10px 8px 30px; font-style: italic; }
 
@@ -775,6 +782,7 @@ function GenerateurZone() {
   const [chapitresOuverts, setChapitresOuverts] = useState({});        // { chapitre_id: bool }
   const [chargementChapitre, setChargementChapitre] = useState({});    // { chapitre_id: bool }
   const [questionsDetail, setQuestionsDetail] = useState({});          // { question_id: bool } détail ouvert
+  const [reponsesVisibles, setReponsesVisibles] = useState({});        // { question_id: bool } réponse révélée (masquée par défaut)
   const [selection, setSelection] = useState([]);                       // [question objects, dans l'ordre de sélection]
   const [loading, setLoading] = useState(true);
 
@@ -800,7 +808,17 @@ function GenerateurZone() {
   }
 
   function toggleDetailQuestion(questionId) {
-    setQuestionsDetail(prev => ({ ...prev, [questionId]: !prev[questionId] }));
+    setQuestionsDetail(prev => {
+      const ouvert = !prev[questionId];
+      // En refermant le détail, on masque aussi la réponse (sécurité : ne jamais la laisser
+      // révélée par accident la prochaine fois que ce détail s'ouvre)
+      if (!ouvert) setReponsesVisibles(r => ({ ...r, [questionId]: false }));
+      return { ...prev, [questionId]: ouvert };
+    });
+  }
+
+  function toggleReponseVisible(questionId) {
+    setReponsesVisibles(prev => ({ ...prev, [questionId]: !prev[questionId] }));
   }
 
   function estSelectionnee(questionId) {
@@ -920,8 +938,16 @@ function GenerateurZone() {
                           <div className="gen-question-detail-label">Énoncé</div>
                           <MathText inline={false}>{q.enonce}</MathText>
                           <div className="gen-question-detail-reponse">
-                            <div className="gen-question-detail-label">Réponse</div>
-                            <MathText inline={false}>{q.reponse}</MathText>
+                            {reponsesVisibles[q.id] ? (
+                              <>
+                                <div className="gen-question-detail-label">Réponse</div>
+                                <MathText inline={false}>{q.reponse}</MathText>
+                              </>
+                            ) : (
+                              <button className="gen-reveal-btn" onClick={() => toggleReponseVisible(q.id)}>
+                                👁️ Révéler la réponse
+                              </button>
+                            )}
                           </div>
                         </div>
                       )}
@@ -1341,6 +1367,17 @@ export default function App() {
   const [unreadCounts, setUnreadCounts] = useState({});
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("chat"); // "chat" ou "ressources"
+
+  // Charger le CSS de KaTeX une seule fois (nécessaire pour un rendu correct des formules)
+  useEffect(() => {
+    if (!document.getElementById("katex-css")) {
+      const link = document.createElement("link");
+      link.id = "katex-css";
+      link.rel = "stylesheet";
+      link.href = "https://esm.sh/katex@0.16.9/dist/katex.min.css";
+      document.head.appendChild(link);
+    }
+  }, []);
 
   // Vérifier session existante + écouter les changements (login/logout)
   useEffect(() => {
