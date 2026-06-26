@@ -69,6 +69,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import katex from "https://esm.sh/katex@0.16.9";
 
 // ⚠️ REMPLACER PAR VOS VRAIES VALEURS SUPABASE
 const SUPABASE_URL = "https://bolmwalxiqsuimuagrhx.supabase.co";
@@ -248,6 +249,97 @@ const CSS = `
     background: var(--surface2); border-radius: 8px; padding: 6px 10px; max-width: 240px;
   }
   .publish-file-chip button { background: none; border: none; color: var(--red); cursor: pointer; margin-left: 4px; }
+
+  /* ── Générateur d'interrogations ── */
+  .generateur-area { flex: 1; display: flex; min-width: 0; }
+  .gen-chapitres-col {
+    width: 420px; flex-shrink: 0; border-right: 1px solid var(--border);
+    overflow-y: auto; padding: 16px;
+  }
+  .gen-selection-col { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  .gen-selection-list { flex: 1; overflow-y: auto; padding: 20px 24px; }
+  .gen-header { padding: 16px 24px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+  .gen-header-title { font-size: 16px; font-weight: 600; }
+  .gen-header-sub { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+
+  .gen-chapitre-block { margin-bottom: 6px; }
+  .gen-chapitre-row {
+    display: flex; align-items: center; gap: 10px; padding: 10px 12px;
+    border-radius: 10px; cursor: pointer; transition: background .15s;
+  }
+  .gen-chapitre-row:hover { background: var(--surface2); }
+  .gen-chapitre-row input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--accent); cursor: pointer; }
+  .gen-chapitre-nom { font-size: 13px; font-weight: 500; flex: 1; }
+  .gen-chapitre-count { font-size: 11px; color: var(--text-muted); background: var(--surface2); border-radius: 10px; padding: 2px 8px; }
+  .gen-chevron { font-size: 11px; color: var(--text-muted); transition: transform .15s; }
+  .gen-chevron.open { transform: rotate(90deg); }
+
+  .gen-questions-list { padding-left: 30px; display: flex; flex-direction: column; gap: 2px; margin-top: 4px; }
+  .gen-question-row {
+    display: flex; align-items: flex-start; gap: 8px; padding: 7px 10px;
+    border-radius: 8px; cursor: pointer; transition: background .15s;
+  }
+  .gen-question-row:hover { background: var(--surface2); }
+  .gen-question-row input[type="checkbox"] { width: 14px; height: 14px; margin-top: 2px; accent-color: var(--accent); cursor: pointer; flex-shrink: 0; }
+  .gen-question-summary { flex: 1; min-width: 0; }
+  .gen-question-type {
+    font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em;
+    color: var(--accent-light); margin-bottom: 2px;
+  }
+  .gen-question-apercu {
+    font-size: 12px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .gen-question-detail {
+    margin-top: 6px; margin-left: 22px; padding: 12px 14px; background: var(--surface);
+    border: 1px solid var(--border); border-radius: 10px; font-size: 13px;
+  }
+  .gen-question-detail-label { font-size: 10px; font-weight: 700; text-transform: uppercase; color: var(--text-muted); margin-bottom: 4px; letter-spacing: .05em; }
+  .gen-question-detail-reponse { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
+
+  .gen-empty-chapitre { font-size: 12px; color: var(--text-muted); padding: 8px 10px 8px 30px; font-style: italic; }
+
+  .gen-selection-empty {
+    flex: 1; display: flex; align-items: center; justify-content: center;
+    flex-direction: column; gap: 10px; color: var(--text-muted); font-size: 13px;
+  }
+  .gen-selected-item {
+    display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px; margin-bottom: 8px;
+  }
+  .gen-selected-num {
+    width: 22px; height: 22px; border-radius: 50%; background: var(--surface2);
+    display: flex; align-items: center; justify-content: center; font-size: 11px;
+    font-weight: 600; color: var(--text-muted); flex-shrink: 0; margin-top: 1px;
+  }
+  .gen-selected-content { flex: 1; min-width: 0; }
+  .gen-selected-chapitre { font-size: 10px; color: var(--accent-light); font-weight: 600; text-transform: uppercase; letter-spacing: .03em; margin-bottom: 3px; }
+  .gen-selected-enonce { font-size: 13px; line-height: 1.5; }
+  .gen-selected-remove { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 14px; padding: 2px; flex-shrink: 0; }
+  .gen-selected-remove:hover { color: var(--red); }
+
+  .gen-footer {
+    border-top: 1px solid var(--border); padding: 16px 24px; flex-shrink: 0;
+    display: flex; align-items: center; gap: 14px;
+  }
+  .gen-footer-count { font-size: 13px; color: var(--text-muted); }
+  .gen-footer-count strong { color: var(--text); }
+  .gen-export-btn {
+    margin-left: auto; background: var(--accent); color: #fff; border: none;
+    border-radius: 8px; padding: 10px 20px; font-family: var(--font); font-size: 13px;
+    font-weight: 600; cursor: pointer; transition: background .15s; display: flex; align-items: center; gap: 6px;
+  }
+  .gen-export-btn:hover { background: var(--accent-light); }
+  .gen-export-btn:disabled { opacity: .35; cursor: not-allowed; }
+  .gen-export-btn-secondary {
+    background: var(--surface2); color: var(--text); border: 1px solid var(--border);
+    border-radius: 8px; padding: 10px 20px; font-family: var(--font); font-size: 13px;
+    font-weight: 600; cursor: pointer; transition: all .15s; display: flex; align-items: center; gap: 6px;
+  }
+  .gen-export-btn-secondary:hover { border-color: var(--accent); }
+  .gen-export-btn-secondary:disabled { opacity: .35; cursor: not-allowed; }
+
+  .katex-render { font-size: 1em; }
+  .katex-render .katex { font-size: 1.05em; }
 
   /* ── Zone chat ── */
   .chat-area { flex: 1; display: flex; flex-direction: column; min-width: 0; position: relative; }
@@ -472,6 +564,50 @@ function fileIcon(type) {
   return "📎";
 }
 
+// ─── Rendu de texte avec formules LaTeX (KaTeX) ───────────────────────
+// Découpe le texte sur les délimiteurs $...$ et $$...$$, rend chaque
+// segment de formule avec KaTeX, laisse le reste en texte normal.
+function renderMathSegments(texte) {
+  if (!texte) return [];
+  const segments = [];
+  const regex = /\$\$([^$]+)\$\$|\$([^$]+)\$/g;
+  let lastIndex = 0;
+  let match;
+  let key = 0;
+
+  while ((match = regex.exec(texte)) !== null) {
+    if (match.index > lastIndex) {
+      segments.push({ type: "text", content: texte.slice(lastIndex, match.index), key: key++ });
+    }
+    const formule = match[1] !== undefined ? match[1] : match[2];
+    const displayMode = match[1] !== undefined;
+    segments.push({ type: "math", content: formule, displayMode, key: key++ });
+    lastIndex = regex.lastIndex;
+  }
+  if (lastIndex < texte.length) {
+    segments.push({ type: "text", content: texte.slice(lastIndex), key: key++ });
+  }
+  return segments;
+}
+
+function MathText({ children, inline = true }) {
+  const segments = renderMathSegments(children || "");
+  const Wrapper = inline ? "span" : "div";
+  return (
+    <Wrapper className="katex-render">
+      {segments.map(seg => {
+        if (seg.type === "text") return <span key={seg.key}>{seg.content}</span>;
+        try {
+          const html = katex.renderToString(seg.content, { displayMode: seg.displayMode, throwOnError: false });
+          return <span key={seg.key} dangerouslySetInnerHTML={{ __html: html }} />;
+        } catch {
+          return <span key={seg.key}>{seg.content}</span>;
+        }
+      })}
+    </Wrapper>
+  );
+}
+
 // ─── Composant Login ─────────────────────────────────────────────────
 function Login({ onLogin }) {
   const [identifiant, setIdentifiant] = useState("");
@@ -632,6 +768,214 @@ function Message({ msg, isMe, profile }) {
 }
 
 // ─── Composant Chat ──────────────────────────────────────────────────
+// ─── Composant GenerateurZone ──────────────────────────────────────────
+function GenerateurZone() {
+  const [chapitres, setChapitres] = useState([]);
+  const [questionsParChapitre, setQuestionsParChapitre] = useState({}); // { chapitre_id: [questions] }
+  const [chapitresOuverts, setChapitresOuverts] = useState({});        // { chapitre_id: bool }
+  const [chargementChapitre, setChargementChapitre] = useState({});    // { chapitre_id: bool }
+  const [questionsDetail, setQuestionsDetail] = useState({});          // { question_id: bool } détail ouvert
+  const [selection, setSelection] = useState([]);                       // [question objects, dans l'ordre de sélection]
+  const [loading, setLoading] = useState(true);
+
+  // Charger la liste des chapitres au montage
+  useEffect(() => {
+    supabase.from("chapitres").select("*").order("ordre").then(({ data }) => {
+      setChapitres(data || []);
+      setLoading(false);
+    });
+  }, []);
+
+  async function toggleChapitre(chapitreId) {
+    const estOuvert = chapitresOuverts[chapitreId];
+    setChapitresOuverts(prev => ({ ...prev, [chapitreId]: !estOuvert }));
+
+    // Charger les questions de ce chapitre si pas déjà fait
+    if (!estOuvert && !questionsParChapitre[chapitreId]) {
+      setChargementChapitre(prev => ({ ...prev, [chapitreId]: true }));
+      const { data } = await supabase.from("questions").select("*").eq("chapitre_id", chapitreId).order("id");
+      setQuestionsParChapitre(prev => ({ ...prev, [chapitreId]: data || [] }));
+      setChargementChapitre(prev => ({ ...prev, [chapitreId]: false }));
+    }
+  }
+
+  function toggleDetailQuestion(questionId) {
+    setQuestionsDetail(prev => ({ ...prev, [questionId]: !prev[questionId] }));
+  }
+
+  function estSelectionnee(questionId) {
+    return selection.some(q => q.id === questionId);
+  }
+
+  function toggleSelection(question) {
+    setSelection(prev =>
+      prev.some(q => q.id === question.id)
+        ? prev.filter(q => q.id !== question.id)
+        : [...prev, question]
+    );
+  }
+
+  function retirerSelection(questionId) {
+    setSelection(prev => prev.filter(q => q.id !== questionId));
+  }
+
+  function nomChapitre(chapitreId) {
+    return chapitres.find(c => c.id === chapitreId)?.nom || "";
+  }
+
+  // ── Export .tex ──
+  function genererTex(avecCorrige) {
+    const lignes = [];
+    lignes.push("\\documentclass[12pt]{article}");
+    lignes.push("\\usepackage[utf8]{inputenc}");
+    lignes.push("\\usepackage[T1]{fontenc}");
+    lignes.push("\\usepackage[french]{babel}");
+    lignes.push("\\usepackage{amsmath,amssymb}");
+    lignes.push("\\usepackage{tcolorbox}");
+    lignes.push("\\usepackage{fancyhdr}");
+    lignes.push("\\usepackage{forloop}");
+    lignes.push("\\usepackage[margin=2cm]{geometry}");
+    lignes.push("\\pagestyle{fancy}");
+    lignes.push("\\fancyhf{}");
+    lignes.push("\\lhead{Terminale Spé}");
+    lignes.push("\\chead{Interrogation" + (avecCorrige ? " — Corrigé" : "") + "}");
+    lignes.push("\\rhead{Durée : 30 min}");
+    lignes.push("\\newcounter{qnum}");
+    lignes.push("\\newcommand{\\reponse}[1]{");
+    lignes.push("  \\forloop{linectr}{0}{\\value{linectr} < #1}{\\par\\vspace{4mm}\\hrulefill}");
+    lignes.push("}");
+    lignes.push("\\begin{document}");
+    lignes.push("");
+
+    selection.forEach((q, idx) => {
+      lignes.push(`\\stepcounter{qnum}`);
+      lignes.push(`\\noindent\\textbf{Question \\theqnum.} ${q.enonce}`);
+      lignes.push("");
+      if (avecCorrige) {
+        lignes.push("\\begin{tcolorbox}[colback=gray!10]");
+        lignes.push(q.reponse);
+        lignes.push("\\end{tcolorbox}");
+      } else {
+        lignes.push("\\reponse{3}");
+      }
+      lignes.push("");
+      lignes.push("\\vspace{6mm}");
+      lignes.push("");
+    });
+
+    lignes.push("\\end{document}");
+    return lignes.join("\n");
+  }
+
+  function telechargerTex(avecCorrige) {
+    const contenu = genererTex(avecCorrige);
+    const blob = new Blob([contenu], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    const date = new Date().toISOString().slice(0, 10);
+    a.href = url;
+    a.download = `interro_${date}${avecCorrige ? "_corrige" : "_eleve"}.tex`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  if (loading) {
+    return <div className="generateur-area"><div className="gen-selection-empty">Chargement des chapitres…</div></div>;
+  }
+
+  return (
+    <div className="generateur-area">
+      <div className="gen-chapitres-col">
+        {chapitres.map(ch => {
+          const ouvert = chapitresOuverts[ch.id];
+          const questions = questionsParChapitre[ch.id] || [];
+          const nbSelectionnees = questions.filter(q => estSelectionnee(q.id)).length;
+          return (
+            <div key={ch.id} className="gen-chapitre-block">
+              <div className="gen-chapitre-row" onClick={() => toggleChapitre(ch.id)}>
+                <span className={`gen-chevron${ouvert ? " open" : ""}`}>▶</span>
+                <span className="gen-chapitre-nom">{ch.nom}</span>
+                {nbSelectionnees > 0 && <span className="gen-chapitre-count">{nbSelectionnees} sélectionnée{nbSelectionnees > 1 ? "s" : ""}</span>}
+              </div>
+              {ouvert && (
+                <div className="gen-questions-list">
+                  {chargementChapitre[ch.id] && (
+                    <div className="gen-empty-chapitre">Chargement…</div>
+                  )}
+                  {!chargementChapitre[ch.id] && questions.length === 0 && (
+                    <div className="gen-empty-chapitre">Aucune question dans ce chapitre pour l'instant.</div>
+                  )}
+                  {questions.map(q => (
+                    <div key={q.id}>
+                      <div className="gen-question-row">
+                        <input type="checkbox" checked={estSelectionnee(q.id)}
+                          onChange={() => toggleSelection(q)} onClick={e => e.stopPropagation()} />
+                        <div className="gen-question-summary" onClick={() => toggleDetailQuestion(q.id)}>
+                          <div className="gen-question-type">{q.type} · niveau {q.niveau}</div>
+                          <div className="gen-question-apercu"><MathText>{q.enonce}</MathText></div>
+                        </div>
+                      </div>
+                      {questionsDetail[q.id] && (
+                        <div className="gen-question-detail">
+                          <div className="gen-question-detail-label">Énoncé</div>
+                          <MathText inline={false}>{q.enonce}</MathText>
+                          <div className="gen-question-detail-reponse">
+                            <div className="gen-question-detail-label">Réponse</div>
+                            <MathText inline={false}>{q.reponse}</MathText>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="gen-selection-col">
+        <div className="gen-header">
+          <div className="gen-header-title">Sélection pour l'interrogation</div>
+          <div className="gen-header-sub">Coche des questions dans les chapitres à gauche pour les ajouter ici</div>
+        </div>
+
+        {selection.length === 0 ? (
+          <div className="gen-selection-empty">
+            <div style={{ fontSize: 32, opacity: .3 }}>📝</div>
+            <div>Aucune question sélectionnée pour l'instant.</div>
+          </div>
+        ) : (
+          <div className="gen-selection-list">
+            {selection.map((q, idx) => (
+              <div key={q.id} className="gen-selected-item">
+                <div className="gen-selected-num">{idx + 1}</div>
+                <div className="gen-selected-content">
+                  <div className="gen-selected-chapitre">{nomChapitre(q.chapitre_id)}</div>
+                  <div className="gen-selected-enonce"><MathText>{q.enonce}</MathText></div>
+                </div>
+                <button className="gen-selected-remove" onClick={() => retirerSelection(q.id)} title="Retirer">✕</button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div className="gen-footer">
+          <div className="gen-footer-count">
+            <strong>{selection.length}</strong> question{selection.length !== 1 ? "s" : ""} sélectionnée{selection.length !== 1 ? "s" : ""}
+          </div>
+          <button className="gen-export-btn-secondary" onClick={() => telechargerTex(false)} disabled={selection.length === 0}>
+            📝 .tex élève
+          </button>
+          <button className="gen-export-btn" onClick={() => telechargerTex(true)} disabled={selection.length === 0}>
+            📝 .tex corrigé
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Composant RessourcesZone ──────────────────────────────────────────
 function RessourcesZone({ currentUser, currentProfile }) {
   const [ressources, setRessources] = useState([]);
@@ -1085,12 +1429,14 @@ export default function App() {
       <style>{CSS}</style>
       <div className="app">
         {profile.role === "professeur" && (
-          <div className="sidebar">
+          <div className="sidebar" style={activeTab === "generateur" ? { width: 200 } : {}}>
             <div className="sidebar-tabs">
               <button className={`sidebar-tab${activeTab === "chat" ? " active" : ""}`}
                 onClick={() => setActiveTab("chat")}>Élèves</button>
               <button className={`sidebar-tab${activeTab === "ressources" ? " active" : ""}`}
                 onClick={() => setActiveTab("ressources")}>Ressources</button>
+              <button className={`sidebar-tab${activeTab === "generateur" ? " active" : ""}`}
+                onClick={() => setActiveTab("generateur")}>Générateur</button>
             </div>
             {activeTab === "chat" && (
               <>
@@ -1145,6 +1491,9 @@ export default function App() {
         )}
         {profile.role === "professeur" && activeTab === "ressources" && (
           <RessourcesZone currentUser={user} currentProfile={profile} />
+        )}
+        {profile.role === "professeur" && activeTab === "generateur" && (
+          <GenerateurZone />
         )}
       </div>
     </>
