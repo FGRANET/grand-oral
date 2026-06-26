@@ -296,6 +296,13 @@ const CSS = `
   }
   .gen-question-detail-label { font-size: 10px; font-weight: 700; text-transform: uppercase; color: var(--text-muted); margin-bottom: 4px; letter-spacing: .05em; }
   .gen-question-detail-reponse { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
+  .gen-question-detail-footer { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; }
+  .gen-delete-question-btn {
+    background: none; border: 1px solid var(--border); color: var(--text-muted);
+    border-radius: 8px; padding: 6px 12px; font-family: var(--font); font-size: 11px;
+    cursor: pointer; transition: all .15s;
+  }
+  .gen-delete-question-btn:hover { border-color: var(--red); color: var(--red); }
   .gen-reveal-btn {
     background: var(--surface2); border: 1px solid var(--border); color: var(--text-muted);
     border-radius: 8px; padding: 7px 14px; font-family: var(--font); font-size: 12px;
@@ -1459,6 +1466,26 @@ function GenerateurZone({ currentUser, currentProfile }) {
     setReponsesVisibles(prev => ({ ...prev, [questionId]: !prev[questionId] }));
   }
 
+  async function supprimerQuestion(question) {
+    const confirme = window.confirm(
+      `Supprimer définitivement cette question de la banque commune ?\n\n"${question.enonce.slice(0, 80)}${question.enonce.length > 80 ? "…" : ""}"\n\nCette action est irréversible.`
+    );
+    if (!confirme) return;
+
+    const { error } = await supabase.from("questions").delete().eq("id", question.id);
+    if (error) {
+      alert("Erreur lors de la suppression : " + error.message);
+      return;
+    }
+
+    // Retirer la question de l'état local : liste du chapitre + sélection éventuelle
+    setQuestionsParChapitre(prev => ({
+      ...prev,
+      [question.chapitre_id]: (prev[question.chapitre_id] || []).filter(q => q.id !== question.id),
+    }));
+    setSelection(prev => prev.filter(q => q.id !== question.id));
+  }
+
   function estSelectionnee(questionId) {
     return selection.some(q => q.id === questionId);
   }
@@ -1616,6 +1643,13 @@ function GenerateurZone({ currentUser, currentProfile }) {
                               </button>
                             )}
                           </div>
+                          {q.prof_id === currentUser.id && (
+                            <div className="gen-question-detail-footer">
+                              <button className="gen-delete-question-btn" onClick={() => supprimerQuestion(q)}>
+                                🗑️ Supprimer cette question
+                              </button>
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
