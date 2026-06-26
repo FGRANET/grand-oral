@@ -77,7 +77,6 @@ const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-
 // ─── Palette & styles globaux ────────────────────────────────────────
 const CSS = `
   @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap');
@@ -287,6 +286,7 @@ const CSS = `
     font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em;
     color: var(--accent-light); margin-bottom: 2px;
   }
+  .gen-question-id { font-family: var(--mono); color: var(--text-muted); font-weight: 500; text-transform: none; letter-spacing: 0; }
   .gen-question-apercu {
     font-size: 12px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
@@ -1618,7 +1618,7 @@ function GenerateurZone({ currentUser, currentProfile }) {
                         <input type="checkbox" checked={estSelectionnee(q.id)}
                           onChange={() => toggleSelection(q)} onClick={e => e.stopPropagation()} />
                         <div className="gen-question-summary" onClick={() => toggleDetailQuestion(q.id)}>
-                          <div className="gen-question-type">{q.type} · niveau {q.niveau}</div>
+                          <div className="gen-question-type">{q.type} · niveau {q.niveau} · <span className="gen-question-id">{q.id}</span></div>
                           <div className="gen-question-apercu"><MathText>{q.enonce}</MathText></div>
                         </div>
                       </div>
