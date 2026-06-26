@@ -464,6 +464,56 @@ const CSS = `
   .diapo-recap-enonce { font-size: 15px; margin-bottom: 10px; }
   .diapo-recap-reponse { font-size: 15px; color: var(--accent-light); }
 
+  /* ── Import JSON de questions ── */
+  .gen-import-bar { padding: 14px 16px; border-bottom: 1px solid var(--border); }
+  .gen-import-btn {
+    width: 100%; background: var(--surface2); border: 1px solid var(--border); color: var(--text);
+    border-radius: 10px; padding: 10px; font-family: var(--font); font-size: 13px; font-weight: 500;
+    cursor: pointer; transition: all .15s; display: flex; align-items: center; justify-content: center; gap: 8px;
+  }
+  .gen-import-btn:hover { border-color: var(--accent); color: var(--accent-light); }
+
+  .import-overlay {
+    position: fixed; inset: 0; background: #000000cc; z-index: 200;
+    display: flex; align-items: center; justify-content: center; padding: 20px;
+  }
+  .import-card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 20px;
+    padding: 32px; width: 640px; max-height: 85vh; display: flex; flex-direction: column;
+    box-shadow: 0 24px 64px #00000088;
+  }
+  .import-title { font-size: 18px; font-weight: 600; margin-bottom: 4px; }
+  .import-sub { font-size: 13px; color: var(--text-muted); margin-bottom: 20px; }
+  .import-dropzone {
+    border: 2px dashed var(--border); border-radius: 14px; padding: 40px 20px;
+    text-align: center; cursor: pointer; transition: all .15s; margin-bottom: 16px;
+  }
+  .import-dropzone:hover { border-color: var(--accent); background: var(--surface2); }
+  .import-dropzone-icon { font-size: 32px; margin-bottom: 10px; opacity: .6; }
+  .import-dropzone-text { font-size: 13px; color: var(--text-muted); }
+  .import-filename { font-size: 13px; color: var(--accent-light); margin-top: 8px; font-weight: 500; }
+
+  .import-report { flex: 1; overflow-y: auto; margin-bottom: 16px; }
+  .import-report-section { margin-bottom: 16px; }
+  .import-report-header {
+    display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600;
+    margin-bottom: 8px; padding: 8px 12px; border-radius: 8px;
+  }
+  .import-report-header.ok { background: rgba(52,211,153,0.1); color: var(--green); }
+  .import-report-header.warn { background: rgba(248,113,113,0.08); color: var(--red); }
+  .import-report-item {
+    font-size: 12px; padding: 8px 12px; background: var(--surface2); border-radius: 8px;
+    margin-bottom: 4px; display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  }
+  .import-report-item-id { font-family: var(--mono); color: var(--text-muted); flex-shrink: 0; }
+  .import-report-item-detail { flex: 1; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .import-report-suggestion { font-family: var(--mono); color: var(--accent-light); font-size: 11px; flex-shrink: 0; }
+  .import-actions { display: flex; gap: 10px; flex-shrink: 0; }
+  .import-result {
+    text-align: center; padding: 30px 0; display: flex; flex-direction: column; align-items: center; gap: 12px;
+  }
+  .import-result-icon { font-size: 40px; }
+
   .katex-render { font-size: 1em; }
   .katex-render .katex { font-size: 1.05em; }
 
@@ -1080,8 +1130,206 @@ function DiapoViewer({ questions, mode, delai, nomChapitre, onFermer }) {
   );
 }
 
+// ─── Composant ImportQuestions ──────────────────────────────────────────
+function ImportQuestions({ currentUser, chapitres, onFermer, onImportTermine }) {
+  const [fichier, setFichier] = useState(null);
+  const [analyse, setAnalyse] = useState(null); // { valides, conflits, chapitresInconnus }
+  const [analysing, setAnalysing] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [resultat, setResultat] = useState(null); // { nbImportees, nbErreurs }
+  const fileRef = useRef(null);
+
+  // Trouve le prochain id libre en suivant le motif PREFIXE_NN du même chapitre
+  function suggererId(idConflit, idsExistants) {
+    const match = idConflit.match(/^(.+_)(\d+)$/);
+    if (!match) return idConflit + "_2";
+    const [, prefixe, nombreStr] = match;
+    const largeur = nombreStr.length;
+    let n = parseInt(nombreStr, 10) + 1;
+    while (idsExistants.has(`${prefixe}${String(n).padStart(largeur, "0")}`)) n++;
+    return `${prefixe}${String(n).padStart(largeur, "0")}`;
+  }
+
+  async function analyserFichier(file) {
+    setAnalysing(true);
+    setResultat(null);
+    try {
+      const texte = await file.text();
+      const data = JSON.parse(texte);
+      const liste = Array.isArray(data) ? data : (data.questions || []);
+
+      // Récupérer tous les ids déjà en base pour détecter les conflits
+      const { data: existantes } = await supabase.from("questions").select("id");
+      const idsExistants = new Set((existantes || []).map(q => q.id));
+
+      const chapitresParNom = {};
+      chapitres.forEach(c => { chapitresParNom[c.nom.trim().toLowerCase()] = c.id; });
+
+      const valides = [];
+      const conflits = [];
+      const chapitresInconnus = [];
+
+      liste.forEach((q, idx) => {
+        const nomChap = (q.chapitre || "").trim().toLowerCase();
+        const chapitreId = chapitresParNom[nomChap];
+
+        if (!chapitreId) {
+          chapitresInconnus.push({ ...q, _ligne: idx + 1 });
+          return;
+        }
+        if (idsExistants.has(q.id)) {
+          conflits.push({
+            ...q,
+            _chapitreId: chapitreId,
+            _suggestion: suggererId(q.id, idsExistants),
+          });
+          return;
+        }
+        valides.push({ ...q, _chapitreId: chapitreId });
+      });
+
+      setAnalyse({ valides, conflits, chapitresInconnus, idsExistants });
+    } catch (e) {
+      setAnalyse({ erreurParsing: e.message });
+    }
+    setAnalysing(false);
+  }
+
+  function handleFile(file) {
+    setFichier(file);
+    analyserFichier(file);
+  }
+
+  async function lancerImport() {
+    if (!analyse) return;
+    setImporting(true);
+
+    // On importe : toutes les valides + les conflits avec leur id suggéré accepté
+    const aInserer = [
+      ...analyse.valides.map(q => ({
+        id: q.id, chapitre_id: q._chapitreId, type: q.type,
+        enonce: q.enonce, reponse: q.reponse, niveau: q.niveau || 2,
+        prof_id: currentUser.id,
+      })),
+      ...analyse.conflits.map(q => ({
+        id: q._suggestion, chapitre_id: q._chapitreId, type: q.type,
+        enonce: q.enonce, reponse: q.reponse, niveau: q.niveau || 2,
+        prof_id: currentUser.id,
+      })),
+    ];
+
+    let nbImportees = 0;
+    let nbErreurs = 0;
+    // Insertion par lots de 50 pour rester raisonnable
+    for (let i = 0; i < aInserer.length; i += 50) {
+      const lot = aInserer.slice(i, i + 50);
+      const { error } = await supabase.from("questions").insert(lot);
+      if (error) nbErreurs += lot.length;
+      else nbImportees += lot.length;
+    }
+
+    setImporting(false);
+    setResultat({ nbImportees, nbErreurs });
+    onImportTermine();
+  }
+
+  const totalAImporter = analyse ? analyse.valides.length + analyse.conflits.length : 0;
+
+  return (
+    <div className="import-overlay" onClick={e => e.target === e.currentTarget && onFermer()}>
+      <div className="import-card">
+        <div className="import-title">Importer des questions</div>
+        <div className="import-sub">Fichier JSON au format habituel (id, chapitre, type, enonce, reponse, niveau)</div>
+
+        {!resultat && (
+          <div className="import-dropzone" onClick={() => fileRef.current?.click()}>
+            <div className="import-dropzone-icon">📂</div>
+            <div className="import-dropzone-text">
+              {fichier ? "Cliquer pour changer de fichier" : "Cliquer pour choisir un fichier .json"}
+            </div>
+            {fichier && <div className="import-filename">{fichier.name}</div>}
+            <input ref={fileRef} type="file" accept=".json,application/json" style={{ display: "none" }}
+              onChange={e => e.target.files[0] && handleFile(e.target.files[0])} />
+          </div>
+        )}
+
+        {analysing && <div className="import-sub">Analyse du fichier…</div>}
+
+        {analyse?.erreurParsing && (
+          <div className="import-report-item" style={{ color: "var(--red)" }}>
+            Fichier JSON invalide : {analyse.erreurParsing}
+          </div>
+        )}
+
+        {analyse && !analyse.erreurParsing && !resultat && (
+          <div className="import-report">
+            <div className="import-report-section">
+              <div className="import-report-header ok">
+                ✅ {analyse.valides.length} question{analyse.valides.length !== 1 ? "s" : ""} prête{analyse.valides.length !== 1 ? "s" : ""} à importer
+              </div>
+            </div>
+
+            {analyse.conflits.length > 0 && (
+              <div className="import-report-section">
+                <div className="import-report-header warn">
+                  ⚠️ {analyse.conflits.length} id déjà utilisé{analyse.conflits.length !== 1 ? "s" : ""} — id de remplacement proposé
+                </div>
+                {analyse.conflits.map((q, i) => (
+                  <div key={i} className="import-report-item">
+                    <span className="import-report-item-id">{q.id}</span>
+                    <span className="import-report-item-detail">{q.enonce}</span>
+                    <span className="import-report-suggestion">→ {q._suggestion}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {analyse.chapitresInconnus.length > 0 && (
+              <div className="import-report-section">
+                <div className="import-report-header warn">
+                  ❌ {analyse.chapitresInconnus.length} question{analyse.chapitresInconnus.length !== 1 ? "s" : ""} avec un chapitre introuvable (non importée{analyse.chapitresInconnus.length !== 1 ? "s" : ""})
+                </div>
+                {analyse.chapitresInconnus.map((q, i) => (
+                  <div key={i} className="import-report-item">
+                    <span className="import-report-item-id">{q.id || `ligne ${q._ligne}`}</span>
+                    <span className="import-report-item-detail">Chapitre indiqué : "{q.chapitre}"</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {resultat && (
+          <div className="import-result">
+            <div className="import-result-icon">{resultat.nbErreurs === 0 ? "🎉" : "⚠️"}</div>
+            <div>
+              <strong>{resultat.nbImportees}</strong> question{resultat.nbImportees !== 1 ? "s" : ""} importée{resultat.nbImportees !== 1 ? "s" : ""}
+              {resultat.nbErreurs > 0 && <> · {resultat.nbErreurs} erreur{resultat.nbErreurs !== 1 ? "s" : ""}</>}
+            </div>
+          </div>
+        )}
+
+        <div className="import-actions">
+          {!resultat ? (
+            <>
+              <button className="diapo-cancel-btn" onClick={onFermer}>Annuler</button>
+              <button className="diapo-launch-btn" onClick={lancerImport}
+                disabled={!analyse || analyse.erreurParsing || importing || totalAImporter === 0}>
+                {importing ? "Import en cours…" : `Importer ${totalAImporter} question${totalAImporter !== 1 ? "s" : ""}`}
+              </button>
+            </>
+          ) : (
+            <button className="diapo-launch-btn" onClick={onFermer}>Fermer</button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Composant GenerateurZone ──────────────────────────────────────────
-function GenerateurZone() {
+function GenerateurZone({ currentUser }) {
   const [chapitres, setChapitres] = useState([]);
   const [questionsParChapitre, setQuestionsParChapitre] = useState({}); // { chapitre_id: [questions] }
   const [chapitresOuverts, setChapitresOuverts] = useState({});        // { chapitre_id: bool }
@@ -1091,6 +1339,7 @@ function GenerateurZone() {
   const [selection, setSelection] = useState([]);                       // [question objects, dans l'ordre de sélection]
   const [afficherReglagesDiapo, setAfficherReglagesDiapo] = useState(false);
   const [diapoActive, setDiapoActive] = useState(null); // { mode, delai } ou null
+  const [afficherImport, setAfficherImport] = useState(false);
   const [dragIndex, setDragIndex] = useState(null);
   const [overIndex, setOverIndex] = useState(null);
   const [overZone, setOverZone] = useState(null); // "top" | "middle" | "bottom"
@@ -1233,6 +1482,11 @@ function GenerateurZone() {
   return (
     <div className="generateur-area">
       <div className="gen-chapitres-col">
+        <div className="gen-import-bar">
+          <button className="gen-import-btn" onClick={() => setAfficherImport(true)}>
+            📂 Importer des questions (JSON)
+          </button>
+        </div>
         {chapitres.map(ch => {
           const ouvert = chapitresOuverts[ch.id];
           const questions = questionsParChapitre[ch.id] || [];
@@ -1386,6 +1640,28 @@ function GenerateurZone() {
           delai={diapoActive.delai}
           nomChapitre={nomChapitre}
           onFermer={() => setDiapoActive(null)}
+        />
+      )}
+
+      {afficherImport && (
+        <ImportQuestions
+          currentUser={currentUser}
+          chapitres={chapitres}
+          onFermer={() => setAfficherImport(false)}
+          onImportTermine={() => {
+            // Force le rechargement des chapitres actuellement ouverts pour voir les nouvelles questions
+            const ouverts = Object.keys(chapitresOuverts).filter(id => chapitresOuverts[id]);
+            setQuestionsParChapitre(prev => {
+              const copie = { ...prev };
+              ouverts.forEach(id => delete copie[id]);
+              return copie;
+            });
+            ouverts.forEach(id => {
+              supabase.from("questions").select("*").eq("chapitre_id", id).order("id").then(({ data }) => {
+                setQuestionsParChapitre(prev => ({ ...prev, [id]: data || [] }));
+              });
+            });
+          }}
         />
       )}
     </div>
@@ -1920,7 +2196,7 @@ export default function App() {
           <RessourcesZone currentUser={user} currentProfile={profile} />
         )}
         {profile.role === "professeur" && activeTab === "generateur" && (
-          <GenerateurZone />
+          <GenerateurZone currentUser={user} />
         )}
       </div>
     </>
