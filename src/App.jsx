@@ -188,6 +188,19 @@ const CSS = `
   .sidebar-tab.active { color: var(--accent-light); border-bottom-color: var(--accent); }
   .sidebar-tab:hover { color: var(--text); }
 
+  /* ── Onglets en haut, pleine largeur (quand la sidebar verticale est masquée) ── */
+  .sidebar-tabs-top {
+    display: flex; gap: 4px; border-bottom: 1px solid var(--border); background: var(--surface);
+    flex-shrink: 0; padding: 0 12px;
+  }
+  .sidebar-tab-top {
+    padding: 12px 18px; font-size: 13px; font-weight: 600; color: var(--text-muted);
+    cursor: pointer; background: none; border: none; font-family: var(--font);
+    border-bottom: 2px solid transparent; transition: all .15s;
+  }
+  .sidebar-tab-top.active { color: var(--accent-light); border-bottom-color: var(--accent); }
+  .sidebar-tab-top:hover { color: var(--text); }
+
   /* ── Zone ressources ── */
   .ressources-area { flex: 1; display: flex; flex-direction: column; min-width: 0; }
   .ressources-list { flex: 1; overflow-y: auto; padding: 24px; display: flex; flex-direction: column; gap: 14px; max-width: 720px; }
@@ -2522,8 +2535,8 @@ export default function App() {
     <>
       <style>{CSS}</style>
       <div className="app">
-        {profile.role === "professeur" && (
-          <div className="sidebar" style={activeTab === "generateur" ? { width: 200 } : {}}>
+        {profile.role === "professeur" && activeTab === "chat" && (
+          <div className="sidebar">
             <div className="sidebar-tabs">
               <button className={`sidebar-tab${activeTab === "chat" ? " active" : ""}`}
                 onClick={() => setActiveTab("chat")}>Élèves</button>
@@ -2532,28 +2545,43 @@ export default function App() {
               <button className={`sidebar-tab${activeTab === "generateur" ? " active" : ""}`}
                 onClick={() => setActiveTab("generateur")}>Générateur</button>
             </div>
-            {activeTab === "chat" && (
-              <>
-                <div className="sidebar-header">
-                  <div className="sidebar-title">Élèves</div>
-                  {totalUnread > 0 && <div className="badge-count">{totalUnread}</div>}
+            <div className="sidebar-header">
+              <div className="sidebar-title">Élèves</div>
+              {totalUnread > 0 && <div className="badge-count">{totalUnread}</div>}
+            </div>
+            <div className="sidebar-list">
+              {eleves.map(el => (
+                <div key={el.id} className={`eleve-item${selectedEleve === el.id ? " active" : ""}`}
+                  onClick={() => setSelectedEleve(el.id)}>
+                  <div className="avatar">
+                    {initials(el.nom, el.prenom)}
+                    {unreadCounts[el.id] > 0 && <div className="unread-dot" />}
+                  </div>
+                  <div className="eleve-info">
+                    <div className="eleve-name">{el.prenom} {el.nom}</div>
+                    <div className="eleve-sujet">{el.sujet || "Sujet non défini"}</div>
+                  </div>
                 </div>
-                <div className="sidebar-list">
-                  {eleves.map(el => (
-                    <div key={el.id} className={`eleve-item${selectedEleve === el.id ? " active" : ""}`}
-                      onClick={() => setSelectedEleve(el.id)}>
-                      <div className="avatar">
-                        {initials(el.nom, el.prenom)}
-                        {unreadCounts[el.id] > 0 && <div className="unread-dot" />}
-                      </div>
-                      <div className="eleve-info">
-                        <div className="eleve-name">{el.prenom} {el.nom}</div>
-                        <div className="eleve-sujet">{el.sujet || "Sujet non défini"}</div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {profile.role === "professeur" && activeTab !== "chat" && (
+          <div style={{ display: "flex", flexDirection: "column", flex: 1, minWidth: 0 }}>
+            <div className="sidebar-tabs-top">
+              <button className={`sidebar-tab-top${activeTab === "chat" ? " active" : ""}`}
+                onClick={() => setActiveTab("chat")}>Élèves</button>
+              <button className={`sidebar-tab-top${activeTab === "ressources" ? " active" : ""}`}
+                onClick={() => setActiveTab("ressources")}>Ressources</button>
+              <button className={`sidebar-tab-top${activeTab === "generateur" ? " active" : ""}`}
+                onClick={() => setActiveTab("generateur")}>Générateur</button>
+            </div>
+            {activeTab === "ressources" && (
+              <RessourcesZone currentUser={user} currentProfile={profile} />
+            )}
+            {activeTab === "generateur" && (
+              <GenerateurZone currentUser={user} currentProfile={profile} />
             )}
           </div>
         )}
@@ -2582,12 +2610,6 @@ export default function App() {
             currentProfile={profile}
             allProfiles={allProfiles}
           />
-        )}
-        {profile.role === "professeur" && activeTab === "ressources" && (
-          <RessourcesZone currentUser={user} currentProfile={profile} />
-        )}
-        {profile.role === "professeur" && activeTab === "generateur" && (
-          <GenerateurZone currentUser={user} currentProfile={profile} />
         )}
       </div>
     </>
