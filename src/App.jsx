@@ -265,12 +265,12 @@ const CSS = `
   .publish-file-chip button { background: none; border: none; color: var(--red); cursor: pointer; margin-left: 4px; }
 
   /* ── Générateur d'interrogations ── */
-  .generateur-area { flex: 1; display: flex; min-width: 0; }
+  .generateur-area { flex: 1; display: flex; min-width: 0; min-height: 0; }
   .gen-chapitres-col {
     width: 420px; flex-shrink: 0; border-right: 1px solid var(--border);
     overflow-y: auto; padding: 16px;
   }
-  .gen-selection-col { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  .gen-selection-col { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
   .gen-selection-list { flex: 1; overflow-y: auto; padding: 20px 24px; }
   .gen-header { padding: 16px 24px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
   .gen-header-title { font-size: 16px; font-weight: 600; }
@@ -2568,7 +2568,7 @@ export default function App() {
         )}
 
         {profile.role === "professeur" && activeTab !== "chat" && (
-          <div style={{ display: "flex", flexDirection: "column", flex: 1, minWidth: 0 }}>
+          <div style={{ display: "flex", flexDirection: "column", flex: 1, minWidth: 0, minHeight: 0 }}>
             <div className="sidebar-tabs-top">
               <button className={`sidebar-tab-top${activeTab === "chat" ? " active" : ""}`}
                 onClick={() => setActiveTab("chat")}>Élèves</button>
