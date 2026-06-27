@@ -506,6 +506,23 @@ const CSS = `
 
   /* ── Import JSON de questions ── */
   .gen-import-bar { padding: 14px 16px; border-bottom: 1px solid var(--border); }
+
+  /* ── Barre de filtres type/niveau ── */
+  .gen-filters-bar { padding: 12px 16px; border-bottom: 1px solid var(--border); display: flex; flex-direction: column; gap: 8px; }
+  .gen-filters-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .gen-filters-label { font-size: 10px; font-weight: 700; text-transform: uppercase; color: var(--text-muted); letter-spacing: .04em; width: 100%; margin-bottom: 2px; }
+  .gen-filter-chip {
+    background: var(--surface2); border: 1px solid var(--border); color: var(--text-muted);
+    border-radius: 14px; padding: 4px 11px; font-family: var(--font); font-size: 11px;
+    font-weight: 500; cursor: pointer; transition: all .15s; text-transform: capitalize;
+  }
+  .gen-filter-chip:hover { border-color: var(--accent); }
+  .gen-filter-chip.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .gen-filter-reset {
+    background: none; border: none; color: var(--text-muted); font-size: 11px;
+    cursor: pointer; text-decoration: underline; padding: 0; margin-left: 4px;
+  }
+  .gen-filter-reset:hover { color: var(--accent-light); }
   .gen-import-btn {
     width: 100%; background: var(--surface2); border: 1px solid var(--border); color: var(--text);
     border-radius: 10px; padding: 10px; font-family: var(--font); font-size: 13px; font-weight: 500;
@@ -1471,6 +1488,30 @@ function GenerateurZone({ currentUser, currentProfile }) {
   const [questionsDetail, setQuestionsDetail] = useState({});          // { question_id: bool } détail ouvert
   const [reponsesVisibles, setReponsesVisibles] = useState({});        // { question_id: bool } réponse révélée (masquée par défaut)
   const [selection, setSelection] = useState([]);                       // [question objects, dans l'ordre de sélection]
+  const TYPES_DISPONIBLES = ["formule", "méthode", "définition", "théorème"];
+  const NIVEAUX_DISPONIBLES = [1, 2, 3];
+  const [typesActifs, setTypesActifs] = useState(new Set(TYPES_DISPONIBLES));
+  const [niveauxActifs, setNiveauxActifs] = useState(new Set(NIVEAUX_DISPONIBLES));
+
+  function toggleTypeFiltre(type) {
+    setTypesActifs(prev => {
+      const copie = new Set(prev);
+      copie.has(type) ? copie.delete(type) : copie.add(type);
+      return copie;
+    });
+  }
+
+  function toggleNiveauFiltre(niveau) {
+    setNiveauxActifs(prev => {
+      const copie = new Set(prev);
+      copie.has(niveau) ? copie.delete(niveau) : copie.add(niveau);
+      return copie;
+    });
+  }
+
+  function questionVisible(q) {
+    return typesActifs.has(q.type) && niveauxActifs.has(q.niveau);
+  }
   const [afficherReglagesDiapo, setAfficherReglagesDiapo] = useState(false);
   const [diapoActive, setDiapoActive] = useState(null); // { mode, delai } ou null
   const [afficherImport, setAfficherImport] = useState(false);
@@ -1740,9 +1781,40 @@ function GenerateurZone({ currentUser, currentProfile }) {
             </button>
           </div>
         </div>
+
+        <div className="gen-filters-bar">
+          <div className="gen-filters-row">
+            <span className="gen-filters-label">Type de question</span>
+            {TYPES_DISPONIBLES.map(type => (
+              <button key={type} className={`gen-filter-chip${typesActifs.has(type) ? " active" : ""}`}
+                onClick={() => toggleTypeFiltre(type)}>
+                {type}
+              </button>
+            ))}
+          </div>
+          <div className="gen-filters-row">
+            <span className="gen-filters-label">Niveau</span>
+            {NIVEAUX_DISPONIBLES.map(niveau => (
+              <button key={niveau} className={`gen-filter-chip${niveauxActifs.has(niveau) ? " active" : ""}`}
+                onClick={() => toggleNiveauFiltre(niveau)}>
+                Niveau {niveau}
+              </button>
+            ))}
+            {(typesActifs.size < TYPES_DISPONIBLES.length || niveauxActifs.size < NIVEAUX_DISPONIBLES.length) && (
+              <button className="gen-filter-reset" onClick={() => {
+                setTypesActifs(new Set(TYPES_DISPONIBLES));
+                setNiveauxActifs(new Set(NIVEAUX_DISPONIBLES));
+              }}>
+                Réinitialiser
+              </button>
+            )}
+          </div>
+        </div>
         {chapitres.map(ch => {
           const ouvert = chapitresOuverts[ch.id];
           const questions = questionsParChapitre[ch.id] || [];
+          const questionsFiltrees = questions.filter(questionVisible);
+          const nbMasquees = questions.length - questionsFiltrees.length;
           const nbSelectionnees = questions.filter(q => estSelectionnee(q.id)).length;
           return (
             <div key={ch.id} className="gen-chapitre-block">
@@ -1750,6 +1822,11 @@ function GenerateurZone({ currentUser, currentProfile }) {
                 <span className={`gen-chevron${ouvert ? " open" : ""}`}>▶</span>
                 <span className="gen-chapitre-nom">{ch.nom}</span>
                 {nbSelectionnees > 0 && <span className="gen-chapitre-count">{nbSelectionnees} sélectionnée{nbSelectionnees > 1 ? "s" : ""}</span>}
+                {ouvert && nbMasquees > 0 && (
+                  <span className="gen-chapitre-count" style={{ background: "var(--surface2)", color: "var(--text-muted)" }}>
+                    {nbMasquees} masquée{nbMasquees > 1 ? "s" : ""}
+                  </span>
+                )}
                 {ouvert && questions.length > 0 && (
                   <button className="gen-chapitre-export-btn" title="Exporter ce chapitre en JSON"
                     onClick={e => { e.stopPropagation(); exporterChapitre(ch); }}>
@@ -1765,7 +1842,10 @@ function GenerateurZone({ currentUser, currentProfile }) {
                   {!chargementChapitre[ch.id] && questions.length === 0 && (
                     <div className="gen-empty-chapitre">Aucune question dans ce chapitre pour l'instant.</div>
                   )}
-                  {questions.map(q => (
+                  {!chargementChapitre[ch.id] && questions.length > 0 && questionsFiltrees.length === 0 && (
+                    <div className="gen-empty-chapitre">Aucune question ne correspond aux filtres actifs.</div>
+                  )}
+                  {questionsFiltrees.map(q => (
                     <div key={q.id}>
                       <div className="gen-question-row">
                         <input type="checkbox" checked={estSelectionnee(q.id)}
