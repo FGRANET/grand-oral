@@ -77,6 +77,7 @@ const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+
 // ─── Palette & styles globaux ────────────────────────────────────────
 const CSS = `
   @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap');
@@ -348,6 +349,48 @@ const CSS = `
     background: none; border: 1px solid var(--border); color: var(--text-muted);
     border-radius: 8px; padding: 8px 16px; font-family: var(--font); font-size: 12px; cursor: pointer;
   }
+
+  /* ── Onglet Historique ── */
+  .hist-area { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow-y: auto; padding: 24px 32px; }
+  .hist-toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; }
+  .hist-toolbar-filter {
+    background: var(--surface2); border: 1px solid var(--border); color: var(--text-muted);
+    border-radius: 16px; padding: 5px 13px; font-family: var(--font); font-size: 12px;
+    font-weight: 500; cursor: pointer; transition: all .15s;
+  }
+  .hist-toolbar-filter:hover { border-color: var(--accent); }
+  .hist-toolbar-filter.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .hist-empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; color: var(--text-muted); font-size: 13px; }
+
+  .hist-list { display: flex; flex-direction: column; gap: 10px; max-width: 760px; }
+  .hist-card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 16px 20px; }
+  .hist-card-top { display: flex; align-items: flex-start; gap: 12px; }
+  .hist-card-main { flex: 1; min-width: 0; }
+  .hist-card-nom { font-size: 14px; font-weight: 600; }
+  .hist-card-nom-input {
+    font-size: 14px; font-weight: 600; background: var(--surface2); border: 1px solid var(--accent);
+    border-radius: 6px; padding: 4px 8px; color: var(--text); font-family: var(--font); width: 100%; outline: none;
+  }
+  .hist-card-meta { font-size: 12px; color: var(--text-muted); margin-top: 4px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .hist-badge {
+    font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em;
+    padding: 2px 8px; border-radius: 10px; background: var(--surface2); color: var(--text-muted);
+  }
+  .hist-badge.partage { background: rgba(91,115,255,0.15); color: var(--accent-light); }
+  .hist-card-actions { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+  .hist-icon-btn {
+    background: none; border: none; color: var(--text-muted); cursor: pointer;
+    font-size: 15px; padding: 6px; border-radius: 8px; transition: all .15s; line-height: 1;
+  }
+  .hist-icon-btn:hover { background: var(--surface2); color: var(--text); }
+  .hist-icon-btn.fav-active { color: #f5b942; }
+  .hist-card-rejouer {
+    margin-top: 12px; background: var(--accent); color: #fff; border: none; border-radius: 8px;
+    padding: 8px 16px; font-family: var(--font); font-size: 12px; font-weight: 600; cursor: pointer;
+  }
+  .hist-card-rejouer:hover { background: var(--accent-light); }
+  .hist-card-auteur { font-size: 11px; color: var(--text-muted); }
+
   .gen-reveal-btn {
     background: var(--surface2); border: 1px solid var(--border); color: var(--text-muted);
     border-radius: 8px; padding: 7px 14px; font-family: var(--font); font-size: 12px;
@@ -1492,7 +1535,142 @@ function ImportQuestions({ currentUser, currentProfile, chapitres, onFermer, onI
 }
 
 // ─── Composant GenerateurZone ──────────────────────────────────────────
-function GenerateurZone({ currentUser, currentProfile }) {
+// ─── Composant HistoriqueZone ───────────────────────────────────────────
+function HistoriqueZone({ currentUser, currentProfile, allProfiles, onRejouer }) {
+  const [sessions, setSessions] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [filtre, setFiltre] = useState("mes_sessions"); // "mes_sessions" | "favoris" | "partagees"
+  const [renommageId, setRenommageId] = useState(null);
+  const [brouillonNom, setBrouillonNom] = useState("");
+
+  const fetchSessions = useCallback(async () => {
+    setLoading(true);
+    let requete = supabase.from("sessions_historique").select("*").order("updated_at", { ascending: false });
+    if (filtre === "mes_sessions") requete = requete.eq("prof_id", currentUser.id);
+    else if (filtre === "favoris") requete = requete.eq("prof_id", currentUser.id).eq("favori", true);
+    else if (filtre === "partagees") requete = requete.eq("partage", true).neq("prof_id", currentUser.id);
+    const { data } = await requete.limit(100);
+    setSessions(data || []);
+    setLoading(false);
+  }, [filtre, currentUser.id]);
+
+  useEffect(() => { fetchSessions(); }, [fetchSessions]);
+
+  function nomAuteur(profId) {
+    const p = allProfiles.find(pr => pr.id === profId);
+    return p ? formatNomProf(p.prenom, p.nom) : "?";
+  }
+
+  async function toggleFavori(session) {
+    await supabase.from("sessions_historique").update({ favori: !session.favori }).eq("id", session.id);
+    setSessions(prev => prev.map(s => s.id === session.id ? { ...s, favori: !s.favori } : s));
+  }
+
+  async function togglePartage(session) {
+    await supabase.from("sessions_historique").update({ partage: !session.partage }).eq("id", session.id);
+    setSessions(prev => prev.map(s => s.id === session.id ? { ...s, partage: !s.partage } : s));
+  }
+
+  async function supprimerSession(session) {
+    const confirme = window.confirm(`Supprimer définitivement la session "${session.nom}" ?`);
+    if (!confirme) return;
+    await supabase.from("sessions_historique").delete().eq("id", session.id);
+    setSessions(prev => prev.filter(s => s.id !== session.id));
+  }
+
+  function commencerRenommage(session) {
+    setRenommageId(session.id);
+    setBrouillonNom(session.nom);
+  }
+
+  async function enregistrerRenommage(session) {
+    if (!brouillonNom.trim()) return;
+    await supabase.from("sessions_historique").update({ nom: brouillonNom.trim() }).eq("id", session.id);
+    setSessions(prev => prev.map(s => s.id === session.id ? { ...s, nom: brouillonNom.trim() } : s));
+    setRenommageId(null);
+  }
+
+  function libelleAction(action) {
+    if (action === "tex_eleve") return "📝 .tex élève";
+    if (action === "tex_corrige") return "📝 .tex corrigé";
+    if (action === "diaporama") return "▶ Diaporama";
+    if (action === "pdf") return "📄 PDF";
+    return "";
+  }
+
+  const estProprietaire = (session) => session.prof_id === currentUser.id;
+
+  return (
+    <div className="hist-area">
+      <div className="hist-toolbar">
+        <button className={`hist-toolbar-filter${filtre === "mes_sessions" ? " active" : ""}`}
+          onClick={() => setFiltre("mes_sessions")}>Mes sessions</button>
+        <button className={`hist-toolbar-filter${filtre === "favoris" ? " active" : ""}`}
+          onClick={() => setFiltre("favoris")}>⭐ Favoris</button>
+        <button className={`hist-toolbar-filter${filtre === "partagees" ? " active" : ""}`}
+          onClick={() => setFiltre("partagees")}>Partagées par mes collègues</button>
+      </div>
+
+      {loading ? (
+        <div className="hist-empty">Chargement…</div>
+      ) : sessions.length === 0 ? (
+        <div className="hist-empty">
+          <div style={{ fontSize: 32, opacity: .3 }}>🕓</div>
+          <div>
+            {filtre === "mes_sessions" && "Aucune session pour l'instant. Exporte un .tex ou lance un diaporama pour en créer une."}
+            {filtre === "favoris" && "Aucun favori pour l'instant."}
+            {filtre === "partagees" && "Aucune session partagée par tes collègues pour l'instant."}
+          </div>
+        </div>
+      ) : (
+        <div className="hist-list">
+          {sessions.map(session => (
+            <div key={session.id} className="hist-card">
+              <div className="hist-card-top">
+                <div className="hist-card-main">
+                  {renommageId === session.id ? (
+                    <input className="hist-card-nom-input" value={brouillonNom} autoFocus
+                      onChange={e => setBrouillonNom(e.target.value)}
+                      onKeyDown={e => { if (e.key === "Enter") enregistrerRenommage(session); if (e.key === "Escape") setRenommageId(null); }}
+                      onBlur={() => enregistrerRenommage(session)} />
+                  ) : (
+                    <div className="hist-card-nom">{session.nom}</div>
+                  )}
+                  <div className="hist-card-meta">
+                    <span>{session.question_ids.length} question{session.question_ids.length !== 1 ? "s" : ""}</span>
+                    {session.derniere_action && <span className="hist-badge">{libelleAction(session.derniere_action)}</span>}
+                    {session.partage && <span className="hist-badge partage">Partagée</span>}
+                    {!estProprietaire(session) && <span className="hist-card-auteur">par {nomAuteur(session.prof_id)}</span>}
+                  </div>
+                </div>
+                <div className="hist-card-actions">
+                  {estProprietaire(session) && (
+                    <>
+                      <button className={`hist-icon-btn${session.favori ? " fav-active" : ""}`}
+                        onClick={() => toggleFavori(session)} title="Mettre en favori">⭐</button>
+                      <button className="hist-icon-btn" onClick={() => commencerRenommage(session)} title="Renommer">✏️</button>
+                      <button className="hist-icon-btn" onClick={() => togglePartage(session)}
+                        title={session.partage ? "Rendre privée" : "Partager avec mes collègues"}>
+                        {session.partage ? "🔓" : "🔒"}
+                      </button>
+                      <button className="hist-icon-btn" onClick={() => supprimerSession(session)} title="Supprimer">🗑️</button>
+                    </>
+                  )}
+                </div>
+              </div>
+              <button className="hist-card-rejouer" onClick={() => onRejouer(session.question_ids)}>
+                ↻ Rejouer cette sélection
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Composant GenerateurZone ──────────────────────────────────────────
+function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSessionChargee }) {
   const [chapitres, setChapitres] = useState([]);
   const [questionsParChapitre, setQuestionsParChapitre] = useState({}); // { chapitre_id: [questions] }
   const [chapitresOuverts, setChapitresOuverts] = useState({});        // { chapitre_id: bool }
@@ -1542,6 +1720,19 @@ function GenerateurZone({ currentUser, currentProfile }) {
       setLoading(false);
     });
   }, []);
+
+  // Recharger une sélection depuis l'historique (clic sur "Rejouer" dans l'onglet Historique)
+  useEffect(() => {
+    if (!sessionARecharger) return;
+    supabase.from("questions").select("*").in("id", sessionARecharger).then(({ data }) => {
+      // Respecte l'ordre d'origine de la session, pas l'ordre renvoyé par Supabase
+      const parId = {};
+      (data || []).forEach(q => { parId[q.id] = q; });
+      const ordonnee = sessionARecharger.map(id => parId[id]).filter(Boolean);
+      setSelection(ordonnee);
+      onSessionChargee();
+    });
+  }, [sessionARecharger]);
 
   async function toggleChapitre(chapitreId) {
     const estOuvert = chapitresOuverts[chapitreId];
@@ -1719,6 +1910,51 @@ function GenerateurZone({ currentUser, currentProfile }) {
     return lignes.join("\n");
   }
 
+  // Calcule une signature stable pour un ensemble de questions, peu importe l'ordre
+  function calculerSignature(questionsSelection) {
+    return questionsSelection.map(q => q.id).slice().sort().join(",");
+  }
+
+  // Génère le nom auto : chapitres (max 2, "+N autres" sinon) · date · nombre de questions
+  function genererNomSession(questionsSelection) {
+    const chapitresUniques = [...new Set(questionsSelection.map(q => nomChapitre(q.chapitre_id)))];
+    let partieChapitres;
+    if (chapitresUniques.length <= 2) {
+      partieChapitres = chapitresUniques.join(", ");
+    } else {
+      partieChapitres = `${chapitresUniques.slice(0, 2).join(", ")} +${chapitresUniques.length - 2} autre${chapitresUniques.length - 2 > 1 ? "s" : ""}`;
+    }
+    const dateStr = new Date().toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric" });
+    return `${partieChapitres} · ${dateStr} · ${questionsSelection.length} question${questionsSelection.length !== 1 ? "s" : ""}`;
+  }
+
+  // Sauvegarde (ou met à jour) la sélection actuelle dans l'historique.
+  // Une sélection avec la même signature (mêmes questions, peu importe l'ordre)
+  // pour ce prof met à jour l'entrée existante plutôt que d'en créer une nouvelle.
+  async function sauvegarderDansHistorique(action) {
+    if (selection.length === 0) return;
+    const signature = calculerSignature(selection);
+
+    const { data: existante } = await supabase.from("sessions_historique")
+      .select("id").eq("prof_id", currentUser.id).eq("signature", signature).maybeSingle();
+
+    if (existante) {
+      await supabase.from("sessions_historique").update({
+        question_ids: selection.map(q => q.id),
+        derniere_action: action,
+        updated_at: new Date().toISOString(),
+      }).eq("id", existante.id);
+    } else {
+      await supabase.from("sessions_historique").insert({
+        prof_id: currentUser.id,
+        nom: genererNomSession(selection),
+        question_ids: selection.map(q => q.id),
+        signature,
+        derniere_action: action,
+      });
+    }
+  }
+
   function telechargerTex(avecCorrige) {
     const contenu = genererTex(avecCorrige);
     const blob = new Blob([contenu], { type: "text/plain;charset=utf-8" });
@@ -1729,6 +1965,7 @@ function GenerateurZone({ currentUser, currentProfile }) {
     a.download = `interro_${date}${avecCorrige ? "_corrige" : "_eleve"}.tex`;
     a.click();
     URL.revokeObjectURL(url);
+    sauvegarderDansHistorique(avecCorrige ? "tex_corrige" : "tex_eleve");
   }
 
   // Nettoie une question pour l'export : retire les champs internes à la base
@@ -2031,6 +2268,7 @@ function GenerateurZone({ currentUser, currentProfile }) {
           onLancer={(reglages) => {
             setDiapoActive(reglages);
             setAfficherReglagesDiapo(false);
+            sauvegarderDansHistorique("diaporama");
           }}
         />
       )}
@@ -2436,6 +2674,7 @@ export default function App() {
   const [unreadCounts, setUnreadCounts] = useState({});
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("chat"); // "chat" ou "ressources"
+  const [sessionARecharger, setSessionARecharger] = useState(null); // ids de questions à charger dans le générateur
 
   // Charger le CSS de KaTeX une seule fois (nécessaire pour un rendu correct des formules)
   useEffect(() => {
@@ -2543,6 +2782,8 @@ export default function App() {
                 onClick={() => setActiveTab("ressources")}>Ressources</button>
               <button className={`sidebar-tab${activeTab === "generateur" ? " active" : ""}`}
                 onClick={() => setActiveTab("generateur")}>Générateur</button>
+              <button className={`sidebar-tab${activeTab === "historique" ? " active" : ""}`}
+                onClick={() => setActiveTab("historique")}>Historique</button>
             </div>
             <div className="sidebar-header">
               <div className="sidebar-title">Élèves</div>
@@ -2575,12 +2816,19 @@ export default function App() {
                 onClick={() => setActiveTab("ressources")}>Ressources</button>
               <button className={`sidebar-tab-top${activeTab === "generateur" ? " active" : ""}`}
                 onClick={() => setActiveTab("generateur")}>Générateur</button>
+              <button className={`sidebar-tab-top${activeTab === "historique" ? " active" : ""}`}
+                onClick={() => setActiveTab("historique")}>Historique</button>
             </div>
             {activeTab === "ressources" && (
               <RessourcesZone currentUser={user} currentProfile={profile} />
             )}
             {activeTab === "generateur" && (
-              <GenerateurZone currentUser={user} currentProfile={profile} />
+              <GenerateurZone currentUser={user} currentProfile={profile}
+                sessionARecharger={sessionARecharger} onSessionChargee={() => setSessionARecharger(null)} />
+            )}
+            {activeTab === "historique" && (
+              <HistoriqueZone currentUser={user} currentProfile={profile} allProfiles={allProfiles}
+                onRejouer={(ids) => { setSessionARecharger(ids); setActiveTab("generateur"); }} />
             )}
           </div>
         )}
