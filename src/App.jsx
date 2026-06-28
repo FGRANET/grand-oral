@@ -77,7 +77,6 @@ const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-
 // ─── Palette & styles globaux ────────────────────────────────────────
 const CSS = `
   @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap');
@@ -800,6 +799,7 @@ const CSS = `
   .bubble-sender { font-size: 11px; font-weight: 600; color: var(--accent-light); margin-bottom: 4px; }
 
   /* ── Fichier joint ── */
+  .file-bubble-wrap { display: flex; align-items: center; gap: 6px; }
   .file-bubble {
     display: flex; align-items: center; gap: 10px;
     background: var(--surface2); border: 1px solid var(--border);
@@ -811,6 +811,12 @@ const CSS = `
   .file-details { min-width: 0; }
   .file-name { font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .file-dl { font-size: 11px; color: var(--accent-light); margin-top: 2px; }
+  .file-delete-btn {
+    background: none; border: none; color: var(--text-muted); cursor: pointer;
+    font-size: 13px; padding: 6px; border-radius: 6px; flex-shrink: 0; opacity: .6; transition: all .15s;
+  }
+  .file-delete-btn:hover { opacity: 1; color: var(--red); background: var(--surface2); }
+  .file-bubble-supprime { font-size: 12px; color: var(--text-muted); font-style: italic; }
 
   /* ── Date separator ── */
   .date-sep {
@@ -1107,9 +1113,11 @@ function ChangePasswordModal({ onClose }) {
 }
 
 // ─── Composant Message ───────────────────────────────────────────────
-function Message({ msg, isMe, profile, onSupprimer }) {
+function Message({ msg, isMe, profile, onSupprimer, currentProfile, onSupprimerFichier }) {
   const hasFile = !!msg.fichier_url;
   const hasText = !!msg.contenu;
+  // Le prof peut retirer le fichier d'un message qui n'est pas le sien (donc un message d'élève)
+  const peutSupprimerFichier = currentProfile?.role === "professeur" && !isMe && hasFile && !msg.supprime;
   return (
     <div className={`msg-row${isMe ? " mine" : ""}`}>
       {!isMe && (
@@ -1125,13 +1133,21 @@ function Message({ msg, isMe, profile, onSupprimer }) {
           ) : (
             <>
               {hasFile && (
-                <a className="file-bubble" href={msg.fichier_url} target="_blank" rel="noreferrer">
-                  <span className="file-icon">{fileIcon(msg.fichier_type)}</span>
-                  <div className="file-details">
-                    <div className="file-name">{msg.fichier_nom}</div>
-                    <div className="file-dl">Ouvrir le fichier</div>
-                  </div>
-                </a>
+                <div className="file-bubble-wrap">
+                  <a className="file-bubble" href={msg.fichier_url} target="_blank" rel="noreferrer">
+                    <span className="file-icon">{fileIcon(msg.fichier_type)}</span>
+                    <div className="file-details">
+                      <div className="file-name">{msg.fichier_nom}</div>
+                      <div className="file-dl">Ouvrir le fichier</div>
+                    </div>
+                  </a>
+                  {peutSupprimerFichier && (
+                    <button className="file-delete-btn" onClick={() => onSupprimerFichier(msg)} title="Supprimer ce fichier (libère de l'espace)">🗑️</button>
+                  )}
+                </div>
+              )}
+              {!hasFile && msg.fichier_supprime_par_prof && (
+                <div className="file-bubble-supprime">📎 Fichier supprimé par le professeur</div>
               )}
               {hasText && <div style={{ marginTop: hasFile ? 8 : 0 }}>{msg.contenu}</div>}
             </>
@@ -2619,6 +2635,14 @@ function ChatZone({ eleveId, currentUser, currentProfile, allProfiles }) {
     textRef.current?.focus();
   }
 
+  // Extrait le chemin de stockage à partir d'une URL publique Supabase
+  function extrairePathStorage(url) {
+    const marqueur = "/grand-oral/";
+    const indexMarqueur = url.indexOf(marqueur);
+    if (indexMarqueur === -1) return null;
+    return decodeURIComponent(url.slice(indexMarqueur + marqueur.length));
+  }
+
   async function supprimerMessage(msg) {
     const confirme = window.confirm("Supprimer ce message ? Cette action est irréversible.");
     if (!confirme) return;
@@ -2626,12 +2650,8 @@ function ChatZone({ eleveId, currentUser, currentProfile, allProfiles }) {
     // Si le message a un fichier joint, on le supprime réellement du stockage
     // pour libérer l'espace (le message, lui, reste visible comme "supprimé")
     if (msg.fichier_url) {
-      const marqueur = "/grand-oral/";
-      const indexMarqueur = msg.fichier_url.indexOf(marqueur);
-      if (indexMarqueur !== -1) {
-        const path = decodeURIComponent(msg.fichier_url.slice(indexMarqueur + marqueur.length));
-        await supabase.storage.from("grand-oral").remove([path]);
-      }
+      const path = extrairePathStorage(msg.fichier_url);
+      if (path) await supabase.storage.from("grand-oral").remove([path]);
     }
 
     await supabase.from("messages").update({
@@ -2644,6 +2664,26 @@ function ChatZone({ eleveId, currentUser, currentProfile, allProfiles }) {
 
     setMessages(prev => prev.map(m => m.id === msg.id ? { ...m, supprime: true, contenu: null, fichier_url: null, fichier_nom: null, fichier_type: null } : m));
   }
+
+  // Le prof retire uniquement le fichier d'un message de son élève (gestion
+  // d'espace), sans toucher au texte éventuellement présent dans ce message
+  async function supprimerFichierParProf(msg) {
+    const confirme = window.confirm("Supprimer ce fichier pour libérer de l'espace ? Le texte du message, s'il y en a, sera conservé.");
+    if (!confirme) return;
+
+    const path = extrairePathStorage(msg.fichier_url);
+    if (path) await supabase.storage.from("grand-oral").remove([path]);
+
+    await supabase.from("messages").update({
+      fichier_url: null,
+      fichier_nom: null,
+      fichier_type: null,
+      fichier_supprime_par_prof: true,
+    }).eq("id", msg.id);
+
+    setMessages(prev => prev.map(m => m.id === msg.id ? { ...m, fichier_url: null, fichier_nom: null, fichier_type: null, fichier_supprime_par_prof: true } : m));
+  }
+
 
   // Grouper par date
   const grouped = [];
@@ -2738,7 +2778,9 @@ function ChatZone({ eleveId, currentUser, currentProfile, allProfiles }) {
             : <Message key={item.msg.id} msg={item.msg}
                 isMe={item.msg.sender_id === currentUser.id}
                 profile={allProfiles.find(p => p.id === item.msg.sender_id)}
-                onSupprimer={supprimerMessage} />
+                currentProfile={currentProfile}
+                onSupprimer={supprimerMessage}
+                onSupprimerFichier={supprimerFichierParProf} />
         )}
         {messages.length === 0 && (
           <div style={{ textAlign: "center", color: "var(--text-muted)", fontSize: 13, marginTop: 40 }}>
