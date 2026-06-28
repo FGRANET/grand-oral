@@ -155,6 +155,23 @@ const CSS = `
   .sidebar-list::-webkit-scrollbar { width: 4px; }
   .sidebar-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
 
+  /* ── Indicateur d'usage Supabase ── */
+  .usage-indicator { border-top: 1px solid var(--border); flex-shrink: 0; padding: 4px; }
+  .usage-indicator-toggle {
+    width: 100%; background: none; border: none; color: var(--text-muted);
+    font-family: var(--font); font-size: 11px; padding: 8px 8px; cursor: pointer;
+    display: flex; align-items: center; gap: 7px; border-radius: 8px; transition: background .15s;
+  }
+  .usage-indicator-toggle:hover { background: var(--surface2); }
+  .usage-chevron { margin-left: auto; font-size: 9px; }
+  .usage-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); flex-shrink: 0; }
+  .usage-dot.alerte { background: var(--red); }
+  .usage-detail { padding: 4px 10px 8px; display: flex; flex-direction: column; gap: 10px; }
+  .usage-row-label { font-size: 11px; color: var(--text-muted); display: flex; justify-content: space-between; margin-bottom: 5px; }
+  .usage-row-label span { font-family: var(--mono); }
+  .usage-bar { height: 4px; background: var(--surface2); border-radius: 3px; overflow: hidden; }
+  .usage-bar-fill { height: 100%; border-radius: 3px; transition: width .3s; }
+
   .eleve-item {
     display: flex; align-items: center; gap: 12px; padding: 10px 12px;
     border-radius: 12px; cursor: pointer; transition: background .15s;
@@ -770,8 +787,15 @@ const CSS = `
   .msg-row.mine .bubble {
     background: var(--bubble-me); border-bottom-left-radius: 16px; border-bottom-right-radius: 4px;
   }
-  .bubble-meta { font-size: 10px; color: var(--text-muted); margin-top: 4px; text-align: right; }
-  .msg-row:not(.mine) .bubble-meta { text-align: left; }
+  .bubble-meta { font-size: 10px; color: var(--text-muted); margin-top: 4px; text-align: right; display: flex; align-items: center; justify-content: flex-end; gap: 6px; }
+  .msg-row:not(.mine) .bubble-meta { text-align: left; justify-content: flex-start; }
+  .bubble-delete-btn {
+    background: none; border: none; color: var(--text-muted); cursor: pointer;
+    font-size: 11px; padding: 0; line-height: 1; opacity: .5; transition: opacity .15s;
+  }
+  .bubble-delete-btn:hover { opacity: 1; color: var(--red); }
+  .bubble.bubble-supprime { background: transparent; border: 1px dashed var(--border); }
+  .bubble-supprime-text { font-size: 13px; color: var(--text-muted); font-style: italic; }
 
   .bubble-sender { font-size: 11px; font-weight: 600; color: var(--accent-light); margin-bottom: 4px; }
 
@@ -1083,7 +1107,7 @@ function ChangePasswordModal({ onClose }) {
 }
 
 // ─── Composant Message ───────────────────────────────────────────────
-function Message({ msg, isMe, profile }) {
+function Message({ msg, isMe, profile, onSupprimer }) {
   const hasFile = !!msg.fichier_url;
   const hasText = !!msg.contenu;
   return (
@@ -1095,18 +1119,29 @@ function Message({ msg, isMe, profile }) {
       )}
       <div>
         {!isMe && <div className="bubble-sender">{profile?.prenom} {profile?.nom}</div>}
-        <div className="bubble">
-          {hasFile && (
-            <a className="file-bubble" href={msg.fichier_url} target="_blank" rel="noreferrer">
-              <span className="file-icon">{fileIcon(msg.fichier_type)}</span>
-              <div className="file-details">
-                <div className="file-name">{msg.fichier_nom}</div>
-                <div className="file-dl">Ouvrir le fichier</div>
-              </div>
-            </a>
+        <div className={`bubble${msg.supprime ? " bubble-supprime" : ""}`}>
+          {msg.supprime ? (
+            <div className="bubble-supprime-text">🚫 Message supprimé</div>
+          ) : (
+            <>
+              {hasFile && (
+                <a className="file-bubble" href={msg.fichier_url} target="_blank" rel="noreferrer">
+                  <span className="file-icon">{fileIcon(msg.fichier_type)}</span>
+                  <div className="file-details">
+                    <div className="file-name">{msg.fichier_nom}</div>
+                    <div className="file-dl">Ouvrir le fichier</div>
+                  </div>
+                </a>
+              )}
+              {hasText && <div style={{ marginTop: hasFile ? 8 : 0 }}>{msg.contenu}</div>}
+            </>
           )}
-          {hasText && <div style={{ marginTop: hasFile ? 8 : 0 }}>{msg.contenu}</div>}
-          <div className="bubble-meta">{formatTime(msg.created_at)}</div>
+          <div className="bubble-meta">
+            {formatTime(msg.created_at)}
+            {isMe && !msg.supprime && (
+              <button className="bubble-delete-btn" onClick={() => onSupprimer(msg)} title="Supprimer ce message">🗑️</button>
+            )}
+          </div>
         </div>
       </div>
     </div>
@@ -1535,6 +1570,56 @@ function ImportQuestions({ currentUser, currentProfile, chapitres, onFermer, onI
 }
 
 // ─── Composant GenerateurZone ──────────────────────────────────────────
+// ─── Composant UsageIndicator ───────────────────────────────────────────
+// Affiche l'usage actuel de la base de données et du stockage de fichiers
+// par rapport aux limites du plan gratuit Supabase (500 Mo BDD, 1 Go fichiers).
+function formatTaille(octets) {
+  if (octets < 1024 * 1024) return `${(octets / 1024).toFixed(0)} Ko`;
+  return `${(octets / (1024 * 1024)).toFixed(0)} Mo`;
+}
+
+function UsageIndicator() {
+  const [stats, setStats] = useState(null);
+  const [ouvert, setOuvert] = useState(false);
+
+  useEffect(() => {
+    supabase.rpc("get_usage_stats").then(({ data, error }) => {
+      if (!error && data) setStats(data);
+    });
+  }, []);
+
+  if (!stats) return null;
+
+  const LIMITE_DB = 500 * 1024 * 1024;       // 500 Mo
+  const LIMITE_STORAGE = 1024 * 1024 * 1024; // 1 Go
+
+  const pctDb = Math.min(100, (stats.database_bytes / LIMITE_DB) * 100);
+  const pctStorage = Math.min(100, (stats.storage_bytes / LIMITE_STORAGE) * 100);
+  const alerte = pctDb > 80 || pctStorage > 80;
+
+  return (
+    <div className="usage-indicator">
+      <button className="usage-indicator-toggle" onClick={() => setOuvert(o => !o)}>
+        <span className={`usage-dot${alerte ? " alerte" : ""}`} />
+        Stockage Supabase
+        <span className="usage-chevron">{ouvert ? "▾" : "▸"}</span>
+      </button>
+      {ouvert && (
+        <div className="usage-detail">
+          <div className="usage-row">
+            <div className="usage-row-label">Base de données <span>{formatTaille(stats.database_bytes)} / 500 Mo</span></div>
+            <div className="usage-bar"><div className="usage-bar-fill" style={{ width: `${pctDb}%`, background: pctDb > 80 ? "var(--red)" : "var(--accent)" }} /></div>
+          </div>
+          <div className="usage-row">
+            <div className="usage-row-label">Fichiers (photos, PDF) <span>{formatTaille(stats.storage_bytes)} / 1 Go</span></div>
+            <div className="usage-bar"><div className="usage-bar-fill" style={{ width: `${pctStorage}%`, background: pctStorage > 80 ? "var(--red)" : "var(--accent)" }} /></div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Composant HistoriqueZone ───────────────────────────────────────────
 function HistoriqueZone({ currentUser, currentProfile, allProfiles, onRejouer }) {
   const [sessions, setSessions] = useState([]);
@@ -2534,6 +2619,32 @@ function ChatZone({ eleveId, currentUser, currentProfile, allProfiles }) {
     textRef.current?.focus();
   }
 
+  async function supprimerMessage(msg) {
+    const confirme = window.confirm("Supprimer ce message ? Cette action est irréversible.");
+    if (!confirme) return;
+
+    // Si le message a un fichier joint, on le supprime réellement du stockage
+    // pour libérer l'espace (le message, lui, reste visible comme "supprimé")
+    if (msg.fichier_url) {
+      const marqueur = "/grand-oral/";
+      const indexMarqueur = msg.fichier_url.indexOf(marqueur);
+      if (indexMarqueur !== -1) {
+        const path = decodeURIComponent(msg.fichier_url.slice(indexMarqueur + marqueur.length));
+        await supabase.storage.from("grand-oral").remove([path]);
+      }
+    }
+
+    await supabase.from("messages").update({
+      supprime: true,
+      contenu: null,
+      fichier_url: null,
+      fichier_nom: null,
+      fichier_type: null,
+    }).eq("id", msg.id);
+
+    setMessages(prev => prev.map(m => m.id === msg.id ? { ...m, supprime: true, contenu: null, fichier_url: null, fichier_nom: null, fichier_type: null } : m));
+  }
+
   // Grouper par date
   const grouped = [];
   let lastDate = null;
@@ -2626,7 +2737,8 @@ function ChatZone({ eleveId, currentUser, currentProfile, allProfiles }) {
             ? <div key={i} className="date-sep">{item.label}</div>
             : <Message key={item.msg.id} msg={item.msg}
                 isMe={item.msg.sender_id === currentUser.id}
-                profile={allProfiles.find(p => p.id === item.msg.sender_id)} />
+                profile={allProfiles.find(p => p.id === item.msg.sender_id)}
+                onSupprimer={supprimerMessage} />
         )}
         {messages.length === 0 && (
           <div style={{ textAlign: "center", color: "var(--text-muted)", fontSize: 13, marginTop: 40 }}>
@@ -2804,6 +2916,7 @@ export default function App() {
                 </div>
               ))}
             </div>
+            <UsageIndicator />
           </div>
         )}
 
