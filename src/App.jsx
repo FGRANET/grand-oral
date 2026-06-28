@@ -77,6 +77,7 @@ const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+
 // ─── Palette & styles globaux ────────────────────────────────────────
 const CSS = `
   @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap');
@@ -2651,7 +2652,12 @@ function ChatZone({ eleveId, currentUser, currentProfile, allProfiles }) {
     // pour libérer l'espace (le message, lui, reste visible comme "supprimé")
     if (msg.fichier_url) {
       const path = extrairePathStorage(msg.fichier_url);
-      if (path) await supabase.storage.from("grand-oral").remove([path]);
+      if (path) {
+        const { error: erreurStorage } = await supabase.storage.from("grand-oral").remove([path]);
+        if (erreurStorage) {
+          alert("Le message va être marqué supprimé, mais le fichier n'a pas pu être effacé du stockage : " + erreurStorage.message);
+        }
+      }
     }
 
     await supabase.from("messages").update({
@@ -2672,7 +2678,13 @@ function ChatZone({ eleveId, currentUser, currentProfile, allProfiles }) {
     if (!confirme) return;
 
     const path = extrairePathStorage(msg.fichier_url);
-    if (path) await supabase.storage.from("grand-oral").remove([path]);
+    if (path) {
+      const { error: erreurStorage } = await supabase.storage.from("grand-oral").remove([path]);
+      if (erreurStorage) {
+        alert("Le fichier n'a pas pu être effacé du stockage : " + erreurStorage.message);
+        return;
+      }
+    }
 
     await supabase.from("messages").update({
       fichier_url: null,
