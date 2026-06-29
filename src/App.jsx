@@ -611,6 +611,57 @@ const CSS = `
   }
   .gen-export-all-btn:hover { border-color: var(--accent); color: var(--accent-light); }
 
+  .gen-random-btn {
+    background: var(--surface2); border: 1px solid var(--border); color: var(--text);
+    border-radius: 10px; padding: 10px; font-family: var(--font); font-size: 13px; font-weight: 500;
+    cursor: pointer; transition: all .15s; display: flex; align-items: center; justify-content: center; gap: 8px;
+    flex-shrink: 0; width: 100%; margin-top: 8px;
+  }
+  .gen-random-btn:hover { border-color: var(--accent); color: var(--accent-light); }
+
+  .random-overlay {
+    position: fixed; inset: 0; background: #000000cc; z-index: 200;
+    display: flex; align-items: center; justify-content: center; padding: 20px;
+  }
+  .random-card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 20px;
+    padding: 32px; width: 600px; max-height: 85vh; display: flex; flex-direction: column;
+    box-shadow: 0 24px 64px #00000088;
+  }
+  .random-title { font-size: 18px; font-weight: 600; margin-bottom: 4px; }
+  .random-sub { font-size: 13px; color: var(--text-muted); margin-bottom: 20px; }
+  .random-body { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 18px; }
+  .random-section-label { font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--text-muted); letter-spacing: .04em; margin-bottom: 10px; }
+  .random-chapitres-grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 6px; max-height: 220px; overflow-y: auto;
+    border: 1px solid var(--border); border-radius: 10px; padding: 10px;
+  }
+  .random-chapitre-item { display: flex; align-items: center; gap: 8px; font-size: 12px; padding: 4px 6px; border-radius: 6px; cursor: pointer; }
+  .random-chapitre-item:hover { background: var(--surface2); }
+  .random-chapitre-item input { accent-color: var(--accent); cursor: pointer; flex-shrink: 0; }
+  .random-chips-row { display: flex; gap: 6px; flex-wrap: wrap; }
+  .random-chip {
+    background: var(--surface2); border: 1px solid var(--border); color: var(--text-muted);
+    border-radius: 14px; padding: 5px 13px; font-family: var(--font); font-size: 12px;
+    font-weight: 500; cursor: pointer; transition: all .15s; text-transform: capitalize;
+  }
+  .random-chip:hover { border-color: var(--accent); }
+  .random-chip.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .random-nb-row { display: flex; align-items: center; gap: 12px; }
+  .random-nb-input {
+    width: 90px; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px;
+    padding: 9px 12px; color: var(--text); font-family: var(--font); font-size: 14px; outline: none; text-align: center;
+  }
+  .random-nb-input:focus { border-color: var(--accent); }
+  .random-checkbox-row { display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer; }
+  .random-checkbox-row input { accent-color: var(--accent); cursor: pointer; }
+  .random-checkbox-desc { font-size: 11px; color: var(--text-muted); margin-left: 22px; margin-top: 2px; }
+  .random-warning {
+    background: rgba(248,113,113,0.08); border-left: 3px solid var(--red); color: var(--red);
+    font-size: 12px; padding: 10px 14px; border-radius: 8px; margin-top: 4px;
+  }
+  .random-actions { display: flex; gap: 10px; margin-top: 20px; flex-shrink: 0; }
+
   .gen-chapitre-export-btn {
     background: none; border: none; color: var(--text-muted); cursor: pointer;
     font-size: 13px; padding: 4px 6px; border-radius: 6px; transition: all .15s; flex-shrink: 0;
@@ -1771,6 +1822,172 @@ function HistoriqueZone({ currentUser, currentProfile, allProfiles, onRejouer })
   );
 }
 
+// ─── Composant TirageAleatoire ──────────────────────────────────────────
+const TYPES_TIRAGE = ["formule", "méthode", "définition", "théorème"];
+const NIVEAUX_TIRAGE = [1, 2, 3];
+
+function melanger(tableau) {
+  const copie = [...tableau];
+  for (let i = copie.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [copie[i], copie[j]] = [copie[j], copie[i]];
+  }
+  return copie;
+}
+
+function TirageAleatoire({ chapitres, onAnnuler, onTirer }) {
+  const [chapitresChoisis, setChapitresChoisis] = useState(new Set());
+  const [typesChoisis, setTypesChoisis] = useState(new Set(TYPES_TIRAGE));
+  const [niveauxChoisis, setNiveauxChoisis] = useState(new Set(NIVEAUX_TIRAGE));
+  const [nombre, setNombre] = useState(10);
+  const [equilibrer, setEquilibrer] = useState(true);
+  const [tirageEnCours, setTirageEnCours] = useState(false);
+  const [avertissement, setAvertissement] = useState(null);
+
+  function toggleChapitre(id) {
+    setChapitresChoisis(prev => {
+      const copie = new Set(prev);
+      copie.has(id) ? copie.delete(id) : copie.add(id);
+      return copie;
+    });
+  }
+  function toggleType(t) {
+    setTypesChoisis(prev => {
+      const copie = new Set(prev);
+      copie.has(t) ? copie.delete(t) : copie.add(t);
+      return copie;
+    });
+  }
+  function toggleNiveau(n) {
+    setNiveauxChoisis(prev => {
+      const copie = new Set(prev);
+      copie.has(n) ? copie.delete(n) : copie.add(n);
+      return copie;
+    });
+  }
+  function toutSelectionner() {
+    setChapitresChoisis(new Set(chapitres.map(c => c.id)));
+  }
+  function toutDeselectionner() {
+    setChapitresChoisis(new Set());
+  }
+
+  async function lancerTirage() {
+    if (chapitresChoisis.size === 0 || typesChoisis.size === 0 || niveauxChoisis.size === 0) return;
+    setTirageEnCours(true);
+    setAvertissement(null);
+
+    const { data: candidates } = await supabase.from("questions").select("*")
+      .in("chapitre_id", [...chapitresChoisis])
+      .in("type", [...typesChoisis])
+      .in("niveau", [...niveauxChoisis]);
+
+    const pool = candidates || [];
+    let resultat = [];
+
+    if (equilibrer) {
+      // Répartit le nombre demandé à peu près équitablement entre les chapitres choisis
+      const parChapitre = {};
+      pool.forEach(q => {
+        (parChapitre[q.chapitre_id] = parChapitre[q.chapitre_id] || []).push(q);
+      });
+      const chapitresAvecQuestions = Object.keys(parChapitre);
+      const quotaParChapitre = Math.ceil(nombre / chapitresAvecQuestions.length);
+
+      chapitresAvecQuestions.forEach(chId => {
+        const tirees = melanger(parChapitre[chId]).slice(0, quotaParChapitre);
+        resultat.push(...tirees);
+      });
+      resultat = melanger(resultat).slice(0, nombre);
+    } else {
+      resultat = melanger(pool).slice(0, nombre);
+    }
+
+    if (resultat.length < nombre) {
+      setAvertissement(`Seulement ${resultat.length} question${resultat.length !== 1 ? "s" : ""} trouvée${resultat.length !== 1 ? "s" : ""} sur ${nombre} demandée${nombre !== 1 ? "s" : ""} selon ces critères.`);
+    }
+
+    setTirageEnCours(false);
+    onTirer(resultat);
+  }
+
+  const chapitresTries = [...chapitres].sort((a, b) => a.ordre - b.ordre);
+
+  return (
+    <div className="random-overlay" onClick={e => e.target === e.currentTarget && onAnnuler()}>
+      <div className="random-card">
+        <div className="random-title">🎲 Tirage aléatoire</div>
+        <div className="random-sub">Compose automatiquement une sélection selon tes critères. Remplace la sélection actuelle.</div>
+
+        <div className="random-body">
+          <div>
+            <div className="random-section-label">
+              Chapitres
+              <span style={{ marginLeft: 8, fontWeight: 400, textTransform: "none" }}>
+                <a href="#" onClick={e => { e.preventDefault(); toutSelectionner(); }} style={{ color: "var(--accent-light)" }}>Tout cocher</a>
+                {" · "}
+                <a href="#" onClick={e => { e.preventDefault(); toutDeselectionner(); }} style={{ color: "var(--accent-light)" }}>Tout décocher</a>
+              </span>
+            </div>
+            <div className="random-chapitres-grid">
+              {chapitresTries.map(ch => (
+                <label key={ch.id} className="random-chapitre-item">
+                  <input type="checkbox" checked={chapitresChoisis.has(ch.id)} onChange={() => toggleChapitre(ch.id)} />
+                  {ch.nom}
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <div className="random-section-label">Type de question</div>
+            <div className="random-chips-row">
+              {TYPES_TIRAGE.map(t => (
+                <button key={t} className={`random-chip${typesChoisis.has(t) ? " active" : ""}`} onClick={() => toggleType(t)}>{t}</button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <div className="random-section-label">Niveau</div>
+            <div className="random-chips-row">
+              {NIVEAUX_TIRAGE.map(n => (
+                <button key={n} className={`random-chip${niveauxChoisis.has(n) ? " active" : ""}`} onClick={() => toggleNiveau(n)}>Niveau {n}</button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <div className="random-section-label">Nombre de questions</div>
+            <div className="random-nb-row">
+              <input type="number" className="random-nb-input" min={1} max={200} value={nombre}
+                onChange={e => setNombre(Math.max(1, Number(e.target.value) || 1))} />
+            </div>
+          </div>
+
+          <div>
+            <label className="random-checkbox-row">
+              <input type="checkbox" checked={equilibrer} onChange={() => setEquilibrer(e => !e)} />
+              Équilibrer entre chapitres
+            </label>
+            <div className="random-checkbox-desc">Répartit le nombre de questions à peu près équitablement entre les chapitres cochés.</div>
+          </div>
+
+          {avertissement && <div className="random-warning">⚠️ {avertissement}</div>}
+        </div>
+
+        <div className="random-actions">
+          <button className="diapo-cancel-btn" onClick={onAnnuler}>Annuler</button>
+          <button className="diapo-launch-btn" onClick={lancerTirage}
+            disabled={tirageEnCours || chapitresChoisis.size === 0 || typesChoisis.size === 0 || niveauxChoisis.size === 0}>
+            {tirageEnCours ? "Tirage en cours…" : "🎲 Tirer les questions"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Composant GenerateurZone ──────────────────────────────────────────
 function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSessionChargee }) {
   const [chapitres, setChapitres] = useState([]);
@@ -1807,6 +2024,7 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
   const [afficherReglagesDiapo, setAfficherReglagesDiapo] = useState(false);
   const [diapoActive, setDiapoActive] = useState(null); // { mode, delai } ou null
   const [afficherImport, setAfficherImport] = useState(false);
+  const [afficherTirage, setAfficherTirage] = useState(false);
   const [dragIndex, setDragIndex] = useState(null);
   const [overIndex, setOverIndex] = useState(null);
   const [overZone, setOverZone] = useState(null); // "top" | "middle" | "bottom"
@@ -2131,6 +2349,9 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
               ⬇️ Tout exporter
             </button>
           </div>
+          <button className="gen-random-btn" onClick={() => setAfficherTirage(true)}>
+            🎲 Tirage aléatoire
+          </button>
         </div>
 
         <div className="gen-filters-bar">
@@ -2404,6 +2625,17 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
                 setQuestionsParChapitre(prev => ({ ...prev, [id]: data || [] }));
               });
             });
+          }}
+        />
+      )}
+
+      {afficherTirage && (
+        <TirageAleatoire
+          chapitres={chapitres}
+          onAnnuler={() => setAfficherTirage(false)}
+          onTirer={(resultat) => {
+            setSelection(resultat);
+            setAfficherTirage(false);
           }}
         />
       )}
