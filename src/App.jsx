@@ -1018,13 +1018,50 @@ function renderMathSegments(texte) {
   return segments;
 }
 
+// Découpe un segment de texte (hors formule mathématique) en repérant les
+// commandes LaTeX de mise en forme courantes : \textbf{...}, \textit{...},
+// \underline{...} et \emph{...}. Tout le reste reste du texte brut.
+function renderTextSegments(texte, keyDebut) {
+  const morceaux = [];
+  const regex = /\\(textbf|textit|underline|emph)\{([^}]*)\}/g;
+  let lastIndex = 0;
+  let match;
+  let key = keyDebut;
+
+  while ((match = regex.exec(texte)) !== null) {
+    if (match.index > lastIndex) {
+      morceaux.push({ type: "brut", content: texte.slice(lastIndex, match.index), key: key++ });
+    }
+    const commande = match[1];
+    const contenu = match[2];
+    morceaux.push({ type: commande, content: contenu, key: key++ });
+    lastIndex = regex.lastIndex;
+  }
+  if (lastIndex < texte.length) {
+    morceaux.push({ type: "brut", content: texte.slice(lastIndex), key: key++ });
+  }
+  return morceaux;
+}
+
 function MathText({ children, inline = true }) {
   const segments = renderMathSegments(children || "");
   const Wrapper = inline ? "span" : "div";
   return (
     <Wrapper className="katex-render">
       {segments.map(seg => {
-        if (seg.type === "text") return <span key={seg.key}>{seg.content}</span>;
+        if (seg.type === "text") {
+          const morceaux = renderTextSegments(seg.content, seg.key * 1000);
+          return (
+            <span key={seg.key}>
+              {morceaux.map(m => {
+                if (m.type === "textbf") return <strong key={m.key}>{m.content}</strong>;
+                if (m.type === "textit" || m.type === "emph") return <em key={m.key}>{m.content}</em>;
+                if (m.type === "underline") return <u key={m.key}>{m.content}</u>;
+                return <span key={m.key}>{m.content}</span>;
+              })}
+            </span>
+          );
+        }
         try {
           const html = katex.renderToString(seg.content, { displayMode: seg.displayMode, throwOnError: false });
           return <span key={seg.key} dangerouslySetInnerHTML={{ __html: html }} />;
