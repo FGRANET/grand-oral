@@ -619,75 +619,6 @@ const CSS = `
   }
   .gen-random-btn:hover { border-color: var(--accent); color: var(--accent-light); }
 
-  /* ── Création d'exercice d'application ── */
-  .exo-create-btn {
-    background: var(--surface2); border: 1px solid var(--border); color: var(--text);
-    border-radius: 10px; padding: 10px; font-family: var(--font); font-size: 13px; font-weight: 500;
-    cursor: pointer; transition: all .15s; display: flex; align-items: center; justify-content: center; gap: 8px;
-    flex-shrink: 0; width: 100%; margin-top: 8px;
-  }
-  .exo-create-btn:hover { border-color: var(--accent); color: var(--accent-light); }
-
-  .exo-overlay {
-    position: fixed; inset: 0; background: #000000cc; z-index: 200;
-    display: flex; align-items: center; justify-content: center; padding: 20px;
-  }
-  .exo-card {
-    background: var(--surface); border: 1px solid var(--border); border-radius: 20px;
-    padding: 32px; width: 700px; max-height: 88vh; display: flex; flex-direction: column;
-    box-shadow: 0 24px 64px #00000088;
-  }
-  .exo-title { font-size: 18px; font-weight: 600; margin-bottom: 4px; }
-  .exo-sub { font-size: 13px; color: var(--text-muted); margin-bottom: 20px; }
-  .exo-body { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 16px; padding-right: 4px; }
-  .exo-field { display: flex; flex-direction: column; gap: 6px; }
-  .exo-field label { font-size: 11px; font-weight: 600; text-transform: uppercase; color: var(--text-muted); letter-spacing: .04em; }
-  .exo-field select, .exo-field input[type="text"] {
-    background: var(--surface2); border: 1px solid var(--border); border-radius: 8px;
-    padding: 9px 12px; color: var(--text); font-family: var(--font); font-size: 13px; outline: none;
-  }
-  .exo-textarea {
-    background: var(--surface2); border: 1px solid var(--border); border-radius: 8px;
-    padding: 10px 12px; color: var(--text); font-family: var(--mono); font-size: 13px; outline: none;
-    resize: vertical; min-height: 60px; line-height: 1.5; width: 100%;
-  }
-  .exo-field select:focus, .exo-field input:focus, .exo-textarea:focus { border-color: var(--accent); }
-  .exo-hint { font-size: 11px; color: var(--text-muted); }
-  .exo-hint code { background: var(--surface2); padding: 1px 5px; border-radius: 4px; font-family: var(--mono); }
-
-  .exo-params-section { border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; }
-  .exo-params-empty { font-size: 12px; color: var(--text-muted); font-style: italic; }
-  .exo-param-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
-  .exo-param-name {
-    font-family: var(--mono); font-size: 13px; font-weight: 600; color: var(--accent-light);
-    width: 28px; flex-shrink: 0;
-  }
-  .exo-param-bound {
-    width: 70px; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px;
-    padding: 6px 9px; color: var(--text); font-family: var(--font); font-size: 12px; outline: none; text-align: center;
-  }
-  .exo-param-sep { font-size: 12px; color: var(--text-muted); }
-  .exo-param-type {
-    background: var(--surface2); border: 1px solid var(--border); border-radius: 6px;
-    padding: 6px 9px; color: var(--text); font-family: var(--font); font-size: 12px; outline: none; margin-left: auto;
-  }
-
-  .exo-test-section { background: var(--surface2); border-radius: 12px; padding: 16px; }
-  .exo-test-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
-  .exo-test-btn {
-    background: var(--accent); color: #fff; border: none; border-radius: 8px;
-    padding: 8px 16px; font-family: var(--font); font-size: 12px; font-weight: 600; cursor: pointer;
-  }
-  .exo-test-btn:hover { background: var(--accent-light); }
-  .exo-test-result { background: var(--surface); border-radius: 10px; padding: 12px 14px; font-size: 14px; }
-  .exo-test-result-label { font-size: 10px; font-weight: 700; text-transform: uppercase; color: var(--text-muted); margin-bottom: 4px; letter-spacing: .04em; }
-  .exo-test-result-reponse { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); color: var(--accent-light); }
-  .exo-test-values { font-size: 11px; color: var(--text-muted); font-family: var(--mono); margin-top: 8px; }
-  .exo-test-empty { font-size: 12px; color: var(--text-muted); text-align: center; padding: 12px; }
-  .exo-test-error { font-size: 12px; color: var(--red); }
-
-  .exo-actions { display: flex; gap: 10px; margin-top: 20px; flex-shrink: 0; }
-
   .random-overlay {
     position: fixed; inset: 0; background: #000000cc; z-index: 200;
     display: flex; align-items: center; justify-content: center; padding: 20px;
@@ -2061,203 +1992,6 @@ function melanger(tableau) {
   return copie;
 }
 
-// ─── Composant CreerExercice ─────────────────────────────────────────────
-// Détecte automatiquement les noms de variables présents dans un texte
-// modèle (énoncé + réponse), pour pré-remplir les champs de paramètres.
-// Ignore les expressions composées comme {2a} ou {poly(...)} : ne retient
-// que les variables simples d'une seule lettre.
-function detecterVariables(enonce, reponse) {
-  const texte = `${enonce} ${reponse}`;
-  const variables = new Set();
-  const regex = /\{([^{}]+)\}/g;
-  let match;
-  while ((match = regex.exec(texte)) !== null) {
-    const expr = match[1].trim();
-    if (/^poly\(/.test(expr)) {
-      const interieur = expr.match(/^poly\((.+)\)$/)?.[1] || "";
-      interieur.split(",").forEach(terme => {
-        const nom = terme.split(":")[0].trim();
-        if (/^[a-zA-Z]+$/.test(nom)) variables.add(nom);
-      });
-    } else {
-      const lettres = expr.match(/[a-zA-Z]+/g) || [];
-      lettres.forEach(l => variables.add(l));
-    }
-  }
-  return [...variables].sort();
-}
-
-function CreerExercice({ chapitres, currentUser, onFermer, onCree }) {
-  const [chapitreId, setChapitreId] = useState(chapitres[0]?.id || "");
-  const [enonceModele, setEnonceModele] = useState("");
-  const [reponseModele, setReponseModele] = useState("");
-  const [niveau, setNiveau] = useState(2);
-  const [bornes, setBornes] = useState({}); // { nomVar: { min, max, type } }
-  const [testResultat, setTestResultat] = useState(null);
-  const [testErreur, setTestErreur] = useState(null);
-  const [enregistrement, setEnregistrement] = useState(false);
-  const [idExercice, setIdExercice] = useState("");
-
-  const variablesDetectees = detecterVariables(enonceModele, reponseModele);
-
-  function mettreAJourBorne(nom, champ, valeur) {
-    setBornes(prev => ({
-      ...prev,
-      [nom]: { min: -10, max: 10, type: "entier", ...prev[nom], [champ]: valeur },
-    }));
-  }
-
-  function lancerTest() {
-    setTestErreur(null);
-    try {
-      const parametres = {};
-      variablesDetectees.forEach(nom => {
-        const b = bornes[nom] || { min: -10, max: 10, type: "entier" };
-        parametres[nom] = { min: Number(b.min), max: Number(b.max), type: b.type || "entier" };
-      });
-      const resultat = tirerExercice({ enonce_modele: enonceModele, reponse_modele: reponseModele, parametres });
-      setTestResultat(resultat);
-    } catch (e) {
-      setTestErreur(e.message);
-      setTestResultat(null);
-    }
-  }
-
-  async function enregistrer() {
-    if (!idExercice.trim() || !enonceModele.trim() || !reponseModele.trim() || !chapitreId) return;
-    setEnregistrement(true);
-    const parametres = {};
-    variablesDetectees.forEach(nom => {
-      const b = bornes[nom] || { min: -10, max: 10, type: "entier" };
-      parametres[nom] = { min: Number(b.min), max: Number(b.max), type: b.type || "entier" };
-    });
-
-    const { error } = await supabase.from("exercices_application").insert({
-      id: idExercice.trim(),
-      chapitre_id: chapitreId,
-      enonce_modele: enonceModele.trim(),
-      reponse_modele: reponseModele.trim(),
-      parametres,
-      niveau,
-      prof_id: currentUser.id,
-    });
-
-    setEnregistrement(false);
-    if (error) {
-      alert("Erreur lors de l'enregistrement : " + error.message);
-      return;
-    }
-    onCree();
-  }
-
-  return (
-    <div className="exo-overlay" onClick={e => e.target === e.currentTarget && onFermer()}>
-      <div className="exo-card">
-        <div className="exo-title">🎲 Créer un exercice d'application</div>
-        <div className="exo-sub">Valeurs numériques tirées au hasard à chaque utilisation. Teste plusieurs tirages avant d'enregistrer.</div>
-
-        <div className="exo-body">
-          <div className="exo-field">
-            <label>Chapitre</label>
-            <select value={chapitreId} onChange={e => setChapitreId(e.target.value)}>
-              {chapitres.map(ch => <option key={ch.id} value={ch.id}>{ch.nom}</option>)}
-            </select>
-          </div>
-
-          <div className="exo-field">
-            <label>Identifiant</label>
-            <input type="text" value={idExercice} onChange={e => setIdExercice(e.target.value)} placeholder="ex: DER_FG_EX01" />
-            <div className="exo-hint">Même convention que les questions : PRÉFIXE_AUTEUR_NN</div>
-          </div>
-
-          <div className="exo-field">
-            <label>Énoncé modèle</label>
-            <textarea className="exo-textarea" value={enonceModele} onChange={e => setEnonceModele(e.target.value)}
-              placeholder="Calculer f'(x) pour $f(x) = {poly(a:2, b:1, c:0)}$" />
-            <div className="exo-hint">
-              Variable simple : <code>{"{a}"}</code> · Expression : <code>{"{2a}"}</code> ou <code>{"{a+b}"}</code> · Polynôme propre : <code>{"{poly(a:2, b:1, c:0)}"}</code>
-            </div>
-          </div>
-
-          <div className="exo-field">
-            <label>Réponse modèle</label>
-            <textarea className="exo-textarea" value={reponseModele} onChange={e => setReponseModele(e.target.value)}
-              placeholder="$f'(x) = {poly(2a:1, b:0)}$" />
-          </div>
-
-          <div className="exo-field">
-            <label>Niveau</label>
-            <select value={niveau} onChange={e => setNiveau(Number(e.target.value))} style={{ width: 140 }}>
-              <option value={1}>Niveau 1</option>
-              <option value={2}>Niveau 2</option>
-              <option value={3}>Niveau 3</option>
-            </select>
-          </div>
-
-          <div className="exo-params-section">
-            <div className="exo-field" style={{ marginBottom: variablesDetectees.length > 0 ? 10 : 0 }}>
-              <label>Bornes des paramètres détectés</label>
-            </div>
-            {variablesDetectees.length === 0 ? (
-              <div className="exo-params-empty">Écris un énoncé avec des variables comme {"{a}"} pour qu'elles apparaissent ici.</div>
-            ) : (
-              variablesDetectees.map(nom => {
-                const b = bornes[nom] || { min: -10, max: 10, type: "entier" };
-                return (
-                  <div key={nom} className="exo-param-row">
-                    <span className="exo-param-name">{nom}</span>
-                    <input type="number" className="exo-param-bound" value={b.min}
-                      onChange={e => mettreAJourBorne(nom, "min", e.target.value)} />
-                    <span className="exo-param-sep">à</span>
-                    <input type="number" className="exo-param-bound" value={b.max}
-                      onChange={e => mettreAJourBorne(nom, "max", e.target.value)} />
-                    <select className="exo-param-type" value={b.type}
-                      onChange={e => mettreAJourBorne(nom, "type", e.target.value)}>
-                      <option value="entier">Entier</option>
-                      <option value="decimal">Décimal</option>
-                    </select>
-                  </div>
-                );
-              })
-            )}
-          </div>
-
-          <div className="exo-test-section">
-            <div className="exo-test-header">
-              <div className="exo-field" style={{ margin: 0 }}><label style={{ margin: 0 }}>Test du tirage</label></div>
-              <button className="exo-test-btn" onClick={lancerTest} disabled={!enonceModele.trim() || !reponseModele.trim()}>
-                🎲 Tirer un exemple
-              </button>
-            </div>
-            {testErreur && <div className="exo-test-error">Erreur : {testErreur}</div>}
-            {testResultat ? (
-              <div className="exo-test-result">
-                <div className="exo-test-result-label">Énoncé généré</div>
-                <MathText inline={false}>{testResultat.enonce}</MathText>
-                <div className="exo-test-result-reponse">
-                  <div className="exo-test-result-label">Réponse générée</div>
-                  <MathText inline={false}>{testResultat.reponse}</MathText>
-                </div>
-                <div className="exo-test-values">Valeurs tirées : {JSON.stringify(testResultat.valeurs)}</div>
-              </div>
-            ) : (
-              !testErreur && <div className="exo-test-empty">Clique sur "Tirer un exemple" pour voir un aperçu avant d'enregistrer.</div>
-            )}
-          </div>
-        </div>
-
-        <div className="exo-actions">
-          <button className="diapo-cancel-btn" onClick={onFermer}>Annuler</button>
-          <button className="diapo-launch-btn" onClick={enregistrer}
-            disabled={enregistrement || !idExercice.trim() || !enonceModele.trim() || !reponseModele.trim() || !chapitreId}>
-            {enregistrement ? "Enregistrement…" : "Enregistrer l'exercice"}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function TirageAleatoire({ chapitres, onAnnuler, onTirer }) {
   const [chapitresChoisis, setChapitresChoisis] = useState(new Set());
   const [typesChoisis, setTypesChoisis] = useState(new Set(TYPES_TIRAGE));
@@ -2448,7 +2182,6 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
   const [diapoActive, setDiapoActive] = useState(null); // { mode, delai } ou null
   const [afficherImport, setAfficherImport] = useState(false);
   const [afficherTirage, setAfficherTirage] = useState(false);
-  const [afficherCreerExercice, setAfficherCreerExercice] = useState(false);
   const [dragIndex, setDragIndex] = useState(null);
   const [overIndex, setOverIndex] = useState(null);
   const [overZone, setOverZone] = useState(null); // "top" | "middle" | "bottom"
@@ -2776,9 +2509,6 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
           <button className="gen-random-btn" onClick={() => setAfficherTirage(true)}>
             🎲 Tirage aléatoire
           </button>
-          <button className="exo-create-btn" onClick={() => setAfficherCreerExercice(true)}>
-            ➕ Créer un exercice d'application
-          </button>
         </div>
 
         <div className="gen-filters-bar">
@@ -3064,15 +2794,6 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
             setSelection(resultat);
             setAfficherTirage(false);
           }}
-        />
-      )}
-
-      {afficherCreerExercice && (
-        <CreerExercice
-          chapitres={chapitres}
-          currentUser={currentUser}
-          onFermer={() => setAfficherCreerExercice(false)}
-          onCree={() => setAfficherCreerExercice(false)}
         />
       )}
     </div>
