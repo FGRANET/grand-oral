@@ -2470,6 +2470,23 @@ function RessourcesZone({ currentUser, currentProfile }) {
   }
 
   async function supprimer(id) {
+    const ressource = ressources.find(r => r.id === id);
+
+    // Si la ressource a un fichier joint, on le supprime réellement du
+    // storage pour libérer l'espace (même bug que celui corrigé côté chat :
+    // sans ça, le fichier restait orphelin malgré la suppression de la ligne)
+    if (ressource?.fichier_url) {
+      const marqueur = "/grand-oral/";
+      const indexMarqueur = ressource.fichier_url.indexOf(marqueur);
+      if (indexMarqueur !== -1) {
+        const path = decodeURIComponent(ressource.fichier_url.slice(indexMarqueur + marqueur.length));
+        const { error: erreurStorage } = await supabase.storage.from("grand-oral").remove([path]);
+        if (erreurStorage) {
+          alert("La ressource va être supprimée, mais le fichier n'a pas pu être effacé du stockage : " + erreurStorage.message);
+        }
+      }
+    }
+
     await supabase.from("ressources").delete().eq("id", id);
     fetchRessources();
   }
