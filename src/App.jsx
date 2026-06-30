@@ -318,6 +318,24 @@ const CSS = `
     color: var(--accent-light); margin-bottom: 2px;
   }
   .gen-question-id { font-family: var(--mono); color: var(--text-muted); font-weight: 500; text-transform: none; letter-spacing: 0; }
+
+  .gen-exercice-row { display: flex; align-items: flex-start; gap: 8px; padding: 7px 10px; border-radius: 8px; cursor: pointer; transition: background .15s; }
+  .gen-exercice-row:hover { background: var(--surface2); }
+  .gen-exercice-row input[type="checkbox"] { width: 14px; height: 14px; margin-top: 2px; accent-color: var(--accent); cursor: pointer; flex-shrink: 0; }
+  .gen-exercice-badge {
+    font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em;
+    color: #f5b942; margin-bottom: 2px; display: flex; align-items: center; gap: 5px;
+  }
+  .gen-exercice-detail {
+    margin-top: 6px; margin-left: 22px; padding: 12px 14px; background: var(--surface);
+    border: 1px solid var(--border); border-radius: 10px; font-size: 13px;
+  }
+  .gen-exercice-refresh-btn {
+    background: var(--surface2); border: 1px solid var(--border); color: var(--text-muted);
+    border-radius: 8px; padding: 6px 12px; font-family: var(--font); font-size: 11px;
+    cursor: pointer; transition: all .15s; margin-top: 10px;
+  }
+  .gen-exercice-refresh-btn:hover { border-color: var(--accent); color: var(--accent-light); }
   .gen-question-apercu {
     font-size: 12px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
@@ -1192,6 +1210,45 @@ function tirerExercice(exercice) {
     valeurs,
   };
 }
+
+// ─── Bibliothèque d'exercices "Option B" (codés sur mesure) ────────────
+// Chaque exercice de cette bibliothèque est une fonction qui tire ses
+// propres valeurs (avec la logique exacte voulue, y compris les cas
+// particuliers comme "jamais 0") et construit l'énoncé/réponse avec
+// formaterPolynome pour un affichage toujours propre.
+// Convention : chaque fonction prend 0 argument et retourne { enonce, reponse, valeurs }.
+
+function tirerEntierNonNul(min, max) {
+  let v;
+  do { v = Math.floor(Math.random() * (max - min + 1)) + min; } while (v === 0);
+  return v;
+}
+function tirerEntier(min, max) {
+  return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
+// DER_FG_EX01 — Dérivée d'un polynôme du second degré
+// f(x) = ax² + bx + c, avec a ∈ [-10,10]\{0}, b ∈ [-10,10], c ∈ [-20,20]
+function genererDeriveePolynomeDegre2() {
+  const a = tirerEntierNonNul(-10, 10);
+  const b = tirerEntier(-10, 10);
+  const c = tirerEntier(-20, 20);
+
+  const fx = formaterPolynome([{ valeur: a, degre: 2 }, { valeur: b, degre: 1 }, { valeur: c, degre: 0 }]);
+  const fpx = formaterPolynome([{ valeur: 2 * a, degre: 1 }, { valeur: b, degre: 0 }]);
+
+  return {
+    enonce: `Calculer $f'(x)$ pour $f(x) = ${fx}$.`,
+    reponse: `$f'(x) = ${fpx}$`,
+    valeurs: { a, b, c },
+  };
+}
+
+// Registre des exercices codés sur mesure : id -> fonction de génération.
+// C'est ici qu'on ajoutera chaque nouvel exercice créé avec Claude.
+const BIBLIOTHEQUE_EXERCICES = {
+  "DER_FG_EX01": { generer: genererDeriveePolynomeDegre2, chapitre: "Dérivation", niveau: 2, titre: "Dérivée d'un polynôme du second degré" },
+};
 
 
 function Login({ onLogin }) {
@@ -2154,6 +2211,8 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
   const [questionsDetail, setQuestionsDetail] = useState({});          // { question_id: bool } détail ouvert
   const [reponsesVisibles, setReponsesVisibles] = useState({});        // { question_id: bool } réponse révélée (masquée par défaut)
   const [selection, setSelection] = useState([]);                       // [question objects, dans l'ordre de sélection]
+  const [tiragesExercices, setTiragesExercices] = useState({});         // { id_exercice: {enonce, reponse, valeurs} } - dernier tirage affiché
+  const [detailExerciceOuvert, setDetailExerciceOuvert] = useState({}); // { id_exercice: bool }
   const TYPES_DISPONIBLES = ["formule", "méthode", "définition", "théorème"];
   const NIVEAUX_DISPONIBLES = [1, 2, 3];
   const [typesActifs, setTypesActifs] = useState(new Set(TYPES_DISPONIBLES));
@@ -2339,6 +2398,61 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
 
   function nomChapitre(chapitreId) {
     return chapitres.find(c => c.id === chapitreId)?.nom || "";
+  }
+
+  // ── Exercices d'application (bibliothèque codée sur mesure) ──
+  function exercicesDuChapitre(chapitreNom) {
+    return Object.entries(BIBLIOTHEQUE_EXERCICES)
+      .filter(([, def]) => def.chapitre === chapitreNom)
+      .map(([id, def]) => ({ id, ...def }));
+  }
+
+  function toggleDetailExercice(id) {
+    setDetailExerciceOuvert(prev => ({ ...prev, [id]: !prev[id] }));
+    // Tire un premier aperçu dès l'ouverture du détail, s'il n'y en a pas déjà un
+    if (!detailExerciceOuvert[id] && !tiragesExercices[id]) {
+      retirerAuSort(id);
+    }
+  }
+
+  function retirerAuSort(idExercice) {
+    const def = BIBLIOTHEQUE_EXERCICES[idExercice];
+    if (!def) return;
+    const tirage = def.generer();
+    setTiragesExercices(prev => ({ ...prev, [idExercice]: tirage }));
+
+    // Si cet exercice est déjà dans la sélection, on met aussi à jour la
+    // version sélectionnée avec ce nouveau tirage (sans changer sa position)
+    setSelection(prev => prev.map(q =>
+      q.id === idExercice
+        ? { ...q, enonce: tirage.enonce, reponse: tirage.reponse }
+        : q
+    ));
+  }
+
+  function estExerciceSelectionne(idExercice) {
+    return selection.some(q => q.id === idExercice);
+  }
+
+  function toggleSelectionExercice(idExercice, chapitreId, niveau) {
+    if (estExerciceSelectionne(idExercice)) {
+      setSelection(prev => prev.filter(q => q.id !== idExercice));
+      return;
+    }
+    // Tire une version fraîche au moment de la sélection (ou réutilise
+    // l'aperçu déjà affiché s'il y en a un)
+    const def = BIBLIOTHEQUE_EXERCICES[idExercice];
+    const tirage = tiragesExercices[idExercice] || def.generer();
+    if (!tiragesExercices[idExercice]) setTiragesExercices(prev => ({ ...prev, [idExercice]: tirage }));
+
+    setSelection(prev => [...prev, {
+      id: idExercice,
+      chapitre_id: chapitreId,
+      type: "exercice",
+      enonce: tirage.enonce,
+      reponse: tirage.reponse,
+      niveau,
+    }]);
   }
 
   // ── Export .tex ──
@@ -2544,7 +2658,8 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
           const questions = questionsParChapitre[ch.id] || [];
           const questionsFiltrees = questions.filter(questionVisible);
           const nbMasquees = questions.length - questionsFiltrees.length;
-          const nbSelectionnees = questions.filter(q => estSelectionnee(q.id)).length;
+          const nbExercicesSelectionnes = exercicesDuChapitre(ch.nom).filter(ex => estExerciceSelectionne(ex.id)).length;
+          const nbSelectionnees = questions.filter(q => estSelectionnee(q.id)).length + nbExercicesSelectionnes;
           return (
             <div key={ch.id} className="gen-chapitre-block">
               <div className="gen-chapitre-row" onClick={() => toggleChapitre(ch.id)}>
@@ -2660,6 +2775,36 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
                       )}
                     </div>
                   ))}
+
+                  {exercicesDuChapitre(ch.nom).map(ex => {
+                    const tirage = tiragesExercices[ex.id];
+                    return (
+                      <div key={ex.id}>
+                        <div className="gen-exercice-row">
+                          <input type="checkbox" checked={estExerciceSelectionne(ex.id)}
+                            onChange={() => toggleSelectionExercice(ex.id, ch.id, ex.niveau)}
+                            onClick={e => e.stopPropagation()} />
+                          <div className="gen-question-summary" onClick={() => toggleDetailExercice(ex.id)}>
+                            <div className="gen-exercice-badge">🎲 Aléatoire · niveau {ex.niveau} · <span className="gen-question-id">{ex.id}</span></div>
+                            <div className="gen-question-apercu">{ex.titre}</div>
+                          </div>
+                        </div>
+                        {detailExerciceOuvert[ex.id] && tirage && (
+                          <div className="gen-exercice-detail">
+                            <div className="gen-question-detail-label">Exemple de tirage</div>
+                            <MathText inline={false}>{tirage.enonce}</MathText>
+                            <div className="gen-question-detail-reponse">
+                              <div className="gen-question-detail-label">Réponse</div>
+                              <MathText inline={false}>{tirage.reponse}</MathText>
+                            </div>
+                            <button className="gen-exercice-refresh-btn" onClick={() => retirerAuSort(ex.id)}>
+                              🎲 Retirer au sort
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>
