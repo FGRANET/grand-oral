@@ -292,6 +292,16 @@ const CSS = `
   .gen-header { padding: 16px 24px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
   .gen-header-title { font-size: 16px; font-weight: 600; }
   .gen-header-sub { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+  .gen-header-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+  .gen-header-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+  .gen-header-action-btn {
+    background: var(--surface2); border: 1px solid var(--border); color: var(--text-muted);
+    border-radius: 8px; padding: 6px 12px; font-family: var(--font); font-size: 11px;
+    font-weight: 500; cursor: pointer; transition: all .15s; white-space: nowrap;
+  }
+  .gen-header-action-btn:hover { border-color: var(--accent); color: var(--accent-light); }
+  .gen-header-action-btn.danger:hover { border-color: var(--red); color: var(--red); }
+  .gen-selected-checkbox { width: 14px; height: 14px; accent-color: var(--accent); cursor: pointer; flex-shrink: 0; margin-top: 3px; margin-right: 2px; }
 
   .gen-chapitre-block { margin-bottom: 6px; }
   .gen-chapitre-row {
@@ -2211,9 +2221,10 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
   const [questionsDetail, setQuestionsDetail] = useState({});          // { question_id: bool } détail ouvert
   const [reponsesVisibles, setReponsesVisibles] = useState({});        // { question_id: bool } réponse révélée (masquée par défaut)
   const [selection, setSelection] = useState([]);                       // [question objects, dans l'ordre de sélection]
+  const [elementsCoches, setElementsCoches] = useState(new Set());      // ids cochés dans la colonne de droite pour suppression groupée
   const [tiragesExercices, setTiragesExercices] = useState({});         // { id_exercice: {enonce, reponse, valeurs} } - dernier tirage affiché
   const [detailExerciceOuvert, setDetailExerciceOuvert] = useState({}); // { id_exercice: bool }
-  const TYPES_DISPONIBLES = ["formule", "méthode", "définition", "théorème"];
+  const TYPES_DISPONIBLES = ["formule", "méthode", "définition", "théorème", "exercice"];
   const NIVEAUX_DISPONIBLES = [1, 2, 3];
   const [typesActifs, setTypesActifs] = useState(new Set(TYPES_DISPONIBLES));
   const [niveauxActifs, setNiveauxActifs] = useState(new Set(NIVEAUX_DISPONIBLES));
@@ -2377,6 +2388,28 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
 
   function retirerSelection(questionId) {
     setSelection(prev => prev.filter(q => q.id !== questionId));
+    setElementsCoches(prev => { const c = new Set(prev); c.delete(questionId); return c; });
+  }
+
+  function toutRetirer() {
+    if (selection.length === 0) return;
+    const confirme = window.confirm(`Retirer les ${selection.length} question${selection.length !== 1 ? "s" : ""} de la sélection ?`);
+    if (!confirme) return;
+    setSelection([]);
+    setElementsCoches(new Set());
+  }
+
+  function toggleCocheElement(id) {
+    setElementsCoches(prev => {
+      const c = new Set(prev);
+      c.has(id) ? c.delete(id) : c.add(id);
+      return c;
+    });
+  }
+
+  function retirerElementsCoches() {
+    setSelection(prev => prev.filter(q => !elementsCoches.has(q.id)));
+    setElementsCoches(new Set());
   }
 
   function deplacerSelection(indexDepart, indexArrivee) {
@@ -2402,8 +2435,9 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
 
   // ── Exercices d'application (bibliothèque codée sur mesure) ──
   function exercicesDuChapitre(chapitreNom) {
+    if (!typesActifs.has("exercice")) return [];
     return Object.entries(BIBLIOTHEQUE_EXERCICES)
-      .filter(([, def]) => def.chapitre === chapitreNom)
+      .filter(([, def]) => def.chapitre === chapitreNom && niveauxActifs.has(def.niveau))
       .map(([id, def]) => ({ id, ...def }));
   }
 
@@ -2814,8 +2848,24 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
 
       <div className="gen-selection-col">
         <div className="gen-header">
-          <div className="gen-header-title">Sélection pour l'interrogation</div>
-          <div className="gen-header-sub">Coche des questions dans les chapitres à gauche pour les ajouter ici</div>
+          <div className="gen-header-row">
+            <div>
+              <div className="gen-header-title">Sélection pour l'interrogation</div>
+              <div className="gen-header-sub">Coche des questions dans les chapitres à gauche pour les ajouter ici</div>
+            </div>
+            {selection.length > 0 && (
+              <div className="gen-header-actions">
+                {elementsCoches.size > 0 && (
+                  <button className="gen-header-action-btn danger" onClick={retirerElementsCoches}>
+                    Retirer la sélection ({elementsCoches.size})
+                  </button>
+                )}
+                <button className="gen-header-action-btn danger" onClick={toutRetirer}>
+                  🗑️ Tout retirer
+                </button>
+              </div>
+            )}
+          </div>
         </div>
 
         {selection.length === 0 ? (
@@ -2859,6 +2909,8 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
                 }}
               >
                 <span className="gen-drag-handle" title="Glisser pour réordonner">⠿</span>
+                <input type="checkbox" className="gen-selected-checkbox" checked={elementsCoches.has(q.id)}
+                  onChange={() => toggleCocheElement(q.id)} onClick={e => e.stopPropagation()} />
                 <div className="gen-selected-num">{idx + 1}</div>
                 <div className="gen-selected-content">
                   <div className="gen-selected-chapitre">{nomChapitre(q.chapitre_id)}</div>
@@ -3540,10 +3592,10 @@ export default function App() {
             {activeTab === "ressources" && (
               <RessourcesZone currentUser={user} currentProfile={profile} />
             )}
-            {activeTab === "generateur" && (
+            <div style={{ display: activeTab === "generateur" ? "flex" : "none", flex: 1, minHeight: 0 }}>
               <GenerateurZone currentUser={user} currentProfile={profile}
                 sessionARecharger={sessionARecharger} onSessionChargee={() => setSessionARecharger(null)} />
-            )}
+            </div>
             {activeTab === "historique" && (
               <HistoriqueZone currentUser={user} currentProfile={profile} allProfiles={allProfiles}
                 onRejouer={(ids) => { setSessionARecharger(ids); setActiveTab("generateur"); }} />
