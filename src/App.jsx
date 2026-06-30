@@ -3578,28 +3578,34 @@ export default function App() {
         )}
 
         {profile.role === "professeur" && activeTab !== "chat" && (
-          <div style={{ display: "flex", flexDirection: "column", flex: 1, minWidth: 0, minHeight: 0 }}>
-            <div className="sidebar-tabs-top">
-              <button className={`sidebar-tab-top${activeTab === "chat" ? " active" : ""}`}
-                onClick={() => setActiveTab("chat")}>Élèves</button>
-              <button className={`sidebar-tab-top${activeTab === "ressources" ? " active" : ""}`}
-                onClick={() => setActiveTab("ressources")}>Ressources</button>
-              <button className={`sidebar-tab-top${activeTab === "generateur" ? " active" : ""}`}
-                onClick={() => setActiveTab("generateur")}>Générateur</button>
-              <button className={`sidebar-tab-top${activeTab === "historique" ? " active" : ""}`}
-                onClick={() => setActiveTab("historique")}>Historique</button>
-            </div>
-            {activeTab === "ressources" && (
+          <div className="sidebar-tabs-top">
+            <button className={`sidebar-tab-top${activeTab === "chat" ? " active" : ""}`}
+              onClick={() => setActiveTab("chat")}>Élèves</button>
+            <button className={`sidebar-tab-top${activeTab === "ressources" ? " active" : ""}`}
+              onClick={() => setActiveTab("ressources")}>Ressources</button>
+            <button className={`sidebar-tab-top${activeTab === "generateur" ? " active" : ""}`}
+              onClick={() => setActiveTab("generateur")}>Générateur</button>
+            <button className={`sidebar-tab-top${activeTab === "historique" ? " active" : ""}`}
+              onClick={() => setActiveTab("historique")}>Historique</button>
+          </div>
+        )}
+
+        {/* Ces trois zones restent toujours montées (jamais démontées au changement
+            d'onglet, y compris vers "chat") pour ne jamais perdre leur état interne
+            (sélection en cours du générateur, etc.) — seul l'affichage est masqué. */}
+        {profile.role === "professeur" && (
+          <div style={{ display: activeTab !== "chat" ? "flex" : "none", flexDirection: "column", flex: 1, minWidth: 0, minHeight: 0 }}>
+            <div style={{ display: activeTab === "ressources" ? "flex" : "none", flex: 1, minHeight: 0 }}>
               <RessourcesZone currentUser={user} currentProfile={profile} />
-            )}
+            </div>
             <div style={{ display: activeTab === "generateur" ? "flex" : "none", flex: 1, minHeight: 0 }}>
               <GenerateurZone currentUser={user} currentProfile={profile}
                 sessionARecharger={sessionARecharger} onSessionChargee={() => setSessionARecharger(null)} />
             </div>
-            {activeTab === "historique" && (
+            <div style={{ display: activeTab === "historique" ? "flex" : "none", flex: 1, minHeight: 0 }}>
               <HistoriqueZone currentUser={user} currentProfile={profile} allProfiles={allProfiles}
                 onRejouer={(ids) => { setSessionARecharger(ids); setActiveTab("generateur"); }} />
-            )}
+            </div>
           </div>
         )}
 
