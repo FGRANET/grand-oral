@@ -2047,7 +2047,7 @@ function HistoriqueZone({ currentUser, currentProfile, allProfiles, onRejouer })
 }
 
 // ─── Composant TirageAleatoire ──────────────────────────────────────────
-const TYPES_TIRAGE = ["formule", "méthode", "définition", "théorème"];
+const TYPES_TIRAGE = ["formule", "méthode", "définition", "théorème", "exercice"];
 const NIVEAUX_TIRAGE = [1, 2, 3];
 
 function melanger(tableau) {
@@ -2106,7 +2106,29 @@ function TirageAleatoire({ chapitres, onAnnuler, onTirer }) {
       .in("type", [...typesChoisis])
       .in("niveau", [...niveauxChoisis]);
 
-    const pool = candidates || [];
+    let pool = candidates || [];
+
+    // Inclure les exercices d'application correspondant aux critères : comme
+    // ils n'ont pas d'énoncé figé en base, on les tire réellement maintenant
+    // et on les ajoute au pool comme des questions classiques déjà résolues.
+    if (typesChoisis.has("exercice")) {
+      const chapitresParId = {};
+      chapitres.forEach(c => { chapitresParId[c.id] = c.nom; });
+
+      [...chapitresChoisis].forEach(chId => {
+        const nomChap = chapitresParId[chId];
+        Object.entries(BIBLIOTHEQUE_EXERCICES)
+          .filter(([, def]) => def.chapitre === nomChap && niveauxChoisis.has(def.niveau))
+          .forEach(([id, def]) => {
+            const tirage = def.generer();
+            pool.push({
+              id, chapitre_id: chId, type: "exercice", niveau: def.niveau,
+              enonce: tirage.enonce, reponse: tirage.reponse,
+            });
+          });
+      });
+    }
+
     let resultat = [];
 
     if (equilibrer) {
@@ -2271,10 +2293,30 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
   // Recharger une sélection depuis l'historique (clic sur "Rejouer" dans l'onglet Historique)
   useEffect(() => {
     if (!sessionARecharger) return;
-    supabase.from("questions").select("*").in("id", sessionARecharger).then(({ data }) => {
-      // Respecte l'ordre d'origine de la session, pas l'ordre renvoyé par Supabase
+
+    // Sépare les ids qui appartiennent à la banque de questions classiques
+    // de ceux qui sont des exercices d'application (présents dans la
+    // bibliothèque codée, jamais dans la table "questions")
+    const idsExercices = sessionARecharger.filter(id => BIBLIOTHEQUE_EXERCICES[id]);
+    const idsQuestions = sessionARecharger.filter(id => !BIBLIOTHEQUE_EXERCICES[id]);
+
+    supabase.from("questions").select("*").in("id", idsQuestions.length ? idsQuestions : ["__aucun__"]).then(({ data }) => {
       const parId = {};
       (data || []).forEach(q => { parId[q.id] = q; });
+
+      // Pour les exercices, on retire un nouveau tirage : la session ne
+      // mémorise que le modèle, pas les valeurs figées d'origine.
+      idsExercices.forEach(id => {
+        const def = BIBLIOTHEQUE_EXERCICES[id];
+        const chapitreCorrespondant = chapitres.find(c => c.nom === def.chapitre);
+        const tirage = def.generer();
+        parId[id] = {
+          id, chapitre_id: chapitreCorrespondant?.id, type: "exercice", niveau: def.niveau,
+          enonce: tirage.enonce, reponse: tirage.reponse,
+        };
+      });
+
+      // Respecte l'ordre d'origine de la session, pas l'ordre renvoyé par Supabase
       const ordonnee = sessionARecharger.map(id => parId[id]).filter(Boolean);
       setSelection(ordonnee);
       onSessionChargee();
