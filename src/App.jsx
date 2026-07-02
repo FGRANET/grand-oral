@@ -196,10 +196,10 @@ const CSS = `
   .eleve-sujet { font-size: 11px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px; }
 
   /* ── Onglets sidebar (Élèves / Ressources) ── */
-  .sidebar-tabs { display: flex; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+  .sidebar-tabs { display: flex; border-bottom: 1px solid var(--border); flex-shrink: 0; padding: 0 12px; gap: 4px; }
   .sidebar-tabs.eleve-tabs { max-width: 360px; background: var(--surface); }
   .sidebar-tab {
-    flex: 1; padding: 12px 0; text-align: center; font-size: 12px; font-weight: 600;
+    padding: 12px 18px; font-size: 13px; font-weight: 600;
     color: var(--text-muted); cursor: pointer; background: none; border: none;
     font-family: var(--font); border-bottom: 2px solid transparent; transition: all .15s;
   }
