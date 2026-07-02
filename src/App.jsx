@@ -663,6 +663,81 @@ const CSS = `
   }
   .gen-random-btn:hover { border-color: var(--accent); color: var(--accent-light); }
 
+  /* ── Formulaire de création de question/exercice ── */
+  .creer-btn {
+    background: var(--surface2); border: 1px solid var(--border); color: var(--text);
+    border-radius: 10px; padding: 10px; font-family: var(--font); font-size: 13px; font-weight: 500;
+    cursor: pointer; transition: all .15s; display: flex; align-items: center; justify-content: center;
+    gap: 8px; flex-shrink: 0; width: 100%; margin-top: 8px;
+  }
+  .creer-btn:hover { border-color: var(--accent); color: var(--accent-light); }
+
+  .creer-overlay {
+    position: fixed; inset: 0; background: #000000cc; z-index: 200;
+    display: flex; align-items: center; justify-content: center; padding: 20px;
+  }
+  .creer-card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 20px;
+    padding: 28px 32px; width: 680px; max-height: 90vh; display: flex; flex-direction: column;
+    box-shadow: 0 24px 64px #00000088;
+  }
+  .creer-title { font-size: 17px; font-weight: 600; margin-bottom: 16px; }
+  .creer-mode-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 18px; }
+  .creer-mode-tab {
+    padding: 8px 16px; font-size: 13px; font-weight: 500; color: var(--text-muted);
+    cursor: pointer; background: none; border: none; font-family: var(--font);
+    border-bottom: 2px solid transparent; transition: all .15s;
+  }
+  .creer-mode-tab.active { color: var(--accent-light); border-bottom-color: var(--accent); }
+  .creer-body { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; padding-right: 4px; }
+  .creer-field { display: flex; flex-direction: column; gap: 5px; }
+  .creer-field label { font-size: 11px; font-weight: 600; text-transform: uppercase; color: var(--text-muted); letter-spacing: .04em; }
+  .creer-field select {
+    background: var(--surface2); border: 1px solid var(--border); border-radius: 8px;
+    padding: 9px 12px; color: var(--text); font-family: var(--font); font-size: 13px; outline: none;
+  }
+  .creer-field select:focus { border-color: var(--accent); }
+  .creer-textarea {
+    background: var(--surface2); border: 1px solid var(--border); border-radius: 8px;
+    padding: 10px 12px; color: var(--text); font-family: var(--mono); font-size: 13px; outline: none;
+    resize: vertical; min-height: 56px; line-height: 1.5; width: 100%;
+  }
+  .creer-textarea:focus { border-color: var(--accent); }
+  .creer-hint { font-size: 11px; color: var(--text-muted); }
+  .creer-hint code { background: var(--surface2); padding: 1px 5px; border-radius: 4px; font-family: var(--mono); }
+
+  /* Paramètres aléatoires */
+  .creer-params { border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; }
+  .creer-param-row { display: flex; align-items: center; gap: 8px; }
+  .creer-param-name { font-family: var(--mono); font-size: 13px; font-weight: 600; color: var(--accent-light); width: 28px; flex-shrink: 0; }
+  .creer-param-input {
+    width: 72px; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px;
+    padding: 6px 8px; color: var(--text); font-family: var(--font); font-size: 12px; outline: none; text-align: center;
+  }
+  .creer-param-sep { font-size: 12px; color: var(--text-muted); }
+  .creer-param-type {
+    background: var(--surface2); border: 1px solid var(--border); border-radius: 6px;
+    padding: 6px 8px; color: var(--text); font-family: var(--font); font-size: 12px; outline: none; margin-left: auto;
+  }
+  .creer-params-empty { font-size: 12px; color: var(--text-muted); font-style: italic; }
+  .creer-add-param { background: none; border: 1px dashed var(--border); color: var(--text-muted); border-radius: 6px; padding: 5px 12px; font-family: var(--font); font-size: 12px; cursor: pointer; transition: all .15s; }
+  .creer-add-param:hover { border-color: var(--accent); color: var(--accent-light); }
+  .creer-del-param { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 13px; padding: 0 4px; }
+  .creer-del-param:hover { color: var(--red); }
+
+  /* Zone de test */
+  .creer-test { background: var(--surface2); border-radius: 10px; padding: 14px; }
+  .creer-test-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+  .creer-test-label { font-size: 11px; font-weight: 600; text-transform: uppercase; color: var(--text-muted); letter-spacing: .04em; }
+  .creer-test-btn { background: var(--accent); color: #fff; border: none; border-radius: 7px; padding: 7px 14px; font-family: var(--font); font-size: 12px; font-weight: 600; cursor: pointer; }
+  .creer-test-btn:hover { background: var(--accent-light); }
+  .creer-test-result { background: var(--surface); border-radius: 8px; padding: 10px 12px; font-size: 13px; }
+  .creer-test-reponse { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); color: var(--accent-light); }
+  .creer-test-vals { font-size: 10px; color: var(--text-muted); font-family: var(--mono); margin-top: 6px; }
+  .creer-test-empty { font-size: 12px; color: var(--text-muted); text-align: center; padding: 8px; }
+  .creer-test-err { font-size: 12px; color: var(--red); }
+  .creer-actions { display: flex; gap: 10px; margin-top: 18px; flex-shrink: 0; }
+
   .random-overlay {
     position: fixed; inset: 0; background: #000000cc; z-index: 200;
     display: flex; align-items: center; justify-content: center; padding: 20px;
@@ -2209,6 +2284,196 @@ function melanger(tableau) {
   return copie;
 }
 
+// ─── Composant CreerQuestion ─────────────────────────────────────────────
+function CreerQuestion({ chapitres, currentUser, niveauScolaire, onFermer, onCree }) {
+  const [mode, setMode] = useState("fixe");
+  const [chapitreId, setChapitreId] = useState(chapitres[0]?.id || "");
+  const [type, setType] = useState("formule");
+  const [niveau, setNiveau] = useState(1);
+  const [enonce, setEnonce] = useState("");
+  const [reponse, setReponse] = useState("");
+  const [params, setParams] = useState([]);
+  const [testResultat, setTestResultat] = useState(null);
+  const [testErreur, setTestErreur] = useState(null);
+  const [enregistrement, setEnregistrement] = useState(false);
+
+  const variablesDetectees = React.useMemo(() => {
+    const texte = enonce + " " + reponse;
+    const variables = new Set();
+    const regex = /\{([^{}]+)\}/g;
+    let match;
+    while ((match = regex.exec(texte)) !== null) {
+      const expr = match[1].trim();
+      if (/^poly\(/.test(expr)) {
+        const interieur = expr.match(/^poly\((.+)\)$/)?.[1] || "";
+        interieur.split(",").forEach(t => {
+          const nom = t.split(":")[0].trim();
+          if (/^[a-zA-Z]+$/.test(nom)) variables.add(nom);
+        });
+      } else {
+        (expr.match(/[a-zA-Z]+/g) || []).forEach(l => variables.add(l));
+      }
+    }
+    return [...variables].sort();
+  }, [enonce, reponse]);
+
+  useEffect(() => {
+    if (mode !== "aleatoire") return;
+    setParams(prev => {
+      const existants = Object.fromEntries(prev.map(p => [p.nom, p]));
+      return variablesDetectees.map(nom => existants[nom] || { nom, min: "-10", max: "10", type: "entier" });
+    });
+  }, [variablesDetectees, mode]);
+
+  function mettreAJourParam(index, champ, valeur) {
+    setParams(prev => prev.map((p, i) => i === index ? { ...p, [champ]: valeur } : p));
+  }
+
+  function lancerTest() {
+    setTestErreur(null);
+    try {
+      const parametres = {};
+      params.forEach(p => { parametres[p.nom] = { min: Number(p.min), max: Number(p.max), type: p.type }; });
+      const valeurs = {};
+      Object.entries(parametres).forEach(([nom, def]) => { valeurs[nom] = tirerValeurParametre(def); });
+      const enonceGenere = substituerPlaceholders(enonce, valeurs);
+      const reponseGeneree = substituerPlaceholders(reponse, valeurs);
+      setTestResultat({ enonce: enonceGenere, reponse: reponseGeneree, valeurs });
+    } catch (e) {
+      setTestErreur(e.message);
+      setTestResultat(null);
+    }
+  }
+
+  async function enregistrer() {
+    if (!enonce.trim() || !reponse.trim() || !chapitreId) return;
+    setEnregistrement(true);
+    if (mode === "fixe") {
+      const { error } = await supabase.from("questions").insert({
+        chapitre_id: chapitreId, type, enonce: enonce.trim(),
+        reponse: reponse.trim(), niveau, prof_id: currentUser.id,
+      });
+      setEnregistrement(false);
+      if (error) { alert("Erreur : " + error.message); return; }
+    } else {
+      const parametres = {};
+      params.forEach(p => { parametres[p.nom] = { min: Number(p.min), max: Number(p.max), type: p.type }; });
+      const initiales = currentUser.email?.split("@")[0].split(".").map(p => p[0]?.toUpperCase()).join("") || "XX";
+      const { data: existants } = await supabase.from("exercices_application").select("id").eq("chapitre_id", chapitreId);
+      const nn = String((existants?.length || 0) + 1).padStart(2, "0");
+      const chapitreCourant = chapitres.find(c => c.id === chapitreId);
+      const prefixe = (chapitreCourant?.nom.split(" ").map(w => w[0]).join("") || "AUT").toUpperCase().slice(0, 4);
+      const id = `${prefixe}_${initiales}_EX${nn}`;
+      const { error } = await supabase.from("exercices_application").insert({
+        id, chapitre_id: chapitreId, enonce_modele: enonce.trim(),
+        reponse_modele: reponse.trim(), parametres, niveau, prof_id: currentUser.id,
+      });
+      setEnregistrement(false);
+      if (error) { alert("Erreur : " + error.message); return; }
+    }
+    onCree();
+  }
+
+  return (
+    <div className="creer-overlay" onClick={e => e.target === e.currentTarget && onFermer()}>
+      <div className="creer-card">
+        <div className="creer-title">➕ Créer une question</div>
+        <div className="creer-mode-tabs">
+          <button className={`creer-mode-tab${mode === "fixe" ? " active" : ""}`} onClick={() => setMode("fixe")}>📝 Question fixe</button>
+          <button className={`creer-mode-tab${mode === "aleatoire" ? " active" : ""}`} onClick={() => setMode("aleatoire")}>🎲 Question aléatoire</button>
+        </div>
+        <div className="creer-body">
+          <div className="creer-field">
+            <label>Chapitre</label>
+            <select value={chapitreId} onChange={e => setChapitreId(e.target.value)}>
+              {chapitres.map(ch => <option key={ch.id} value={ch.id}>{ch.nom}</option>)}
+            </select>
+          </div>
+          {mode === "fixe" && (
+            <div className="creer-field">
+              <label>Type</label>
+              <select value={type} onChange={e => setType(e.target.value)} style={{ width: 180 }}>
+                {["formule", "méthode", "définition", "théorème"].map(t =>
+                  <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</option>
+                )}
+              </select>
+            </div>
+          )}
+          <div className="creer-field">
+            <label>Niveau</label>
+            <select value={niveau} onChange={e => setNiveau(Number(e.target.value))} style={{ width: 140 }}>
+              <option value={1}>Niveau 1</option>
+              <option value={2}>Niveau 2</option>
+              <option value={3}>Niveau 3</option>
+            </select>
+          </div>
+          <div className="creer-field">
+            <label>Énoncé {mode === "aleatoire" ? "modèle" : ""}</label>
+            <textarea className="creer-textarea" value={enonce} onChange={e => setEnonce(e.target.value)}
+              placeholder={mode === "aleatoire"
+                ? "Ex : Résoudre $\\{a\\}x + \\{b\\} = 0$"
+                : "Ex : Donner la définition d'une suite arithmétique."} />
+            {mode === "aleatoire" && (
+              <div className="creer-hint">
+                Variable : <code>{"{a}"}</code> · Calcul : <code>{"{2a}"}</code> · Polynôme : <code>{"{poly(a:2, b:1, c:0)}"}</code>
+              </div>
+            )}
+          </div>
+          <div className="creer-field">
+            <label>Réponse {mode === "aleatoire" ? "modèle" : ""}</label>
+            <textarea className="creer-textarea" value={reponse} onChange={e => setReponse(e.target.value)}
+              placeholder={mode === "aleatoire" ? "Ex : $x = {-b/a}$" : "Ex : Une suite arithmétique est..."} />
+          </div>
+          {mode === "aleatoire" && (
+            <>
+              <div className="creer-field">
+                <label>Paramètres détectés</label>
+                <div className="creer-params">
+                  {params.length === 0 ? (
+                    <div className="creer-params-empty">Écris l'énoncé avec des variables {"{a}"} pour les voir apparaître ici.</div>
+                  ) : params.map((p, i) => (
+                    <div key={p.nom} className="creer-param-row">
+                      <span className="creer-param-name">{p.nom}</span>
+                      <input type="number" className="creer-param-input" value={p.min} onChange={e => mettreAJourParam(i, "min", e.target.value)} />
+                      <span className="creer-param-sep">à</span>
+                      <input type="number" className="creer-param-input" value={p.max} onChange={e => mettreAJourParam(i, "max", e.target.value)} />
+                      <select className="creer-param-type" value={p.type} onChange={e => mettreAJourParam(i, "type", e.target.value)}>
+                        <option value="entier">Entier</option>
+                        <option value="decimal">Décimal</option>
+                      </select>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="creer-test">
+                <div className="creer-test-header">
+                  <span className="creer-test-label">Aperçu du tirage</span>
+                  <button className="creer-test-btn" onClick={lancerTest} disabled={!enonce.trim() || !reponse.trim()}>🎲 Tirer un exemple</button>
+                </div>
+                {testErreur && <div className="creer-test-err">Erreur : {testErreur}</div>}
+                {testResultat ? (
+                  <div className="creer-test-result">
+                    <MathText inline={false}>{testResultat.enonce}</MathText>
+                    <div className="creer-test-reponse"><MathText inline={false}>{testResultat.reponse}</MathText></div>
+                    <div className="creer-test-vals">Valeurs : {JSON.stringify(testResultat.valeurs)}</div>
+                  </div>
+                ) : !testErreur && <div className="creer-test-empty">Lance un tirage pour vérifier le rendu avant d'enregistrer.</div>}
+              </div>
+            </>
+          )}
+        </div>
+        <div className="creer-actions">
+          <button className="diapo-cancel-btn" onClick={onFermer}>Annuler</button>
+          <button className="diapo-launch-btn" onClick={enregistrer}
+            disabled={enregistrement || !enonce.trim() || !reponse.trim() || !chapitreId}>
+            {enregistrement ? "Enregistrement…" : "Enregistrer"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function TirageAleatoire({ chapitres, onAnnuler, onTirer, niveauScolaire }) {
   const [chapitresChoisis, setChapitresChoisis] = useState(new Set());
   const [typesChoisis, setTypesChoisis] = useState(new Set(TYPES_TIRAGE));
@@ -2427,6 +2692,7 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
   const [diapoActive, setDiapoActive] = useState(null); // { mode, delai } ou null
   const [afficherImport, setAfficherImport] = useState(false);
   const [afficherTirage, setAfficherTirage] = useState(false);
+  const [afficherCreerQuestion, setAfficherCreerQuestion] = useState(false);
   const [dragIndex, setDragIndex] = useState(null);
   const [overIndex, setOverIndex] = useState(null);
   const [overZone, setOverZone] = useState(null); // "top" | "middle" | "bottom"
@@ -2864,6 +3130,9 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
           <button className="gen-random-btn" onClick={() => setAfficherTirage(true)}>
             🎲 Tirage aléatoire
           </button>
+          <button className="creer-btn" onClick={() => setAfficherCreerQuestion(true)}>
+            ➕ Créer une question
+          </button>
         </div>
 
         <div className="gen-filters-bar">
@@ -3198,6 +3467,21 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
           onTirer={(resultat) => {
             setSelection(resultat);
             setAfficherTirage(false);
+          }}
+        />
+      )}
+
+      {afficherCreerQuestion && (
+        <CreerQuestion
+          chapitres={chapitres}
+          currentUser={currentUser}
+          niveauScolaire={niveauScolaire}
+          onFermer={() => setAfficherCreerQuestion(false)}
+          onCree={() => {
+            setAfficherCreerQuestion(false);
+            // Recharger les questions du chapitre concerné
+            setQuestionsParChapitre({});
+            setChapitresOuverts({});
           }}
         />
       )}
