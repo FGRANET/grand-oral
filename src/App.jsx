@@ -77,6 +77,7 @@ const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+
 // ─── Palette & styles globaux ────────────────────────────────────────
 const CSS = `
   @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap');
@@ -3638,7 +3639,7 @@ export default function App() {
               </div>
 
               {/* Séparateur vertical */}
-              <div className="niveau-separateur" />
+              <div className="niveau-separateur"></div>
 
               {/* Sous-onglets selon le niveau */}
               {estTerminaleSpe ? (
@@ -3688,7 +3689,7 @@ export default function App() {
                         onClick={() => setSelectedEleve(el.id)}>
                         <div className="avatar">
                           {initials(el.nom, el.prenom)}
-                          {unreadCounts[el.id] > 0 && <div className="unread-dot" />}
+                          {unreadCounts[el.id] > 0 && <div className="unread-dot"></div>}
                         </div>
                         <div className="eleve-info">
                           <div className="eleve-name">{el.prenom} {el.nom}</div>
