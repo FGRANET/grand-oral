@@ -67,7 +67,7 @@
 // Même méthode, avec role = 'professeur'
 // =====================================================================
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import katex from "https://esm.sh/katex@0.16.9";
 
@@ -2297,7 +2297,7 @@ function CreerQuestion({ chapitres, currentUser, niveauScolaire, onFermer, onCre
   const [testErreur, setTestErreur] = useState(null);
   const [enregistrement, setEnregistrement] = useState(false);
 
-  const variablesDetectees = React.useMemo(() => {
+  const variablesDetectees = useMemo(() => {
     const texte = enonce + " " + reponse;
     const variables = new Set();
     const regex = /\{([^{}]+)\}/g;
