@@ -135,7 +135,27 @@ const CSS = `
   .login-error { font-size: 13px; color: var(--red); margin-top: 10px; text-align: center; }
 
   /* ── Layout principal ── */
-  .app { display: flex; height: 100vh; }
+  /* ── Sélecteur de niveau scolaire ── */
+  .niveau-wrapper { display: flex; flex-direction: column; height: 100vh; }
+  .niveau-bar {
+    display: flex; align-items: center; gap: 6px; padding: 6px 16px;
+    background: var(--surface); border-bottom: 1px solid var(--border); flex-shrink: 0;
+  }
+  .niveau-bar-label { font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: .04em; margin-right: 4px; }
+  .niveau-btn {
+    background: none; border: 1px solid var(--border); color: var(--text-muted);
+    border-radius: 14px; padding: 4px 13px; font-family: var(--font); font-size: 12px;
+    font-weight: 500; cursor: pointer; transition: all .15s;
+  }
+  .niveau-btn:hover { border-color: var(--accent); color: var(--text); }
+  .niveau-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  .niveau-badge {
+    font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em;
+    padding: 2px 7px; border-radius: 10px; margin-left: 6px; vertical-align: middle;
+  }
+  .niveau-badge.soon { background: var(--surface2); color: var(--text-muted); }
+
+  .app { display: flex; flex: 1; min-height: 0; }
 
   /* ── Sidebar (vue prof) ── */
   .sidebar {
@@ -2235,7 +2255,7 @@ function TirageAleatoire({ chapitres, onAnnuler, onTirer }) {
 }
 
 // ─── Composant GenerateurZone ──────────────────────────────────────────
-function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSessionChargee }) {
+function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSessionChargee, niveauScolaire }) {
   const [chapitres, setChapitres] = useState([]);
   const [questionsParChapitre, setQuestionsParChapitre] = useState({}); // { chapitre_id: [questions] }
   const [chapitresOuverts, setChapitresOuverts] = useState({});        // { chapitre_id: bool }
@@ -2282,13 +2302,21 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
   const [brouillonEdition, setBrouillonEdition] = useState(null);    // { type, enonce, reponse, niveau }
   const [sauvegardeEnCours, setSauvegardeEnCours] = useState(false);
 
-  // Charger la liste des chapitres au montage
+  // Charger la liste des chapitres filtrés par niveau scolaire
   useEffect(() => {
-    supabase.from("chapitres").select("*").order("ordre").then(({ data }) => {
-      setChapitres(data || []);
-      setLoading(false);
-    });
-  }, []);
+    setLoading(true);
+    setChapitres([]);
+    setChapitresOuverts({});
+    setQuestionsParChapitre({});
+    setSelection([]);
+    supabase.from("chapitres").select("*")
+      .eq("niveau_scolaire", niveauScolaire || "terminale_spe")
+      .order("ordre")
+      .then(({ data }) => {
+        setChapitres(data || []);
+        setLoading(false);
+      });
+  }, [niveauScolaire]);
 
   // Recharger une sélection depuis l'historique (clic sur "Rejouer" dans l'onglet Historique)
   useEffect(() => {
@@ -3484,7 +3512,8 @@ export default function App() {
   const [selectedEleve, setSelectedEleve] = useState(null);
   const [unreadCounts, setUnreadCounts] = useState({});
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState("chat"); // "chat" ou "ressources"
+  const [activeTab, setActiveTab] = useState("chat");
+  const [niveauScolaire, setNiveauScolaire] = useState("terminale_spe"); // "seconde" | "premiere" | "terminale_spe"
   const [sessionARecharger, setSessionARecharger] = useState(null); // ids de questions à charger dans le générateur
 
   // Charger le CSS de KaTeX une seule fois (nécessaire pour un rendu correct des formules)
@@ -3583,7 +3612,23 @@ export default function App() {
   return (
     <>
       <style>{CSS}</style>
-      <div className="app">
+      <div className={profile.role === "professeur" ? "niveau-wrapper" : ""}>
+        {profile.role === "professeur" && (
+          <div className="niveau-bar">
+            <span className="niveau-bar-label">Niveau</span>
+            <button className={`niveau-btn${niveauScolaire === "terminale_spe" ? " active" : ""}`}
+              onClick={() => setNiveauScolaire("terminale_spe")}>Terminale Spé</button>
+            <button className={`niveau-btn${niveauScolaire === "premiere" ? " active" : ""}`}
+              onClick={() => setNiveauScolaire("premiere")}>
+              Première <span className="niveau-badge soon">bientôt</span>
+            </button>
+            <button className={`niveau-btn${niveauScolaire === "seconde" ? " active" : ""}`}
+              onClick={() => setNiveauScolaire("seconde")}>
+              Seconde <span className="niveau-badge soon">bientôt</span>
+            </button>
+          </div>
+        )}
+        <div className="app">
         {profile.role === "professeur" && activeTab === "chat" && (
           <div className="sidebar">
             <div className="sidebar-tabs">
@@ -3636,7 +3681,8 @@ export default function App() {
             </div>
             <div style={{ display: activeTab === "generateur" ? "flex" : "none", flex: 1, minHeight: 0 }}>
               <GenerateurZone currentUser={user} currentProfile={profile}
-                sessionARecharger={sessionARecharger} onSessionChargee={() => setSessionARecharger(null)} />
+                sessionARecharger={sessionARecharger} onSessionChargee={() => setSessionARecharger(null)}
+                niveauScolaire={niveauScolaire} />
             </div>
             <div style={{ display: activeTab === "historique" ? "flex" : "none", flex: 1, minHeight: 0 }}>
               <HistoriqueZone currentUser={user} currentProfile={profile} allProfiles={allProfiles}
@@ -3670,6 +3716,7 @@ export default function App() {
             allProfiles={allProfiles}
           />
         )}
+      </div>
       </div>
     </>
   );
