@@ -77,7 +77,6 @@ const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-
 // ─── Palette & styles globaux ────────────────────────────────────────
 const CSS = `
   @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap');
@@ -207,6 +206,21 @@ const CSS = `
   .sidebar-tab:hover { color: var(--text); }
 
   /* ── Onglets en haut, pleine largeur (quand la sidebar verticale est masquée) ── */
+  /* ── Barre multi-niveaux (pills + séparateur + sous-onglets) ── */
+  .niveau-top-bar {
+    display: flex; align-items: center; background: var(--surface);
+    border-bottom: 1px solid var(--border); flex-shrink: 0; padding: 0 16px;
+  }
+  .niveau-pills { display: flex; align-items: center; gap: 6px; padding: 8px 0; flex-shrink: 0; }
+  .niveau-pill {
+    padding: 5px 13px; font-size: 12px; font-weight: 500; border-radius: 20px;
+    cursor: pointer; font-family: var(--font); border: 0.5px solid var(--border);
+    background: var(--surface2); color: var(--text-muted); transition: all .15s;
+  }
+  .niveau-pill:hover { border-color: currentColor; }
+  .niveau-pill.active { color: #fff; border-color: transparent; }
+  .niveau-separateur { width: 1.5px; height: 26px; background: var(--border); margin: 0 14px; flex-shrink: 0; border-radius: 2px; }
+
   .sidebar-tabs-top {
     display: flex; gap: 4px; border-bottom: 1px solid var(--border); background: var(--surface);
     flex-shrink: 0; padding: 0 12px;
@@ -3486,6 +3500,15 @@ export default function App() {
   const [unreadCounts, setUnreadCounts] = useState({});
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("chat");
+  const [niveauScolaire, setNiveauScolaire] = useState("terminale_spe");
+
+  const COULEURS_NIVEAU = {
+    terminale_spe: "#2563eb",
+    premiere:      "#7c3aed",
+    seconde:       "#059669",
+  };
+  const couleurActive = COULEURS_NIVEAU[niveauScolaire] || "#2563eb";
+  const estTerminaleSpe = niveauScolaire === "terminale_spe";
   const [sessionARecharger, setSessionARecharger] = useState(null); // ids de questions à charger dans le générateur
 
   // Charger le CSS de KaTeX une seule fois (nécessaire pour un rendu correct des formules)
@@ -3576,6 +3599,15 @@ export default function App() {
     );
   }
 
+  useEffect(() => {
+    if (!estTerminaleSpe && (activeTab === "chat" || activeTab === "ressources")) {
+      setActiveTab("automatismes");
+    }
+    if (estTerminaleSpe && (activeTab === "automatismes" || activeTab === "qcm")) {
+      setActiveTab("chat");
+    }
+  }, [niveauScolaire]);
+
   const eleves = allProfiles
     .filter(p => p.role === "eleve" && p.prof_id === profile.id)
     .sort((a, b) => a.nom.localeCompare(b.nom));
@@ -3585,72 +3617,118 @@ export default function App() {
     <>
       <style>{CSS}</style>
       <div className="app">
-        {profile.role === "professeur" && activeTab === "chat" && (
-          <div style={{ display: "flex", flexDirection: "column", flex: 1, minWidth: 0, minHeight: 0 }}>
-            <div className="sidebar-tabs-top">
-              <button className={`sidebar-tab-top${activeTab === "chat" ? " active" : ""}`}
-                onClick={() => setActiveTab("chat")}>
-                Élèves{totalUnread > 0 && <span className="badge-count" style={{ marginLeft: 6, fontSize: 10, padding: "1px 6px" }}>{totalUnread}</span>}
-              </button>
-              <button className={`sidebar-tab-top${activeTab === "ressources" ? " active" : ""}`}
-                onClick={() => setActiveTab("ressources")}>Ressources</button>
-              <button className={`sidebar-tab-top${activeTab === "generateur" ? " active" : ""}`}
-                onClick={() => setActiveTab("generateur")}>Générateur</button>
-              <button className={`sidebar-tab-top${activeTab === "historique" ? " active" : ""}`}
-                onClick={() => setActiveTab("historique")}>Historique</button>
-            </div>
-            <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
-              <div className="sidebar">
-                <div className="sidebar-list">
-                  {eleves.map(el => (
-                    <div key={el.id} className={`eleve-item${selectedEleve === el.id ? " active" : ""}`}
-                      onClick={() => setSelectedEleve(el.id)}>
-                      <div className="avatar">
-                        {initials(el.nom, el.prenom)}
-                        {unreadCounts[el.id] > 0 && <div className="unread-dot" />}
-                      </div>
-                      <div className="eleve-info">
-                        <div className="eleve-name">{el.prenom} {el.nom}</div>
-                        <div className="eleve-sujet">{el.sujet || "Sujet non défini"}</div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-                <UsageIndicator />
-              </div>
-              <ChatZone
-                eleveId={selectedEleve}
-                currentUser={user}
-                currentProfile={profile}
-                allProfiles={allProfiles}
-              />
-            </div>
-          </div>
-        )}
-
         {profile.role === "professeur" && (
-          <div style={{ display: activeTab !== "chat" ? "flex" : "none", flexDirection: "column", flex: 1, minWidth: 0, minHeight: 0 }}>
-            <div className="sidebar-tabs-top">
-              <button className={`sidebar-tab-top${activeTab === "chat" ? " active" : ""}`}
-                onClick={() => setActiveTab("chat")}>Élèves</button>
-              <button className={`sidebar-tab-top${activeTab === "ressources" ? " active" : ""}`}
-                onClick={() => setActiveTab("ressources")}>Ressources</button>
-              <button className={`sidebar-tab-top${activeTab === "generateur" ? " active" : ""}`}
-                onClick={() => setActiveTab("generateur")}>Générateur</button>
-              <button className={`sidebar-tab-top${activeTab === "historique" ? " active" : ""}`}
-                onClick={() => setActiveTab("historique")}>Historique</button>
+          <div style={{ display: "flex", flexDirection: "column", flex: 1, minWidth: 0, minHeight: 0 }}>
+
+            {/* Barre unifiée : pills de niveau + séparateur + sous-onglets */}
+            <div className="niveau-top-bar">
+              {/* Pills de niveau */}
+              <div className="niveau-pills">
+                {[
+                  { id: "terminale_spe", label: "Terminale spé" },
+                  { id: "premiere", label: "Première" },
+                  { id: "seconde", label: "Seconde" },
+                ].map(n => (
+                  <button key={n.id} className={`niveau-pill${niveauScolaire === n.id ? " active" : ""}`}
+                    style={niveauScolaire === n.id ? { background: COULEURS_NIVEAU[n.id] } : {}}
+                    onClick={() => setNiveauScolaire(n.id)}>
+                    {n.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Séparateur vertical */}
+              <div className="niveau-separateur" />
+
+              {/* Sous-onglets selon le niveau */}
+              {estTerminaleSpe ? (
+                <>
+                  <button className="sidebar-tab-top" onClick={() => setActiveTab("chat")}
+                    style={{ color: activeTab === "chat" ? couleurActive : "", borderBottom: activeTab === "chat" ? `2px solid ${couleurActive}` : "2px solid transparent" }}>
+                    Élèves{totalUnread > 0 && <span className="badge-count" style={{ marginLeft: 6, fontSize: 10, padding: "1px 6px" }}>{totalUnread}</span>}
+                  </button>
+                  <button className="sidebar-tab-top" onClick={() => setActiveTab("ressources")}
+                    style={{ color: activeTab === "ressources" ? couleurActive : "", borderBottom: activeTab === "ressources" ? `2px solid ${couleurActive}` : "2px solid transparent" }}>
+                    Ressources
+                  </button>
+                  <button className="sidebar-tab-top" onClick={() => setActiveTab("generateur")}
+                    style={{ color: activeTab === "generateur" ? couleurActive : "", borderBottom: activeTab === "generateur" ? `2px solid ${couleurActive}` : "2px solid transparent" }}>
+                    Générateur
+                  </button>
+                  <button className="sidebar-tab-top" onClick={() => setActiveTab("historique")}
+                    style={{ color: activeTab === "historique" ? couleurActive : "", borderBottom: activeTab === "historique" ? `2px solid ${couleurActive}` : "2px solid transparent" }}>
+                    Historique
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button className="sidebar-tab-top" onClick={() => setActiveTab("automatismes")}
+                    style={{ color: activeTab === "automatismes" ? couleurActive : "", borderBottom: activeTab === "automatismes" ? `2px solid ${couleurActive}` : "2px solid transparent" }}>
+                    Automatismes
+                  </button>
+                  <button className="sidebar-tab-top" onClick={() => setActiveTab("qcm")}
+                    style={{ color: activeTab === "qcm" ? couleurActive : "", borderBottom: activeTab === "qcm" ? `2px solid ${couleurActive}` : "2px solid transparent" }}>
+                    QCM
+                  </button>
+                  <button className="sidebar-tab-top" onClick={() => setActiveTab("historique")}
+                    style={{ color: activeTab === "historique" ? couleurActive : "", borderBottom: activeTab === "historique" ? `2px solid ${couleurActive}` : "2px solid transparent" }}>
+                    Historique
+                  </button>
+                </>
+              )}
             </div>
-            <div style={{ display: activeTab === "ressources" ? "flex" : "none", flex: 1, minHeight: 0 }}>
-              <RessourcesZone currentUser={user} currentProfile={profile} />
-            </div>
-            <div style={{ display: activeTab === "generateur" ? "flex" : "none", flex: 1, minHeight: 0 }}>
-              <GenerateurZone currentUser={user} currentProfile={profile}
-                sessionARecharger={sessionARecharger} onSessionChargee={() => setSessionARecharger(null)} />
-            </div>
-            <div style={{ display: activeTab === "historique" ? "flex" : "none", flex: 1, minHeight: 0 }}>
-              <HistoriqueZone currentUser={user} currentProfile={profile} allProfiles={allProfiles}
-                onRejouer={(ids) => { setSessionARecharger(ids); setActiveTab("generateur"); }} />
-            </div>
+
+            {/* Contenu Terminale Spé */}
+            {estTerminaleSpe && activeTab === "chat" && (
+              <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
+                <div className="sidebar">
+                  <div className="sidebar-list">
+                    {eleves.map(el => (
+                      <div key={el.id} className={`eleve-item${selectedEleve === el.id ? " active" : ""}`}
+                        onClick={() => setSelectedEleve(el.id)}>
+                        <div className="avatar">
+                          {initials(el.nom, el.prenom)}
+                          {unreadCounts[el.id] > 0 && <div className="unread-dot" />}
+                        </div>
+                        <div className="eleve-info">
+                          <div className="eleve-name">{el.prenom} {el.nom}</div>
+                          <div className="eleve-sujet">{el.sujet || "Sujet non défini"}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <UsageIndicator />
+                </div>
+                <ChatZone eleveId={selectedEleve} currentUser={user} currentProfile={profile} allProfiles={allProfiles} />
+              </div>
+            )}
+            {estTerminaleSpe && (
+              <>
+                <div style={{ display: activeTab === "ressources" ? "flex" : "none", flex: 1, minHeight: 0 }}>
+                  <RessourcesZone currentUser={user} currentProfile={profile} />
+                </div>
+                <div style={{ display: activeTab === "generateur" ? "flex" : "none", flex: 1, minHeight: 0 }}>
+                  <GenerateurZone currentUser={user} currentProfile={profile}
+                    sessionARecharger={sessionARecharger} onSessionChargee={() => setSessionARecharger(null)} />
+                </div>
+                <div style={{ display: activeTab === "historique" ? "flex" : "none", flex: 1, minHeight: 0 }}>
+                  <HistoriqueZone currentUser={user} currentProfile={profile} allProfiles={allProfiles}
+                    onRejouer={(ids) => { setSessionARecharger(ids); setActiveTab("generateur"); }} />
+                </div>
+              </>
+            )}
+
+            {/* Contenu Première / Seconde */}
+            {!estTerminaleSpe && (
+              <div style={{ display: "flex", flex: 1, alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 12, color: "var(--text-muted)" }}>
+                <div style={{ fontSize: 32, opacity: .3 }}>🚧</div>
+                <div style={{ fontSize: 14 }}>
+                  Contenu {niveauScolaire === "premiere" ? "Première" : "Seconde"} — bientôt disponible
+                </div>
+                <div style={{ fontSize: 12, opacity: .7 }}>Onglet actif : {activeTab}</div>
+              </div>
+            )}
+
           </div>
         )}
 
