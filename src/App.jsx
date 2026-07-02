@@ -140,7 +140,7 @@ const CSS = `
 
   /* ── Sidebar (vue prof) ── */
   .sidebar {
-    width: 280px; flex-shrink: 0; background: var(--surface);
+    width: 280px; flex-shrink: 0; background: #141720;
     border-right: 1px solid var(--border); display: flex; flex-direction: column;
   }
   .sidebar-header {
@@ -3586,35 +3586,45 @@ export default function App() {
       <style>{CSS}</style>
       <div className="app">
         {profile.role === "professeur" && activeTab === "chat" && (
-          <div className="sidebar">
-            <div className="sidebar-tabs">
-              <button className={`sidebar-tab${activeTab === "chat" ? " active" : ""}`}
+          <div style={{ display: "flex", flexDirection: "column", flex: 1, minWidth: 0, minHeight: 0 }}>
+            <div className="sidebar-tabs-top">
+              <button className={`sidebar-tab-top${activeTab === "chat" ? " active" : ""}`}
                 onClick={() => setActiveTab("chat")}>
                 Élèves{totalUnread > 0 && <span className="badge-count" style={{ marginLeft: 6, fontSize: 10, padding: "1px 6px" }}>{totalUnread}</span>}
               </button>
-              <button className={`sidebar-tab${activeTab === "ressources" ? " active" : ""}`}
+              <button className={`sidebar-tab-top${activeTab === "ressources" ? " active" : ""}`}
                 onClick={() => setActiveTab("ressources")}>Ressources</button>
-              <button className={`sidebar-tab${activeTab === "generateur" ? " active" : ""}`}
+              <button className={`sidebar-tab-top${activeTab === "generateur" ? " active" : ""}`}
                 onClick={() => setActiveTab("generateur")}>Générateur</button>
-              <button className={`sidebar-tab${activeTab === "historique" ? " active" : ""}`}
+              <button className={`sidebar-tab-top${activeTab === "historique" ? " active" : ""}`}
                 onClick={() => setActiveTab("historique")}>Historique</button>
             </div>
-            <div className="sidebar-list">
-              {eleves.map(el => (
-                <div key={el.id} className={`eleve-item${selectedEleve === el.id ? " active" : ""}`}
-                  onClick={() => setSelectedEleve(el.id)}>
-                  <div className="avatar">
-                    {initials(el.nom, el.prenom)}
-                    {unreadCounts[el.id] > 0 && <div className="unread-dot" />}
-                  </div>
-                  <div className="eleve-info">
-                    <div className="eleve-name">{el.prenom} {el.nom}</div>
-                    <div className="eleve-sujet">{el.sujet || "Sujet non défini"}</div>
-                  </div>
+            <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
+              <div className="sidebar">
+                <div className="sidebar-list">
+                  {eleves.map(el => (
+                    <div key={el.id} className={`eleve-item${selectedEleve === el.id ? " active" : ""}`}
+                      onClick={() => setSelectedEleve(el.id)}>
+                      <div className="avatar">
+                        {initials(el.nom, el.prenom)}
+                        {unreadCounts[el.id] > 0 && <div className="unread-dot" />}
+                      </div>
+                      <div className="eleve-info">
+                        <div className="eleve-name">{el.prenom} {el.nom}</div>
+                        <div className="eleve-sujet">{el.sujet || "Sujet non défini"}</div>
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              ))}
+                <UsageIndicator />
+              </div>
+              <ChatZone
+                eleveId={selectedEleve}
+                currentUser={user}
+                currentProfile={profile}
+                allProfiles={allProfiles}
+              />
             </div>
-            <UsageIndicator />
           </div>
         )}
 
@@ -3661,14 +3671,6 @@ export default function App() {
           </div>
         )}
 
-        {profile.role === "professeur" && activeTab === "chat" && (
-          <ChatZone
-            eleveId={selectedEleve}
-            currentUser={user}
-            currentProfile={profile}
-            allProfiles={allProfiles}
-          />
-        )}
       </div>
     </>
   );
