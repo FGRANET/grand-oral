@@ -1270,10 +1270,144 @@ function genererDeriveePolynomeDegre2() {
   };
 }
 
+// ─── Automatismes Seconde ───────────────────────────────────────────────
+
+// SEC_FG_EX01 — Résoudre ax + b = cx + d (a ≠ c pour avoir une solution unique)
+function genererEquationPremierDegre() {
+  let a, c;
+  do {
+    a = tirerEntierNonNul(-5, 5);
+    c = tirerEntierNonNul(-5, 5);
+  } while (a === c);
+  const b = tirerEntier(-10, 10);
+  const d = tirerEntier(-10, 10);
+
+  function pgcd(a, b) { a = Math.abs(a); b = Math.abs(b); while (b) { [a, b] = [b, a % b]; } return a; }
+  const num = d - b, den = a - c;
+  const g = pgcd(Math.abs(num), Math.abs(den));
+  let numR = num / g, denR = den / g;
+  if (denR < 0) { numR = -numR; denR = -denR; }
+
+  const solution = denR === 1 ? String(numR) : numR + "/" + denR;
+  const aStr = a === 1 ? "" : a === -1 ? "-" : String(a);
+  const cStr = c === 1 ? "" : c === -1 ? "-" : String(c);
+  const bStr = b === 0 ? "" : b > 0 ? " + " + b : " - " + Math.abs(b);
+  const dStr = d === 0 ? "" : d > 0 ? " + " + d : " - " + Math.abs(d);
+
+  return {
+    enonce: `Résoudre : $${aStr}x${bStr} = ${cStr}x${dStr}$`,
+    reponse: `$x = ${solution}$`,
+    valeurs: { a, b, c, d },
+  };
+}
+
+// SEC_FG_EX02 — Développer avec identités remarquables : (ax+b)², (ax-b)², (ax+b)(ax-b)
+// b est toujours > 0 pour éviter les doubles signes disgracieux
+function genererIdentiteRemarquable() {
+  const a = tirerEntierNonNul(-4, 4);
+  const b = tirerEntierNonNul(1, 5);
+  const type = Math.floor(Math.random() * 3);
+  const aStr = a === 1 ? "" : a === -1 ? "-" : String(a);
+  const A2 = a * a;
+  const A2str = A2 === 1 ? "x^2" : A2 + "x^2";
+  const B2 = b * b;
+
+  let enonce, reponse;
+
+  if (type === 0) {
+    const t2ab = 2 * a * b;
+    const t2 = t2ab > 0
+      ? " + " + (Math.abs(t2ab) === 1 ? "" : Math.abs(t2ab)) + "x"
+      : " - " + (Math.abs(t2ab) === 1 ? "" : Math.abs(t2ab)) + "x";
+    enonce = `(${aStr}x + ${b})^2`;
+    reponse = A2str + t2 + " + " + B2;
+  } else if (type === 1) {
+    const t2ab = -2 * a * b;
+    const t2 = t2ab > 0
+      ? " + " + (Math.abs(t2ab) === 1 ? "" : Math.abs(t2ab)) + "x"
+      : " - " + (Math.abs(t2ab) === 1 ? "" : Math.abs(t2ab)) + "x";
+    enonce = `(${aStr}x - ${b})^2`;
+    reponse = A2str + t2 + " + " + B2;
+  } else {
+    enonce = `(${aStr}x + ${b})(${aStr}x - ${b})`;
+    reponse = A2str + " - " + B2;
+  }
+
+  return {
+    enonce: `Développer : $${enonce}$`,
+    reponse: `$${reponse}$`,
+    valeurs: { a, b, type },
+  };
+}
+
+// SEC_FG_EX03 — Calculer f(c) pour f(x) = ax + b (fonction affine)
+function genererImageFonctionAffine() {
+  const a = tirerEntierNonNul(-5, 5);
+  const b = tirerEntier(-10, 10);
+  const c = tirerEntier(-8, 8);
+  const resultat = a * c + b;
+  const aStr = a === 1 ? "" : a === -1 ? "-" : String(a);
+  const bStr = b === 0 ? "" : b > 0 ? " + " + b : " - " + Math.abs(b);
+  return {
+    enonce: `Calculer $f(${c})$ pour $f(x) = ${aStr}x${bStr}$`,
+    reponse: `$f(${c}) = ${resultat}$`,
+    valeurs: { a, b, c },
+  };
+}
+
+// SEC_FG_EX04 — Coefficient multiplicateur ↔ taux d'évolution
+// Taux entier entre -50% et +50%, jamais 0
+function genererCoeffMultiplicateur() {
+  const taux = tirerEntierNonNul(-50, 50);
+  const coeff = (100 + taux) / 100;
+  const coeffStr = coeff % 1 === 0 ? String(coeff) : coeff.toFixed(2).replace(/0+$/, "");
+  const type = Math.random() > 0.5;
+
+  if (type) {
+    const sens = taux > 0 ? "une augmentation" : "une diminution";
+    return {
+      enonce: `Donner le coefficient multiplicateur correspondant à ${sens} de $${Math.abs(taux)}\\%$`,
+      reponse: `$\\times ${coeffStr}$`,
+      valeurs: { taux, sens: "taux→coeff" },
+    };
+  } else {
+    const evolution = taux > 0
+      ? `augmentation de $${taux}\\%$`
+      : `diminution de $${Math.abs(taux)}\\%$`;
+    return {
+      enonce: `Le coefficient multiplicateur $${coeffStr}$ correspond à quelle évolution ?`,
+      reponse: evolution,
+      valeurs: { taux, sens: "coeff→taux" },
+    };
+  }
+}
+
+// SEC_FG_EX05 — Distance entre deux points A(x1,y1) et B(x2,y2)
+function genererDistancePoints() {
+  const x1 = tirerEntier(-5, 5), y1 = tirerEntier(-5, 5);
+  const x2 = tirerEntier(-5, 5), y2 = tirerEntier(-5, 5);
+  const dx = x2 - x1, dy = y2 - y1;
+  const d2 = dx * dx + dy * dy;
+  const racine = Math.sqrt(d2);
+  const resultat = Number.isInteger(racine) ? String(racine) : `\\sqrt{${d2}}`;
+  return {
+    enonce: `Calculer la distance $AB$ avec $A(${x1};${y1})$ et $B(${x2};${y2})$`,
+    reponse: `$AB = ${resultat}$`,
+    valeurs: { x1, y1, x2, y2 },
+  };
+}
+
 // Registre des exercices codés sur mesure : id -> fonction de génération.
 // C'est ici qu'on ajoutera chaque nouvel exercice créé avec Claude.
 const BIBLIOTHEQUE_EXERCICES = {
-  "DER_FG_EX01": { generer: genererDeriveePolynomeDegre2, chapitre: "Dérivation", niveau: 2, titre: "Dérivée d'un polynôme du second degré" },
+  // ── Terminale Spé ──
+  "DER_FG_EX01": { generer: genererDeriveePolynomeDegre2, chapitre: "Dérivation", niveauScolaire: "terminale_spe", niveau: 2, titre: "Dérivée d'un polynôme du second degré" },
+  // ── Seconde ──
+  "SEC_FG_EX01": { generer: genererEquationPremierDegre,   chapitre: "Équations et Inéquations",       niveauScolaire: "seconde", niveau: 1, titre: "Résoudre ax + b = cx + d" },
+  "SEC_FG_EX02": { generer: genererIdentiteRemarquable,    chapitre: "Calcul littéral 2",               niveauScolaire: "seconde", niveau: 2, titre: "Développer avec identités remarquables" },
+  "SEC_FG_EX03": { generer: genererImageFonctionAffine,    chapitre: "Généralités sur les fonctions",   niveauScolaire: "seconde", niveau: 1, titre: "Image d'un réel par une fonction affine" },
+  "SEC_FG_EX04": { generer: genererCoeffMultiplicateur,    chapitre: "Proportions et évolutions",       niveauScolaire: "seconde", niveau: 1, titre: "Coefficient multiplicateur ↔ taux d'évolution" },
+  "SEC_FG_EX05": { generer: genererDistancePoints,         chapitre: "Vecteur Partie 1",                niveauScolaire: "seconde", niveau: 1, titre: "Distance entre deux points" },
 };
 
 
@@ -2075,7 +2209,7 @@ function melanger(tableau) {
   return copie;
 }
 
-function TirageAleatoire({ chapitres, onAnnuler, onTirer }) {
+function TirageAleatoire({ chapitres, onAnnuler, onTirer, niveauScolaire }) {
   const [chapitresChoisis, setChapitresChoisis] = useState(new Set());
   const [typesChoisis, setTypesChoisis] = useState(new Set(TYPES_TIRAGE));
   const [niveauxChoisis, setNiveauxChoisis] = useState(new Set(NIVEAUX_TIRAGE));
@@ -2133,8 +2267,11 @@ function TirageAleatoire({ chapitres, onAnnuler, onTirer }) {
 
       [...chapitresChoisis].forEach(chId => {
         const nomChap = chapitresParId[chId];
+        const niveau = niveauScolaire || "terminale_spe";
         Object.entries(BIBLIOTHEQUE_EXERCICES)
-          .filter(([, def]) => def.chapitre === nomChap && niveauxChoisis.has(def.niveau))
+          .filter(([, def]) => def.chapitre === nomChap
+            && def.niveauScolaire === niveau
+            && niveauxChoisis.has(def.niveau))
           .forEach(([id, def]) => {
             const tirage = def.generer();
             pool.push({
@@ -2251,7 +2388,7 @@ function TirageAleatoire({ chapitres, onAnnuler, onTirer }) {
 }
 
 // ─── Composant GenerateurZone ──────────────────────────────────────────
-function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSessionChargee }) {
+function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSessionChargee, niveauScolaire }) {
   const [chapitres, setChapitres] = useState([]);
   const [questionsParChapitre, setQuestionsParChapitre] = useState({}); // { chapitre_id: [questions] }
   const [chapitresOuverts, setChapitresOuverts] = useState({});        // { chapitre_id: bool }
@@ -2298,13 +2435,22 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
   const [brouillonEdition, setBrouillonEdition] = useState(null);    // { type, enonce, reponse, niveau }
   const [sauvegardeEnCours, setSauvegardeEnCours] = useState(false);
 
-  // Charger la liste des chapitres au montage
+  // Charger la liste des chapitres au montage et au changement de niveau
   useEffect(() => {
-    supabase.from("chapitres").select("*").order("ordre").then(({ data }) => {
-      setChapitres(data || []);
-      setLoading(false);
-    });
-  }, []);
+    setLoading(true);
+    setChapitres([]);
+    setChapitresOuverts({});
+    setQuestionsParChapitre({});
+    setSelection([]);
+    const niveau = niveauScolaire || "terminale_spe";
+    supabase.from("chapitres").select("*")
+      .eq("niveau_scolaire", niveau)
+      .order("ordre")
+      .then(({ data }) => {
+        setChapitres(data || []);
+        setLoading(false);
+      });
+  }, [niveauScolaire]);
 
   // Recharger une sélection depuis l'historique (clic sur "Rejouer" dans l'onglet Historique)
   useEffect(() => {
@@ -2494,8 +2640,11 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
   // ── Exercices d'application (bibliothèque codée sur mesure) ──
   function exercicesDuChapitre(chapitreNom) {
     if (!typesActifs.has("exercice")) return [];
+    const niveau = niveauScolaire || "terminale_spe";
     return Object.entries(BIBLIOTHEQUE_EXERCICES)
-      .filter(([, def]) => def.chapitre === chapitreNom && niveauxActifs.has(def.niveau))
+      .filter(([, def]) => def.chapitre === chapitreNom
+        && def.niveauScolaire === niveau
+        && niveauxActifs.has(def.niveau))
       .map(([id, def]) => ({ id, ...def }));
   }
 
@@ -3044,6 +3193,7 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
       {afficherTirage && (
         <TirageAleatoire
           chapitres={chapitres}
+          niveauScolaire={niveauScolaire}
           onAnnuler={() => setAfficherTirage(false)}
           onTirer={(resultat) => {
             setSelection(resultat);
@@ -3709,9 +3859,10 @@ export default function App() {
                 <div style={{ display: activeTab === "ressources" ? "flex" : "none", flex: 1, minHeight: 0 }}>
                   <RessourcesZone currentUser={user} currentProfile={profile} />
                 </div>
-                <div style={{ display: activeTab === "generateur" ? "flex" : "none", flex: 1, minHeight: 0 }}>
+                <div style={{ display: activeTab === "generateur" || activeTab === "automatismes" ? "flex" : "none", flex: 1, minHeight: 0 }}>
                   <GenerateurZone currentUser={user} currentProfile={profile}
-                    sessionARecharger={sessionARecharger} onSessionChargee={() => setSessionARecharger(null)} />
+                    sessionARecharger={sessionARecharger} onSessionChargee={() => setSessionARecharger(null)}
+                    niveauScolaire={niveauScolaire} />
                 </div>
                 <div style={{ display: activeTab === "historique" ? "flex" : "none", flex: 1, minHeight: 0 }}>
                   <HistoriqueZone currentUser={user} currentProfile={profile} allProfiles={allProfiles}
@@ -3720,14 +3871,11 @@ export default function App() {
               </>
             )}
 
-            {/* Contenu Première / Seconde */}
-            {!estTerminaleSpe && (
+            {/* QCM — à venir */}
+            {!estTerminaleSpe && activeTab === "qcm" && (
               <div style={{ display: "flex", flex: 1, alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 12, color: "var(--text-muted)" }}>
                 <div style={{ fontSize: 32, opacity: .3 }}>🚧</div>
-                <div style={{ fontSize: 14 }}>
-                  Contenu {niveauScolaire === "premiere" ? "Première" : "Seconde"} — bientôt disponible
-                </div>
-                <div style={{ fontSize: 12, opacity: .7 }}>Onglet actif : {activeTab}</div>
+                <div style={{ fontSize: 14 }}>Interface QCM — bientôt disponible</div>
               </div>
             )}
 
