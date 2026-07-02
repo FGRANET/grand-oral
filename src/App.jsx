@@ -77,6 +77,7 @@ const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+
 // ─── Palette & styles globaux ────────────────────────────────────────
 const CSS = `
   @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap');
@@ -3578,6 +3579,16 @@ export default function App() {
     return () => supabase.removeChannel(ch);
   }, [profile]);
 
+  // Basculer vers le bon sous-onglet au changement de niveau
+  useEffect(() => {
+    if (!estTerminaleSpe && (activeTab === "chat" || activeTab === "ressources")) {
+      setActiveTab("automatismes");
+    }
+    if (estTerminaleSpe && (activeTab === "automatismes" || activeTab === "qcm")) {
+      setActiveTab("chat");
+    }
+  }, [niveauScolaire]);
+
   function handleLogin(u, p) { setUser(u); setProfile(p); }
 
   if (loading) return <div style={{ height: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#0f1117", color: "#7b82a8", fontFamily: "DM Sans, sans-serif" }}>Chargement…</div>;
@@ -3598,15 +3609,6 @@ export default function App() {
       </>
     );
   }
-
-  useEffect(() => {
-    if (!estTerminaleSpe && (activeTab === "chat" || activeTab === "ressources")) {
-      setActiveTab("automatismes");
-    }
-    if (estTerminaleSpe && (activeTab === "automatismes" || activeTab === "qcm")) {
-      setActiveTab("chat");
-    }
-  }, [niveauScolaire]);
 
   const eleves = allProfiles
     .filter(p => p.role === "eleve" && p.prof_id === profile.id)
