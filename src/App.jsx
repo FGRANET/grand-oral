@@ -155,7 +155,7 @@ const CSS = `
   }
   .niveau-badge.soon { background: var(--surface2); color: var(--text-muted); }
 
-  .app { display: flex; flex: 1; min-height: 0; }
+  .app { display: flex; flex: 1; overflow: hidden; min-height: 0; }
 
   /* ── Sidebar (vue prof) ── */
   .sidebar {
@@ -3621,7 +3621,7 @@ export default function App() {
   return (
     <>
       <style>{CSS}</style>
-      <div className={profile.role === "professeur" ? "niveau-wrapper" : ""}>
+      <div className={profile.role === "professeur" ? "niveau-wrapper" : "niveau-wrapper"}>
         {profile.role === "professeur" && (
           <div className="niveau-bar">
             <span className="niveau-bar-label">Niveau</span>
