@@ -140,7 +140,7 @@ const CSS = `
 
   /* ── Sidebar (vue prof) ── */
   .sidebar {
-    width: 280px; flex-shrink: 0; background: transparent;
+    width: 280px; flex-shrink: 0; background: var(--surface);
     border-right: 1px solid var(--border); display: flex; flex-direction: column;
   }
   .sidebar-header {
