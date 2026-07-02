@@ -140,7 +140,7 @@ const CSS = `
 
   /* ── Sidebar (vue prof) ── */
   .sidebar {
-    width: 280px; flex-shrink: 0; background: var(--surface);
+    width: 280px; flex-shrink: 0; background: transparent;
     border-right: 1px solid var(--border); display: flex; flex-direction: column;
   }
   .sidebar-header {
@@ -152,12 +152,12 @@ const CSS = `
     background: var(--accent); color: #fff; border-radius: 20px;
     font-size: 11px; font-weight: 700; padding: 2px 8px;
   }
-  .sidebar-list { flex: 1; overflow-y: auto; padding: 8px; }
+  .sidebar-list { flex: 1; overflow-y: auto; padding: 8px; background: var(--surface); }
   .sidebar-list::-webkit-scrollbar { width: 4px; }
   .sidebar-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
 
   /* ── Indicateur d'usage Supabase ── */
-  .usage-indicator { border-top: 1px solid var(--border); flex-shrink: 0; padding: 4px; }
+  .usage-indicator { border-top: 1px solid var(--border); flex-shrink: 0; padding: 4px; background: var(--surface); }
   .usage-indicator-toggle {
     width: 100%; background: none; border: none; color: var(--text-muted);
     font-family: var(--font); font-size: 11px; padding: 8px 8px; cursor: pointer;
@@ -196,10 +196,10 @@ const CSS = `
   .eleve-sujet { font-size: 11px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px; }
 
   /* ── Onglets sidebar (Élèves / Ressources) ── */
-  .sidebar-tabs { display: flex; border-bottom: 1px solid var(--border); flex-shrink: 0; padding: 0 12px; gap: 4px; }
+  .sidebar-tabs { display: flex; border-bottom: 1px solid var(--border); flex-shrink: 0; padding: 0 4px; }
   .sidebar-tabs.eleve-tabs { max-width: 360px; background: var(--surface); }
   .sidebar-tab {
-    padding: 12px 18px; font-size: 13px; font-weight: 600;
+    padding: 12px 14px; font-size: 13px; font-weight: 600;
     color: var(--text-muted); cursor: pointer; background: none; border: none;
     font-family: var(--font); border-bottom: 2px solid transparent; transition: all .15s;
   }
@@ -3589,17 +3589,15 @@ export default function App() {
           <div className="sidebar">
             <div className="sidebar-tabs">
               <button className={`sidebar-tab${activeTab === "chat" ? " active" : ""}`}
-                onClick={() => setActiveTab("chat")}>Élèves</button>
+                onClick={() => setActiveTab("chat")}>
+                Élèves{totalUnread > 0 && <span className="badge-count" style={{ marginLeft: 6, fontSize: 10, padding: "1px 6px" }}>{totalUnread}</span>}
+              </button>
               <button className={`sidebar-tab${activeTab === "ressources" ? " active" : ""}`}
                 onClick={() => setActiveTab("ressources")}>Ressources</button>
               <button className={`sidebar-tab${activeTab === "generateur" ? " active" : ""}`}
                 onClick={() => setActiveTab("generateur")}>Générateur</button>
               <button className={`sidebar-tab${activeTab === "historique" ? " active" : ""}`}
                 onClick={() => setActiveTab("historique")}>Historique</button>
-            </div>
-            <div className="sidebar-header">
-              <div className="sidebar-title">Élèves</div>
-              {totalUnread > 0 && <div className="badge-count">{totalUnread}</div>}
             </div>
             <div className="sidebar-list">
               {eleves.map(el => (
