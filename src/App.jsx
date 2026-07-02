@@ -157,7 +157,7 @@ const CSS = `
   .sidebar-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
 
   /* ── Indicateur d'usage Supabase ── */
-  .usage-indicator { border-top: 1px solid var(--border); flex-shrink: 0; padding: 4px; background: var(--surface); }
+  .usage-indicator { flex-shrink: 0; padding: 0; background: transparent; display: flex; align-items: center; }
   .usage-indicator-toggle {
     width: 100%; background: none; border: none; color: var(--text-muted);
     font-family: var(--font); font-size: 11px; padding: 8px 8px; cursor: pointer;
@@ -3368,7 +3368,6 @@ function ChatZone({ eleveId, currentUser, currentProfile, allProfiles }) {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [editingSubject, setEditingSubject] = useState(false);
   const [subjectDraft, setSubjectDraft] = useState("");
-  const [showPasswordModal, setShowPasswordModal] = useState(false);
   const bottomRef = useRef(null);
   const fileRef = useRef(null);
   const textRef = useRef(null);
@@ -3585,14 +3584,8 @@ function ChatZone({ eleveId, currentUser, currentProfile, allProfiles }) {
           </div>
         </div>
         <div className="header-actions">
-          <button className="btn-key" onClick={() => setShowPasswordModal(true)} title="Changer mon mot de passe">
-            🔑 Mot de passe
-          </button>
-          <button className="btn-logout" onClick={() => supabase.auth.signOut()}>Déconnexion</button>
         </div>
       </div>
-
-      {showPasswordModal && <ChangePasswordModal onClose={() => setShowPasswordModal(false)} />}
 
       <div className="messages-list">
         {grouped.map((item, i) =>
@@ -3652,6 +3645,7 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("chat");
   const [niveauScolaire, setNiveauScolaire] = useState("terminale_spe");
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
 
   const COULEURS_NIVEAU = {
     terminale_spe: "#2563eb",
@@ -3828,6 +3822,15 @@ export default function App() {
                   </button>
                 </>
               )}
+
+              {/* Actions globales — toujours visibles */}
+              <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+                <UsageIndicator />
+                <button className="btn-key" onClick={() => setShowPasswordModal(true)} title="Changer mon mot de passe">
+                  🔑 Mot de passe
+                </button>
+                <button className="btn-logout" onClick={() => supabase.auth.signOut()}>Déconnexion</button>
+              </div>
             </div>
 
             {/* Contenu Terminale Spé */}
@@ -3849,7 +3852,6 @@ export default function App() {
                       </div>
                     ))}
                   </div>
-                  <UsageIndicator />
                 </div>
                 <ChatZone eleveId={selectedEleve} currentUser={user} currentProfile={profile} allProfiles={allProfiles} />
               </div>
@@ -3910,6 +3912,7 @@ export default function App() {
         )}
 
       </div>
+      {showPasswordModal && <ChangePasswordModal onClose={() => setShowPasswordModal(false)} />}
     </>
   );
 }
