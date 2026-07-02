@@ -3859,16 +3859,26 @@ export default function App() {
                 <div style={{ display: activeTab === "ressources" ? "flex" : "none", flex: 1, minHeight: 0 }}>
                   <RessourcesZone currentUser={user} currentProfile={profile} />
                 </div>
-                <div style={{ display: activeTab === "generateur" || activeTab === "automatismes" ? "flex" : "none", flex: 1, minHeight: 0 }}>
-                  <GenerateurZone currentUser={user} currentProfile={profile}
-                    sessionARecharger={sessionARecharger} onSessionChargee={() => setSessionARecharger(null)}
-                    niveauScolaire={niveauScolaire} />
-                </div>
                 <div style={{ display: activeTab === "historique" ? "flex" : "none", flex: 1, minHeight: 0 }}>
                   <HistoriqueZone currentUser={user} currentProfile={profile} allProfiles={allProfiles}
                     onRejouer={(ids) => { setSessionARecharger(ids); setActiveTab("generateur"); }} />
                 </div>
               </>
+            )}
+
+            {/* GenerateurZone — commun à tous les niveaux (Terminale: onglet Générateur, Seconde/Première: onglet Automatismes) */}
+            <div style={{ display: activeTab === "generateur" || activeTab === "automatismes" ? "flex" : "none", flex: 1, minHeight: 0 }}>
+              <GenerateurZone currentUser={user} currentProfile={profile}
+                sessionARecharger={sessionARecharger} onSessionChargee={() => setSessionARecharger(null)}
+                niveauScolaire={niveauScolaire} />
+            </div>
+
+            {/* Historique Seconde/Première */}
+            {!estTerminaleSpe && (
+              <div style={{ display: activeTab === "historique" ? "flex" : "none", flex: 1, minHeight: 0 }}>
+                <HistoriqueZone currentUser={user} currentProfile={profile} allProfiles={allProfiles}
+                  onRejouer={(ids) => { setSessionARecharger(ids); setActiveTab("automatismes"); }} />
+              </div>
             )}
 
             {/* QCM — à venir */}
