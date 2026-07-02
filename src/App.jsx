@@ -136,26 +136,7 @@ const CSS = `
 
   /* ── Layout principal ── */
   /* ── Sélecteur de niveau scolaire ── */
-  .niveau-wrapper { display: flex; flex-direction: column; height: 100vh; }
-  .niveau-bar {
-    display: flex; align-items: center; gap: 6px; padding: 6px 16px;
-    background: var(--surface); border-bottom: 1px solid var(--border); flex-shrink: 0;
-  }
-  .niveau-bar-label { font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: .04em; margin-right: 4px; }
-  .niveau-btn {
-    background: none; border: 1px solid var(--border); color: var(--text-muted);
-    border-radius: 14px; padding: 4px 13px; font-family: var(--font); font-size: 12px;
-    font-weight: 500; cursor: pointer; transition: all .15s;
-  }
-  .niveau-btn:hover { border-color: var(--accent); color: var(--text); }
-  .niveau-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
-  .niveau-badge {
-    font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em;
-    padding: 2px 7px; border-radius: 10px; margin-left: 6px; vertical-align: middle;
-  }
-  .niveau-badge.soon { background: var(--surface2); color: var(--text-muted); }
-
-  .app { display: flex; flex: 1; overflow: hidden; min-height: 0; }
+  .app { display: flex; height: 100vh; }
 
   /* ── Sidebar (vue prof) ── */
   .sidebar {
@@ -2255,7 +2236,7 @@ function TirageAleatoire({ chapitres, onAnnuler, onTirer }) {
 }
 
 // ─── Composant GenerateurZone ──────────────────────────────────────────
-function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSessionChargee, niveauScolaire }) {
+function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSessionChargee }) {
   const [chapitres, setChapitres] = useState([]);
   const [questionsParChapitre, setQuestionsParChapitre] = useState({}); // { chapitre_id: [questions] }
   const [chapitresOuverts, setChapitresOuverts] = useState({});        // { chapitre_id: bool }
@@ -2302,21 +2283,13 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
   const [brouillonEdition, setBrouillonEdition] = useState(null);    // { type, enonce, reponse, niveau }
   const [sauvegardeEnCours, setSauvegardeEnCours] = useState(false);
 
-  // Charger la liste des chapitres filtrés par niveau scolaire
+  // Charger la liste des chapitres au montage
   useEffect(() => {
-    setLoading(true);
-    setChapitres([]);
-    setChapitresOuverts({});
-    setQuestionsParChapitre({});
-    setSelection([]);
-    supabase.from("chapitres").select("*")
-      .eq("niveau_scolaire", niveauScolaire || "terminale_spe")
-      .order("ordre")
-      .then(({ data }) => {
-        setChapitres(data || []);
-        setLoading(false);
-      });
-  }, [niveauScolaire]);
+    supabase.from("chapitres").select("*").order("ordre").then(({ data }) => {
+      setChapitres(data || []);
+      setLoading(false);
+    });
+  }, []);
 
   // Recharger une sélection depuis l'historique (clic sur "Rejouer" dans l'onglet Historique)
   useEffect(() => {
@@ -3513,7 +3486,6 @@ export default function App() {
   const [unreadCounts, setUnreadCounts] = useState({});
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("chat");
-  const [niveauScolaire, setNiveauScolaire] = useState("terminale_spe"); // "seconde" | "premiere" | "terminale_spe"
   const [sessionARecharger, setSessionARecharger] = useState(null); // ids de questions à charger dans le générateur
 
   // Charger le CSS de KaTeX une seule fois (nécessaire pour un rendu correct des formules)
@@ -3604,15 +3576,6 @@ export default function App() {
     );
   }
 
-  const estTerminaleSpe = niveauScolaire === "terminale_spe";
-
-  // Quand on bascule vers un niveau sans Élèves/Ressources, forcer l'onglet Générateur
-  useEffect(() => {
-    if (!estTerminaleSpe && (activeTab === "chat" || activeTab === "ressources")) {
-      setActiveTab("generateur");
-    }
-  }, [niveauScolaire]);
-
   const eleves = allProfiles
     .filter(p => p.role === "eleve" && p.prof_id === profile.id)
     .sort((a, b) => a.nom.localeCompare(b.nom));
@@ -3621,24 +3584,8 @@ export default function App() {
   return (
     <>
       <style>{CSS}</style>
-      <div className={profile.role === "professeur" ? "niveau-wrapper" : "niveau-wrapper"}>
-        {profile.role === "professeur" && (
-          <div className="niveau-bar">
-            <span className="niveau-bar-label">Niveau</span>
-            <button className={`niveau-btn${niveauScolaire === "terminale_spe" ? " active" : ""}`}
-              onClick={() => setNiveauScolaire("terminale_spe")}>Terminale Spé</button>
-            <button className={`niveau-btn${niveauScolaire === "premiere" ? " active" : ""}`}
-              onClick={() => setNiveauScolaire("premiere")}>
-              Première <span className="niveau-badge soon">bientôt</span>
-            </button>
-            <button className={`niveau-btn${niveauScolaire === "seconde" ? " active" : ""}`}
-              onClick={() => setNiveauScolaire("seconde")}>
-              Seconde <span className="niveau-badge soon">bientôt</span>
-            </button>
-          </div>
-        )}
-        <div className="app">
-        {profile.role === "professeur" && activeTab === "chat" && estTerminaleSpe && (
+      <div className="app">
+        {profile.role === "professeur" && activeTab === "chat" && (
           <div className="sidebar">
             <div className="sidebar-tabs">
               <button className={`sidebar-tab${activeTab === "chat" ? " active" : ""}`}
@@ -3674,16 +3621,12 @@ export default function App() {
         )}
 
         {profile.role === "professeur" && (
-          <div style={{ display: activeTab !== "chat" || !estTerminaleSpe ? "flex" : "none", flexDirection: "column", flex: 1, minWidth: 0, minHeight: 0 }}>
+          <div style={{ display: activeTab !== "chat" ? "flex" : "none", flexDirection: "column", flex: 1, minWidth: 0, minHeight: 0 }}>
             <div className="sidebar-tabs-top">
-              {estTerminaleSpe && (
-                <>
-                  <button className={`sidebar-tab-top${activeTab === "chat" ? " active" : ""}`}
-                    onClick={() => setActiveTab("chat")}>Élèves</button>
-                  <button className={`sidebar-tab-top${activeTab === "ressources" ? " active" : ""}`}
-                    onClick={() => setActiveTab("ressources")}>Ressources</button>
-                </>
-              )}
+              <button className={`sidebar-tab-top${activeTab === "chat" ? " active" : ""}`}
+                onClick={() => setActiveTab("chat")}>Élèves</button>
+              <button className={`sidebar-tab-top${activeTab === "ressources" ? " active" : ""}`}
+                onClick={() => setActiveTab("ressources")}>Ressources</button>
               <button className={`sidebar-tab-top${activeTab === "generateur" ? " active" : ""}`}
                 onClick={() => setActiveTab("generateur")}>Générateur</button>
               <button className={`sidebar-tab-top${activeTab === "historique" ? " active" : ""}`}
@@ -3694,8 +3637,7 @@ export default function App() {
             </div>
             <div style={{ display: activeTab === "generateur" ? "flex" : "none", flex: 1, minHeight: 0 }}>
               <GenerateurZone currentUser={user} currentProfile={profile}
-                sessionARecharger={sessionARecharger} onSessionChargee={() => setSessionARecharger(null)}
-                niveauScolaire={niveauScolaire} />
+                sessionARecharger={sessionARecharger} onSessionChargee={() => setSessionARecharger(null)} />
             </div>
             <div style={{ display: activeTab === "historique" ? "flex" : "none", flex: 1, minHeight: 0 }}>
               <HistoriqueZone currentUser={user} currentProfile={profile} allProfiles={allProfiles}
@@ -3721,7 +3663,7 @@ export default function App() {
           </div>
         )}
 
-        {profile.role === "professeur" && activeTab === "chat" && estTerminaleSpe && (
+        {profile.role === "professeur" && activeTab === "chat" && (
           <ChatZone
             eleveId={selectedEleve}
             currentUser={user}
@@ -3729,7 +3671,6 @@ export default function App() {
             allProfiles={allProfiles}
           />
         )}
-      </div>
       </div>
     </>
   );
