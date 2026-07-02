@@ -3604,6 +3604,15 @@ export default function App() {
     );
   }
 
+  const estTerminaleSpe = niveauScolaire === "terminale_spe";
+
+  // Quand on bascule vers un niveau sans Élèves/Ressources, forcer l'onglet Générateur
+  useEffect(() => {
+    if (!estTerminaleSpe && (activeTab === "chat" || activeTab === "ressources")) {
+      setActiveTab("generateur");
+    }
+  }, [niveauScolaire]);
+
   const eleves = allProfiles
     .filter(p => p.role === "eleve" && p.prof_id === profile.id)
     .sort((a, b) => a.nom.localeCompare(b.nom));
@@ -3629,7 +3638,7 @@ export default function App() {
           </div>
         )}
         <div className="app">
-        {profile.role === "professeur" && activeTab === "chat" && (
+        {profile.role === "professeur" && activeTab === "chat" && estTerminaleSpe && (
           <div className="sidebar">
             <div className="sidebar-tabs">
               <button className={`sidebar-tab${activeTab === "chat" ? " active" : ""}`}
@@ -3665,12 +3674,16 @@ export default function App() {
         )}
 
         {profile.role === "professeur" && (
-          <div style={{ display: activeTab !== "chat" ? "flex" : "none", flexDirection: "column", flex: 1, minWidth: 0, minHeight: 0 }}>
+          <div style={{ display: activeTab !== "chat" || !estTerminaleSpe ? "flex" : "none", flexDirection: "column", flex: 1, minWidth: 0, minHeight: 0 }}>
             <div className="sidebar-tabs-top">
-              <button className={`sidebar-tab-top${activeTab === "chat" ? " active" : ""}`}
-                onClick={() => setActiveTab("chat")}>Élèves</button>
-              <button className={`sidebar-tab-top${activeTab === "ressources" ? " active" : ""}`}
-                onClick={() => setActiveTab("ressources")}>Ressources</button>
+              {estTerminaleSpe && (
+                <>
+                  <button className={`sidebar-tab-top${activeTab === "chat" ? " active" : ""}`}
+                    onClick={() => setActiveTab("chat")}>Élèves</button>
+                  <button className={`sidebar-tab-top${activeTab === "ressources" ? " active" : ""}`}
+                    onClick={() => setActiveTab("ressources")}>Ressources</button>
+                </>
+              )}
               <button className={`sidebar-tab-top${activeTab === "generateur" ? " active" : ""}`}
                 onClick={() => setActiveTab("generateur")}>Générateur</button>
               <button className={`sidebar-tab-top${activeTab === "historique" ? " active" : ""}`}
@@ -3708,7 +3721,7 @@ export default function App() {
           </div>
         )}
 
-        {profile.role === "professeur" && activeTab === "chat" && (
+        {profile.role === "professeur" && activeTab === "chat" && estTerminaleSpe && (
           <ChatZone
             eleveId={selectedEleve}
             currentUser={user}
