@@ -1213,10 +1213,20 @@ function tirerValeurParametre(def) {
 // devant une variable, et les termes +0 ou -0 inutiles.
 function nettoyerExpression(texte) {
   return texte
+    // 1x → x, -1x → -x
     .replace(/\b1([a-zA-Z])/g, "$1")
     .replace(/(^|[+\-\s])-1([a-zA-Z])/g, (m, avant, lettre) => avant + "-" + lettre)
+    // + 0 terme → supprimer
     .replace(/\s*\+\s*0(?=[x\s$})]|$)/g, "")
     .replace(/\s*-\s*0(?=[x\s$})]|$)/g, "")
+    // + (-5) → - 5 (parenthèses inutiles après opérateur)
+    .replace(/\+\s*\((-[\d.]+)\)/g, "- $1".replace("-", "").replace("$1", (m) => m))
+    .replace(/\+\s*\((-[\d.]+)\)/g, (m, n) => "- " + n.replace("-", ""))
+    // - (-5) → + 5
+    .replace(/-\s*\((-[\d.]+)\)/g, (m, n) => "+ " + n.replace("-", ""))
+    // Parenthèses inutiles seules dans \{(-5)\} → \{-5\}
+    .replace(/\{(\(-[\d.]+\))\}/g, (m, inner) => "{" + inner.slice(1, -1) + "}")
+    .replace(/\+\s*(-[\d.]+)/g, (m, n) => "- " + n.replace("-", ""))
     .replace(/\s{2,}/g, " ").trim();
 }
 
@@ -1271,11 +1281,11 @@ function substituerPlaceholders(texteModele, valeurs) {
 
     if (valeurs.hasOwnProperty(exprPropre)) {
       const v = valeurs[exprPropre];
-      return v < 0 ? `(${v})` : String(v);
+      return String(v); // jamais de parenthèses — nettoyerExpression gère les cas + (-5) → - 5
     }
     const res = evaluerExpressionSimple(exprPropre, valeurs);
     if (typeof res === "number") {
-      return res < 0 ? `(${res})` : String(res);
+      return String(res);
     }
     return match;
   });
