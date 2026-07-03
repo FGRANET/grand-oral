@@ -1198,10 +1198,26 @@ function tirerValeurParametre(def) {
   const { min, max, type } = def;
   if (type === "decimal") {
     const valeur = min + Math.random() * (max - min);
-    return Math.round(valeur * 10) / 10; // une décimale
+    return Math.round(valeur * 10) / 10;
+  }
+  if (type === "entier_non_nul") {
+    let v;
+    do { v = Math.floor(Math.random() * (Math.floor(max) - Math.ceil(min) + 1)) + Math.ceil(min); } while (v === 0);
+    return v;
   }
   // entier par défaut
   return Math.floor(Math.random() * (Math.floor(max) - Math.ceil(min) + 1)) + Math.ceil(min);
+}
+
+// Nettoie le texte après substitution : supprime les coefficients 1 et -1
+// devant une variable, et les termes +0 ou -0 inutiles.
+function nettoyerExpression(texte) {
+  return texte
+    .replace(/\b1([a-zA-Z])/g, "$1")
+    .replace(/(^|[+\-\s])-1([a-zA-Z])/g, (m, avant, lettre) => avant + "-" + lettre)
+    .replace(/\s*\+\s*0(?=[x\s$})]|$)/g, "")
+    .replace(/\s*-\s*0(?=[x\s$})]|$)/g, "")
+    .replace(/\s{2,}/g, " ").trim();
 }
 
 // Évalue une petite expression arithmétique sûre (uniquement +, -, *, / et
@@ -1238,13 +1254,9 @@ function evaluerExpressionSimple(expr, valeurs) {
 function substituerPlaceholders(texteModele, valeurs) {
   // Normalise d'abord \{var\} → {var} pour accepter les deux notations
   const texte = texteModele.replace(/\\{([^{}]+)\\}/g, "{$1}");
-  return texte.replace(/\{([^{}]+)\}/g, (match, expr) => {
+  const resultat = texte.replace(/\{([^{}]+)\}/g, (match, expr) => {
     const exprPropre = expr.trim();
 
-    // Cas spécial : {poly(a:2, b:1, c:0)} — polynôme proprement formaté,
-    // où le nombre après ":" est le degré de chaque coefficient.
-    // Donne par exemple pour a:2, b:1, c:0 → "4x^2 + 3x - 5" (sans jamais
-    // afficher "1x", "0" en trop, ou "+ (-5)").
     const matchPoly = exprPropre.match(/^poly\((.+)\)$/);
     if (matchPoly) {
       const termes = matchPoly[1].split(",").map(t => t.trim());
@@ -1257,18 +1269,18 @@ function substituerPlaceholders(texteModele, valeurs) {
       return formaterPolynome(coeffs);
     }
 
-    // Cas direct : juste le nom d'une variable connue
     if (valeurs.hasOwnProperty(exprPropre)) {
       const v = valeurs[exprPropre];
-      return v < 0 ? `(${v})` : String(v); // parenthèse pour éviter les doubles signes (ex: +-3)
+      return v < 0 ? `(${v})` : String(v);
     }
-    // Cas d'une expression à évaluer (ex: {2a}, {a+b})
-    const resultat = evaluerExpressionSimple(exprPropre, valeurs);
-    if (typeof resultat === "number") {
-      return resultat < 0 ? `(${resultat})` : String(resultat);
+    const res = evaluerExpressionSimple(exprPropre, valeurs);
+    if (typeof res === "number") {
+      return res < 0 ? `(${res})` : String(res);
     }
-    return match; // n'a pas pu être interprété, on laisse tel quel (visible pour debug)
+    return match;
   });
+  // Nettoyage post-substitution : 1x→x, +0→rien, etc.
+  return nettoyerExpression(resultat);
 }
 
 // Construit la chaîne d'un polynôme proprement formatée à partir d'une liste
@@ -2473,6 +2485,7 @@ function CreerQuestion({ chapitres, currentUser, niveauScolaire, onFermer, onCre
                       <input type="number" className="creer-param-input" value={p.max} onChange={e => mettreAJourParam(i, "max", e.target.value)} />
                       <select className="creer-param-type" value={p.type} onChange={e => mettreAJourParam(i, "type", e.target.value)}>
                         <option value="entier">Entier</option>
+                        <option value="entier_non_nul">Entier ≠ 0</option>
                         <option value="decimal">Décimal</option>
                       </select>
                     </div>
