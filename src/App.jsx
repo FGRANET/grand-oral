@@ -77,7 +77,6 @@ const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-
 // ─── Palette & styles globaux ────────────────────────────────────────
 const CSS = `
   @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap');
@@ -1194,6 +1193,13 @@ function MathText({ children, inline = true }) {
 
 // ─── Moteur de tirage des exercices d'application ──────────────────────
 // Tire une valeur aléatoire pour un paramètre donné, selon ses bornes et son type.
+// Formate un nombre avec virgule décimale (notation française)
+// Ex : 1.5 → "1,5"  ;  -0.333 → "-0,333"  ;  2 → "2"
+function formatNombre(n) {
+  if (Number.isInteger(n)) return String(n);
+  return String(n).replace(".", ",");
+}
+
 function tirerValeurParametre(def) {
   const { min, max, type } = def;
   if (type === "decimal") {
@@ -1219,14 +1225,14 @@ function nettoyerExpression(texte) {
     // + 0 terme → supprimer
     .replace(/\s*\+\s*0(?=[x\s$})]|$)/g, "")
     .replace(/\s*-\s*0(?=[x\s$})]|$)/g, "")
-    // + (-5) → - 5 (parenthèses inutiles après opérateur)
-    .replace(/\+\s*\((-[\d.]+)\)/g, "- $1".replace("-", "").replace("$1", (m) => m))
-    .replace(/\+\s*\((-[\d.]+)\)/g, (m, n) => "- " + n.replace("-", ""))
+    // + (-5) ou + (-1,5) → - 5 ou - 1,5
+    .replace(/\+\s*\((-[\d.,]+)\)/g, (m, n) => "- " + n.replace("-", ""))
     // - (-5) → + 5
-    .replace(/-\s*\((-[\d.]+)\)/g, (m, n) => "+ " + n.replace("-", ""))
-    // Parenthèses inutiles seules dans \{(-5)\} → \{-5\}
-    .replace(/\{(\(-[\d.]+\))\}/g, (m, inner) => "{" + inner.slice(1, -1) + "}")
-    .replace(/\+\s*(-[\d.]+)/g, (m, n) => "- " + n.replace("-", ""))
+    .replace(/-\s*\((-[\d.,]+)\)/g, (m, n) => "+ " + n.replace("-", ""))
+    // Parenthèses dans accolade LaTeX {(-5)} → {-5}
+    .replace(/\{(\(-[\d.,]+\))\}/g, (m, inner) => "{" + inner.slice(1, -1) + "}")
+    // + -5 → - 5
+    .replace(/\+\s*(-[\d.,]+)/g, (m, n) => "- " + n.replace("-", ""))
     .replace(/\s{2,}/g, " ").trim();
 }
 
@@ -1297,11 +1303,11 @@ function substituerPlaceholders(texteModele, valeurs) {
 
     if (valeurs.hasOwnProperty(exprPropre)) {
       const v = valeurs[exprPropre];
-      return String(v); // jamais de parenthèses — nettoyerExpression gère les cas + (-5) → - 5
+      return formatNombre(v); // virgule décimale française
     }
     const res = evaluerExpressionSimple(exprPropre, valeurs);
     if (typeof res === "number") {
-      return String(res);
+      return formatNombre(res);
     }
     return match;
   });
@@ -1475,7 +1481,7 @@ function genererImageFonctionAffine() {
 function genererCoeffMultiplicateur() {
   const taux = tirerEntierNonNul(-50, 50);
   const coeff = (100 + taux) / 100;
-  const coeffStr = coeff % 1 === 0 ? String(coeff) : coeff.toFixed(2).replace(/0+$/, "");
+  const coeffStr = coeff % 1 === 0 ? String(coeff) : coeff.toFixed(2).replace(/0+$/, "").replace(".", ",");
   const type = Math.random() > 0.5;
 
   if (type) {
