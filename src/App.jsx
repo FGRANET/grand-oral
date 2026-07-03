@@ -1279,6 +1279,22 @@ function substituerPlaceholders(texteModele, valeurs) {
       return formaterPolynome(coeffs);
     }
 
+    // Cas spécial : {frac(num, den)} — fraction exacte simplifiée en LaTeX
+    // Ex: {frac(-b, a)} avec b=5, a=3 → \frac{-5}{3}
+    const matchFrac = exprPropre.match(/^frac\((.+),(.+)\)$/);
+    if (matchFrac) {
+      const num = evaluerExpressionSimple(matchFrac[1].trim(), valeurs);
+      const den = evaluerExpressionSimple(matchFrac[2].trim(), valeurs);
+      if (typeof num === "number" && typeof den === "number" && den !== 0) {
+        const pgcd = (a, b) => { a = Math.abs(a); b = Math.abs(b); while(b) { [a,b] = [b, a%b]; } return a || 1; };
+        const g = pgcd(Math.abs(Math.round(num)), Math.abs(Math.round(den)));
+        let n = Math.round(num) / g, d = Math.round(den) / g;
+        if (d < 0) { n = -n; d = -d; }
+        if (d === 1) return String(n);
+        return `\\frac{${n}}{${d}}`;
+      }
+    }
+
     if (valeurs.hasOwnProperty(exprPropre)) {
       const v = valeurs[exprPropre];
       return String(v); // jamais de parenthèses — nettoyerExpression gère les cas + (-5) → - 5
@@ -2162,7 +2178,7 @@ function UsageIndicator() {
 }
 
 // ─── Composant HistoriqueZone ───────────────────────────────────────────
-function HistoriqueZone({ currentUser, currentProfile, allProfiles, onRejouer }) {
+function HistoriqueZone({ currentUser, currentProfile, allProfiles, onRejouer, niveauScolaire }) {
   const [sessions, setSessions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filtre, setFiltre] = useState("mes_sessions"); // "mes_sessions" | "favoris" | "partagees"
@@ -2171,14 +2187,17 @@ function HistoriqueZone({ currentUser, currentProfile, allProfiles, onRejouer })
 
   const fetchSessions = useCallback(async () => {
     setLoading(true);
-    let requete = supabase.from("sessions_historique").select("*").order("updated_at", { ascending: false });
+    const niveau = niveauScolaire || "terminale_spe";
+    let requete = supabase.from("sessions_historique").select("*")
+      .eq("niveau_scolaire", niveau)
+      .order("updated_at", { ascending: false });
     if (filtre === "mes_sessions") requete = requete.eq("prof_id", currentUser.id);
     else if (filtre === "favoris") requete = requete.eq("prof_id", currentUser.id).eq("favori", true);
     else if (filtre === "partagees") requete = requete.eq("partage", true).neq("prof_id", currentUser.id);
     const { data } = await requete.limit(100);
     setSessions(data || []);
     setLoading(false);
-  }, [filtre, currentUser.id]);
+  }, [filtre, currentUser.id, niveauScolaire]);
 
   useEffect(() => { fetchSessions(); }, [fetchSessions]);
 
@@ -2353,6 +2372,14 @@ function CreerQuestion({ chapitres, currentUser, niveauScolaire, onFermer, onCre
           const nom = t.split(":")[0].trim();
           if (/^[a-zA-Z]+$/.test(nom)) variables.add(nom);
         });
+      } else if (/^frac\(/.test(expr)) {
+        // Extraire les variables des deux arguments de frac()
+        const interieur = expr.match(/^frac\((.+),(.+)\)$/);
+        if (interieur) {
+          [interieur[1], interieur[2]].forEach(arg => {
+            (arg.match(/[a-zA-Z]+/g) || []).forEach(l => variables.add(l));
+          });
+        }
       } else {
         (expr.match(/[a-zA-Z]+/g) || []).forEach(l => variables.add(l));
       }
@@ -2471,7 +2498,7 @@ function CreerQuestion({ chapitres, currentUser, niveauScolaire, onFermer, onCre
                 : "Ex : Donner la définition d'une suite arithmétique."} />
             {mode === "aleatoire" && (
               <div className="creer-hint">
-                Variable : <code>{"{a}"}</code> · Calcul : <code>{"{2a}"}</code> · Polynôme : <code>{"{poly(a:2, b:1, c:0)}"}</code>
+                Variable : <code>{"{a}"}</code> · Calcul : <code>{"{2a}"}</code> · Polynôme : <code>{"{poly(a:2, b:1, c:0)}"}</code> · Fraction exacte : <code>{"{frac(-b, a)}"}</code>
               </div>
             )}
           </div>
@@ -3141,6 +3168,7 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
   async function sauvegarderDansHistorique(action) {
     if (selection.length === 0) return;
     const signature = calculerSignature(selection);
+    const niveau = niveauScolaire || "terminale_spe";
 
     const { data: existante } = await supabase.from("sessions_historique")
       .select("id").eq("prof_id", currentUser.id).eq("signature", signature).maybeSingle();
@@ -3158,6 +3186,7 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
         question_ids: selection.map(q => q.id),
         signature,
         derniere_action: action,
+        niveau_scolaire: niveau,
       });
     }
   }
@@ -4269,6 +4298,7 @@ export default function App() {
                 </div>
                 <div style={{ display: activeTab === "historique" ? "flex" : "none", flex: 1, minHeight: 0 }}>
                   <HistoriqueZone currentUser={user} currentProfile={profile} allProfiles={allProfiles}
+                    niveauScolaire={niveauScolaire}
                     onRejouer={(ids) => { setSessionARecharger(ids); setActiveTab("generateur"); }} />
                 </div>
               </>
@@ -4285,6 +4315,7 @@ export default function App() {
             {!estTerminaleSpe && (
               <div style={{ display: activeTab === "historique" ? "flex" : "none", flex: 1, minHeight: 0 }}>
                 <HistoriqueZone currentUser={user} currentProfile={profile} allProfiles={allProfiles}
+                  niveauScolaire={niveauScolaire}
                   onRejouer={(ids) => { setSessionARecharger(ids); setActiveTab("automatismes"); }} />
               </div>
             )}
