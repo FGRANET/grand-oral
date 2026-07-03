@@ -1236,7 +1236,9 @@ function evaluerExpressionSimple(expr, valeurs) {
 // Remplace tous les placeholders {expr} d'un texte modèle par leur valeur
 // calculée, en utilisant les valeurs tirées pour chaque paramètre.
 function substituerPlaceholders(texteModele, valeurs) {
-  return texteModele.replace(/\{([^{}]+)\}/g, (match, expr) => {
+  // Normalise d'abord \{var\} → {var} pour accepter les deux notations
+  const texte = texteModele.replace(/\\{([^{}]+)\\}/g, "{$1}");
+  return texte.replace(/\{([^{}]+)\}/g, (match, expr) => {
     const exprPropre = expr.trim();
 
     // Cas spécial : {poly(a:2, b:1, c:0)} — polynôme proprement formaté,
@@ -2298,11 +2300,12 @@ function CreerQuestion({ chapitres, currentUser, niveauScolaire, onFermer, onCre
   const [enregistrement, setEnregistrement] = useState(false);
 
   const variablesDetectees = useMemo(() => {
-    const texte = enonce + " " + reponse;
+    // Normalise \{var\} → {var} avant d'analyser
+    const texteNorm = (enonce + " " + reponse).replace(/\\{([^{}]+)\\}/g, "{$1}");
     const variables = new Set();
     const regex = /\{([^{}]+)\}/g;
     let match;
-    while ((match = regex.exec(texte)) !== null) {
+    while ((match = regex.exec(texteNorm)) !== null) {
       const expr = match[1].trim();
       if (/^poly\(/.test(expr)) {
         const interieur = expr.match(/^poly\((.+)\)$/)?.[1] || "";
