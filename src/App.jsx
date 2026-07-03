@@ -2656,6 +2656,7 @@ function TirageAleatoire({ chapitres, onAnnuler, onTirer, niveauScolaire }) {
 function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSessionChargee, niveauScolaire }) {
   const [chapitres, setChapitres] = useState([]);
   const [questionsParChapitre, setQuestionsParChapitre] = useState({}); // { chapitre_id: [questions] }
+  const [exercicesEnBase, setExercicesEnBase] = useState([]);           // exercices_application chargés depuis Supabase
   const [chapitresOuverts, setChapitresOuverts] = useState({});        // { chapitre_id: bool }
   const [chargementChapitre, setChargementChapitre] = useState({});    // { chapitre_id: bool }
   const [questionsDetail, setQuestionsDetail] = useState({});          // { question_id: bool } détail ouvert
@@ -2701,20 +2702,33 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
   const [brouillonEdition, setBrouillonEdition] = useState(null);    // { type, enonce, reponse, niveau }
   const [sauvegardeEnCours, setSauvegardeEnCours] = useState(false);
 
-  // Charger la liste des chapitres au montage et au changement de niveau
+  // Charger la liste des chapitres et les exercices depuis la base au changement de niveau
   useEffect(() => {
     setLoading(true);
     setChapitres([]);
     setChapitresOuverts({});
     setQuestionsParChapitre({});
+    setExercicesEnBase([]);
     setSelection([]);
     const niveau = niveauScolaire || "terminale_spe";
     supabase.from("chapitres").select("*")
       .eq("niveau_scolaire", niveau)
       .order("ordre")
       .then(({ data }) => {
-        setChapitres(data || []);
-        setLoading(false);
+        const chaps = data || [];
+        setChapitres(chaps);
+        // Charger les exercices_application associés à ces chapitres
+        if (chaps.length > 0) {
+          supabase.from("exercices_application")
+            .select("*")
+            .in("chapitre_id", chaps.map(c => c.id))
+            .then(({ data: exos }) => {
+              setExercicesEnBase(exos || []);
+              setLoading(false);
+            });
+        } else {
+          setLoading(false);
+        }
       });
   }, [niveauScolaire]);
 
@@ -2907,11 +2921,23 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
   function exercicesDuChapitre(chapitreNom) {
     if (!typesActifs.has("exercice")) return [];
     const niveau = niveauScolaire || "terminale_spe";
-    return Object.entries(BIBLIOTHEQUE_EXERCICES)
+
+    // Exercices codés en dur dans la bibliothèque
+    const bibliotheque = Object.entries(BIBLIOTHEQUE_EXERCICES)
       .filter(([, def]) => def.chapitre === chapitreNom
         && def.niveauScolaire === niveau
         && niveauxActifs.has(def.niveau))
-      .map(([id, def]) => ({ id, ...def }));
+      .map(([id, def]) => ({ id, titre: def.titre, niveau: def.niveau, source: "bibliotheque" }));
+
+    // Exercices créés via le formulaire et stockés en base
+    const chapitreObj = chapitres.find(c => c.nom === chapitreNom);
+    const enBase = chapitreObj
+      ? exercicesEnBase
+          .filter(ex => ex.chapitre_id === chapitreObj.id && niveauxActifs.has(ex.niveau))
+          .map(ex => ({ id: ex.id, titre: ex.enonce_modele.slice(0, 60) + "…", niveau: ex.niveau, source: "base", data: ex }))
+      : [];
+
+    return [...bibliotheque, ...enBase];
   }
 
   function toggleDetailExercice(id) {
@@ -2923,18 +2949,31 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
   }
 
   function retirerAuSort(idExercice) {
+    // Source bibliothèque (codé en dur)
     const def = BIBLIOTHEQUE_EXERCICES[idExercice];
-    if (!def) return;
-    const tirage = def.generer();
-    setTiragesExercices(prev => ({ ...prev, [idExercice]: tirage }));
-
-    // Si cet exercice est déjà dans la sélection, on met aussi à jour la
-    // version sélectionnée avec ce nouveau tirage (sans changer sa position)
-    setSelection(prev => prev.map(q =>
-      q.id === idExercice
-        ? { ...q, enonce: tirage.enonce, reponse: tirage.reponse }
-        : q
-    ));
+    if (def) {
+      const tirage = def.generer();
+      setTiragesExercices(prev => ({ ...prev, [idExercice]: tirage }));
+      setSelection(prev => prev.map(q =>
+        q.id === idExercice ? { ...q, enonce: tirage.enonce, reponse: tirage.reponse } : q
+      ));
+      return;
+    }
+    // Source base de données (créé via formulaire)
+    const exoBase = exercicesEnBase.find(e => e.id === idExercice);
+    if (exoBase) {
+      const valeurs = {};
+      Object.entries(exoBase.parametres).forEach(([nom, d]) => { valeurs[nom] = tirerValeurParametre(d); });
+      const tirage = {
+        enonce: substituerPlaceholders(exoBase.enonce_modele, valeurs),
+        reponse: substituerPlaceholders(exoBase.reponse_modele, valeurs),
+        valeurs,
+      };
+      setTiragesExercices(prev => ({ ...prev, [idExercice]: tirage }));
+      setSelection(prev => prev.map(q =>
+        q.id === idExercice ? { ...q, enonce: tirage.enonce, reponse: tirage.reponse } : q
+      ));
+    }
   }
 
   function estExerciceSelectionne(idExercice) {
@@ -2946,20 +2985,32 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
       setSelection(prev => prev.filter(q => q.id !== idExercice));
       return;
     }
-    // Tire une version fraîche au moment de la sélection (ou réutilise
-    // l'aperçu déjà affiché s'il y en a un)
-    const def = BIBLIOTHEQUE_EXERCICES[idExercice];
-    const tirage = tiragesExercices[idExercice] || def.generer();
-    if (!tiragesExercices[idExercice]) setTiragesExercices(prev => ({ ...prev, [idExercice]: tirage }));
 
-    setSelection(prev => [...prev, {
-      id: idExercice,
-      chapitre_id: chapitreId,
-      type: "exercice",
-      enonce: tirage.enonce,
-      reponse: tirage.reponse,
-      niveau,
-    }]);
+    // Source bibliothèque
+    const def = BIBLIOTHEQUE_EXERCICES[idExercice];
+    if (def) {
+      const tirage = tiragesExercices[idExercice] || def.generer();
+      if (!tiragesExercices[idExercice]) setTiragesExercices(prev => ({ ...prev, [idExercice]: tirage }));
+      setSelection(prev => [...prev, { id: idExercice, chapitre_id: chapitreId, type: "exercice", enonce: tirage.enonce, reponse: tirage.reponse, niveau }]);
+      return;
+    }
+
+    // Source base de données
+    const exoBase = exercicesEnBase.find(e => e.id === idExercice);
+    if (exoBase) {
+      let tirage = tiragesExercices[idExercice];
+      if (!tirage) {
+        const valeurs = {};
+        Object.entries(exoBase.parametres).forEach(([nom, d]) => { valeurs[nom] = tirerValeurParametre(d); });
+        tirage = {
+          enonce: substituerPlaceholders(exoBase.enonce_modele, valeurs),
+          reponse: substituerPlaceholders(exoBase.reponse_modele, valeurs),
+          valeurs,
+        };
+        setTiragesExercices(prev => ({ ...prev, [idExercice]: tirage }));
+      }
+      setSelection(prev => [...prev, { id: idExercice, chapitre_id: chapitreId, type: "exercice", enonce: tirage.enonce, reponse: tirage.reponse, niveau }]);
+    }
   }
 
   // ── Export .tex ──
@@ -3479,7 +3530,13 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
           onFermer={() => setAfficherCreerQuestion(false)}
           onCree={() => {
             setAfficherCreerQuestion(false);
-            // Recharger les questions du chapitre concerné
+            // Recharger les exercices depuis la base
+            if (chapitres.length > 0) {
+              supabase.from("exercices_application")
+                .select("*")
+                .in("chapitre_id", chapitres.map(c => c.id))
+                .then(({ data }) => setExercicesEnBase(data || []));
+            }
             setQuestionsParChapitre({});
             setChapitresOuverts({});
           }}
