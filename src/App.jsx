@@ -2287,14 +2287,32 @@ function melanger(tableau) {
 }
 
 // ─── Composant CreerQuestion ─────────────────────────────────────────────
-function CreerQuestion({ chapitres, currentUser, niveauScolaire, onFermer, onCree }) {
-  const [mode, setMode] = useState("fixe");
-  const [chapitreId, setChapitreId] = useState(chapitres[0]?.id || "");
-  const [type, setType] = useState("formule");
-  const [niveau, setNiveau] = useState(1);
-  const [enonce, setEnonce] = useState("");
-  const [reponse, setReponse] = useState("");
-  const [params, setParams] = useState([]);
+function CreerQuestion({ chapitres, currentUser, niveauScolaire, onFermer, onCree, questionAEditer }) {
+  const estEdition = !!questionAEditer;
+  // En édition, détecter le mode selon le type de la question
+  const modeInitial = questionAEditer
+    ? (questionAEditer._source === "base_aleatoire" ? "aleatoire" : "fixe")
+    : "fixe";
+
+  const [mode, setMode] = useState(modeInitial);
+  const [chapitreId, setChapitreId] = useState(
+    questionAEditer?.chapitre_id || chapitres[0]?.id || ""
+  );
+  const [type, setType] = useState(questionAEditer?.type || "formule");
+  const [niveau, setNiveau] = useState(questionAEditer?.niveau || 1);
+  const [enonce, setEnonce] = useState(
+    questionAEditer?.enonce_modele || questionAEditer?.enonce || ""
+  );
+  const [reponse, setReponse] = useState(
+    questionAEditer?.reponse_modele || questionAEditer?.reponse || ""
+  );
+  // Initialiser les params depuis la question à éditer si mode aléatoire
+  const paramsInitiaux = questionAEditer?.parametres
+    ? Object.entries(questionAEditer.parametres).map(([nom, def]) => ({
+        nom, min: String(def.min), max: String(def.max), type: def.type || "entier"
+      }))
+    : [];
+  const [params, setParams] = useState(paramsInitiaux);
   const [testResultat, setTestResultat] = useState(null);
   const [testErreur, setTestErreur] = useState(null);
   const [enregistrement, setEnregistrement] = useState(false);
@@ -2351,28 +2369,41 @@ function CreerQuestion({ chapitres, currentUser, niveauScolaire, onFermer, onCre
   async function enregistrer() {
     if (!enonce.trim() || !reponse.trim() || !chapitreId) return;
     setEnregistrement(true);
+
     if (mode === "fixe") {
-      const { error } = await supabase.from("questions").insert({
+      const donnees = {
         chapitre_id: chapitreId, type, enonce: enonce.trim(),
-        reponse: reponse.trim(), niveau, prof_id: currentUser.id,
-      });
+        reponse: reponse.trim(), niveau,
+      };
+      const { error } = estEdition && questionAEditer._source === "base_fixe"
+        ? await supabase.from("questions").update(donnees).eq("id", questionAEditer.id)
+        : await supabase.from("questions").insert({ ...donnees, prof_id: currentUser.id });
       setEnregistrement(false);
       if (error) { alert("Erreur : " + error.message); return; }
     } else {
       const parametres = {};
       params.forEach(p => { parametres[p.nom] = { min: Number(p.min), max: Number(p.max), type: p.type }; });
-      const initiales = currentUser.email?.split("@")[0].split(".").map(p => p[0]?.toUpperCase()).join("") || "XX";
-      const { data: existants } = await supabase.from("exercices_application").select("id").eq("chapitre_id", chapitreId);
-      const nn = String((existants?.length || 0) + 1).padStart(2, "0");
-      const chapitreCourant = chapitres.find(c => c.id === chapitreId);
-      const prefixe = (chapitreCourant?.nom.split(" ").map(w => w[0]).join("") || "AUT").toUpperCase().slice(0, 4);
-      const id = `${prefixe}_${initiales}_EX${nn}`;
-      const { error } = await supabase.from("exercices_application").insert({
-        id, chapitre_id: chapitreId, enonce_modele: enonce.trim(),
-        reponse_modele: reponse.trim(), parametres, niveau, prof_id: currentUser.id,
-      });
-      setEnregistrement(false);
-      if (error) { alert("Erreur : " + error.message); return; }
+      if (estEdition && questionAEditer._source === "base_aleatoire") {
+        const { error } = await supabase.from("exercices_application").update({
+          chapitre_id: chapitreId, enonce_modele: enonce.trim(),
+          reponse_modele: reponse.trim(), parametres, niveau,
+        }).eq("id", questionAEditer.id);
+        setEnregistrement(false);
+        if (error) { alert("Erreur : " + error.message); return; }
+      } else {
+        const initiales = currentUser.email?.split("@")[0].split(".").map(p => p[0]?.toUpperCase()).join("") || "XX";
+        const { data: existants } = await supabase.from("exercices_application").select("id").eq("chapitre_id", chapitreId);
+        const nn = String((existants?.length || 0) + 1).padStart(2, "0");
+        const chapitreCourant = chapitres.find(c => c.id === chapitreId);
+        const prefixe = (chapitreCourant?.nom.split(" ").map(w => w[0]).join("") || "AUT").toUpperCase().slice(0, 4);
+        const id = `${prefixe}_${initiales}_EX${nn}`;
+        const { error } = await supabase.from("exercices_application").insert({
+          id, chapitre_id: chapitreId, enonce_modele: enonce.trim(),
+          reponse_modele: reponse.trim(), parametres, niveau, prof_id: currentUser.id,
+        });
+        setEnregistrement(false);
+        if (error) { alert("Erreur : " + error.message); return; }
+      }
     }
     onCree();
   }
@@ -2380,7 +2411,7 @@ function CreerQuestion({ chapitres, currentUser, niveauScolaire, onFermer, onCre
   return (
     <div className="creer-overlay" onClick={e => e.target === e.currentTarget && onFermer()}>
       <div className="creer-card">
-        <div className="creer-title">➕ Créer une question</div>
+        <div className="creer-title">{estEdition ? "✏️ Modifier la question" : "➕ Créer une question"}</div>
         <div className="creer-mode-tabs">
           <button className={`creer-mode-tab${mode === "fixe" ? " active" : ""}`} onClick={() => setMode("fixe")}>📝 Question fixe</button>
           <button className={`creer-mode-tab${mode === "aleatoire" ? " active" : ""}`} onClick={() => setMode("aleatoire")}>🎲 Question aléatoire</button>
@@ -2469,7 +2500,7 @@ function CreerQuestion({ chapitres, currentUser, niveauScolaire, onFermer, onCre
           <button className="diapo-cancel-btn" onClick={onFermer}>Annuler</button>
           <button className="diapo-launch-btn" onClick={enregistrer}
             disabled={enregistrement || !enonce.trim() || !reponse.trim() || !chapitreId}>
-            {enregistrement ? "Enregistrement…" : "Enregistrer"}
+            {enregistrement ? "Enregistrement…" : estEdition ? "Mettre à jour" : "Enregistrer"}
           </button>
         </div>
       </div>
@@ -2697,6 +2728,7 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
   const [afficherImport, setAfficherImport] = useState(false);
   const [afficherTirage, setAfficherTirage] = useState(false);
   const [afficherCreerQuestion, setAfficherCreerQuestion] = useState(false);
+  const [questionAModifier, setQuestionAModifier] = useState(null);
   const [dragIndex, setDragIndex] = useState(null);
   const [overIndex, setOverIndex] = useState(null);
   const [overZone, setOverZone] = useState(null); // "top" | "middle" | "bottom"
@@ -3325,7 +3357,7 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
                               </div>
                               {q.prof_id === currentUser.id && (
                                 <div className="gen-question-detail-footer">
-                                  <button className="gen-edit-question-btn" onClick={() => commencerEdition(q)}>
+                                  <button className="gen-edit-question-btn" onClick={() => { setQuestionAModifier({ ...q, _source: "base_fixe" }); setAfficherCreerQuestion(true); }}>
                                     ✏️ Modifier
                                   </button>
                                   <button className="gen-delete-question-btn" onClick={() => supprimerQuestion(q)}>
@@ -3364,6 +3396,12 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
                             <button className="gen-exercice-refresh-btn" onClick={() => retirerAuSort(ex.id)}>
                               🎲 Retirer au sort
                             </button>
+                            {ex.source === "base" && ex.data?.prof_id === currentUser.id && (
+                              <button className="gen-exercice-refresh-btn" style={{ marginLeft: 8 }}
+                                onClick={() => { setQuestionAModifier({ ...ex.data, _source: "base_aleatoire" }); setAfficherCreerQuestion(true); }}>
+                                ✏️ Modifier
+                              </button>
+                            )}
                           </div>
                         )}
                       </div>
@@ -3530,10 +3568,11 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
           chapitres={chapitres}
           currentUser={currentUser}
           niveauScolaire={niveauScolaire}
-          onFermer={() => setAfficherCreerQuestion(false)}
+          questionAEditer={questionAModifier}
+          onFermer={() => { setAfficherCreerQuestion(false); setQuestionAModifier(null); }}
           onCree={() => {
             setAfficherCreerQuestion(false);
-            // Recharger les exercices depuis la base
+            setQuestionAModifier(null);
             if (chapitres.length > 0) {
               supabase.from("exercices_application")
                 .select("*")
