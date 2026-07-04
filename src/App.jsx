@@ -424,7 +424,7 @@ const CSS = `
   .hist-empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; color: var(--text-muted); font-size: 13px; }
 
   .hist-list { display: flex; flex-direction: column; gap: 10px; max-width: 760px; }
-  .hist-card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 16px 20px; }
+  .hist-card { background: var(--surface); border: 1px solid var(--border); border-left: 3px solid var(--accent); border-radius: 14px; padding: 16px 20px; }
   .hist-card-top { display: flex; align-items: flex-start; gap: 12px; }
   .hist-card-main { flex: 1; min-width: 0; }
   .hist-card-nom { font-size: 14px; font-weight: 600; }
@@ -473,7 +473,8 @@ const CSS = `
   }
   .gen-selected-item {
     display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px;
-    background: var(--surface); border: 1px solid var(--border); border-radius: 10px; margin-bottom: 8px;
+    background: var(--surface); border: 1px solid var(--border); border-left: 3px solid var(--accent);
+    border-radius: 10px; margin-bottom: 8px;
     transition: opacity .15s, border-color .15s, transform .1s;
   }
   .gen-selected-item.dragging { opacity: .4; }
@@ -4116,6 +4117,7 @@ export default function App() {
     "--accent": couleurActive,
     "--accent-light": COULEURS_NIVEAU_LIGHT[niveauScolaire] || "#7b8fff",
     "--accent-rgb": COULEURS_NIVEAU_RGB[niveauScolaire] || "91,115,255",
+    background: "radial-gradient(ellipse 1200px 800px at 15% 0%, rgba(var(--accent-rgb), 0.06), transparent 60%), var(--bg)",
   };
   const [sessionARecharger, setSessionARecharger] = useState(null); // ids de questions à charger dans le générateur
 
@@ -4234,14 +4236,14 @@ export default function App() {
               {/* Pills de niveau */}
               <div className="niveau-pills">
                 {[
-                  { id: "terminale_spe", label: "Terminale spé" },
-                  { id: "premiere", label: "Première" },
-                  { id: "seconde", label: "Seconde" },
+                  { id: "terminale_spe", label: "Terminale spé", icone: "🔷" },
+                  { id: "premiere", label: "Première", icone: "🔶" },
+                  { id: "seconde", label: "Seconde", icone: "🔺" },
                 ].map(n => (
                   <button key={n.id} className={`niveau-pill${niveauScolaire === n.id ? " active" : ""}`}
                     style={niveauScolaire === n.id ? { background: COULEURS_NIVEAU[n.id] } : {}}
                     onClick={() => setNiveauScolaire(n.id)}>
-                    {n.label}
+                    <span aria-hidden="true" style={{ marginRight: 6 }}>{n.icone}</span>{n.label}
                   </button>
                 ))}
               </div>
