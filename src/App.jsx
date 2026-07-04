@@ -423,6 +423,14 @@ const CSS = `
   .hist-toolbar-filter.active { background: var(--accent); border-color: var(--accent); color: #fff; }
   .hist-empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; color: var(--text-muted); font-size: 13px; }
 
+  /* ── Spinner de chargement (teinté selon le niveau actif via var(--accent)) ── */
+  .spinner {
+    width: 28px; height: 28px; border-radius: 50%;
+    border: 3px solid var(--border); border-top-color: var(--accent);
+    animation: spin .7s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
   .hist-list { display: flex; flex-direction: column; gap: 10px; max-width: 760px; }
   .hist-card { background: var(--surface); border: 1px solid var(--border); border-left: 3px solid var(--accent); border-radius: 14px; padding: 16px 20px; }
   .hist-card-top { display: flex; align-items: flex-start; gap: 12px; }
@@ -2295,7 +2303,7 @@ function HistoriqueZone({ currentUser, currentProfile, allProfiles, onRejouer, n
       </div>
 
       {loading ? (
-        <div className="hist-empty">Chargement…</div>
+        <div className="hist-empty"><div className="spinner"></div>Chargement…</div>
       ) : sessions.length === 0 ? (
         <div className="hist-empty">
           <div style={{ fontSize: 32, opacity: .3 }}>🕓</div>
@@ -2330,7 +2338,9 @@ function HistoriqueZone({ currentUser, currentProfile, allProfiles, onRejouer, n
                   {estProprietaire(session) && (
                     <>
                       <button className={`hist-icon-btn${session.favori ? " fav-active" : ""}`}
-                        onClick={() => toggleFavori(session)} title="Mettre en favori">⭐</button>
+                        onClick={() => toggleFavori(session)} title={session.favori ? "Retirer des favoris" : "Mettre en favori"}>
+                        {session.favori ? "★" : "☆"}
+                      </button>
                       <button className="hist-icon-btn" onClick={() => commencerRenommage(session)} title="Renommer">✏️</button>
                       <button className="hist-icon-btn" onClick={() => togglePartage(session)}
                         title={session.partage ? "Rendre privée" : "Partager avec mes collègues"}>
@@ -3307,7 +3317,7 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
   }
 
   if (loading) {
-    return <div className="generateur-area"><div className="gen-selection-empty">Chargement des chapitres…</div></div>;
+    return <div className="generateur-area"><div className="gen-selection-empty"><div className="spinner"></div>Chargement des chapitres…</div></div>;
   }
 
   return (
