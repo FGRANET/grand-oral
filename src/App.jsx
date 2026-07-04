@@ -2749,6 +2749,11 @@ function CreerQuestion({ chapitres, currentUser, niveauScolaire, onFermer, onCre
                 Variable : <code>{"{a}"}</code> · Calcul : <code>{"{2a}"}</code> · Polynôme : <code>{"{poly(a:2, b:1, c:0)}"}</code> · Fraction exacte : <code>{"{frac(-b, a)}"}</code>
               </div>
             )}
+            {mode === "aleatoire" && (
+              <div className="creer-hint">
+                ⚠️ Un nombre constant entre accolades LaTeX (numérateur, dénominateur…) doit être doublé, ex. <code>{"{{100}}"}</code> et non <code>{"{100}"}</code>, sinon les accolades sont mangées par la substitution.
+              </div>
+            )}
           </div>
           <div className="creer-field">
             <label>Réponse {mode === "aleatoire" ? "modèle" : ""}</label>
@@ -2957,6 +2962,11 @@ function CreerQcm({ chapitres, currentUser, niveauScolaire, onFermer, onCree, qc
             {mode === "aleatoire" && (
               <div className="creer-hint">
                 Variable : <code>{"{a}"}</code> · Calcul : <code>{"{2a}"}</code> · Polynôme : <code>{"{poly(a:2, b:1, c:0)}"}</code> · Fraction exacte : <code>{"{frac(-b, a)}"}</code>
+              </div>
+            )}
+            {mode === "aleatoire" && (
+              <div className="creer-hint">
+                ⚠️ Un nombre constant entre accolades LaTeX (numérateur, dénominateur…) doit être doublé, ex. <code>{"{{100}}"}</code> et non <code>{"{100}"}</code>, sinon les accolades sont mangées par la substitution.
               </div>
             )}
           </div>
