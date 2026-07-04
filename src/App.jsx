@@ -1252,6 +1252,14 @@ function tirerValeurParametre(def) {
 
 // Nettoie le texte après substitution : supprime les coefficients 1 et -1
 // devant une variable, et les termes +0 ou -0 inutiles.
+// Échappe les caractères spéciaux LaTeX qui casseraient la compilation .tex
+// sans être visibles à l'écran (KaTeX/l'affichage web ne s'en soucient pas).
+// Pour l'instant : le "%" qui démarre un commentaire LaTeX et tronque la ligne.
+// N'échappe pas un "\%" déjà présent (évite le double-échappement).
+function echapperLatex(texte) {
+  return (texte || "").replace(/(?<!\\)%/g, "\\%");
+}
+
 function nettoyerExpression(texte) {
   return texte
     // 1x → x, -1x → -x
@@ -3733,11 +3741,11 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
 
     selection.forEach((q, idx) => {
       lignes.push(`\\stepcounter{qnum}`);
-      lignes.push(`\\noindent\\textbf{Question \\theqnum.} ${q.enonce}`);
+      lignes.push(`\\noindent\\textbf{Question \\theqnum.} ${echapperLatex(q.enonce)}`);
       lignes.push("");
       if (avecCorrige) {
         lignes.push("\\begin{tcolorbox}[colback=gray!10]");
-        lignes.push(q.reponse);
+        lignes.push(echapperLatex(q.reponse));
         lignes.push("\\end{tcolorbox}");
       } else {
         lignes.push("\\reponse{3}");
@@ -4499,12 +4507,13 @@ function QcmZone({ currentUser, currentProfile, qcmSessionARecharger, onSessionC
 
     selection.forEach(q => {
       lignes.push(`\\stepcounter{qnum}`);
-      lignes.push(`\\noindent\\textbf{Question \\theqnum.} ${q.enonce}`);
+      lignes.push(`\\noindent\\textbf{Question \\theqnum.} ${echapperLatex(q.enonce)}`);
       lignes.push("");
       q.choix.forEach((c, i) => {
         const estBonne = avecCorrige && i === q.bonne_reponse;
         const case_ = estBonne ? "$\\blacksquare$" : "$\\square$";
-        const texte = estBonne ? `\\textbf{${c}}` : c;
+        const texteEchappe = echapperLatex(c);
+        const texte = estBonne ? `\\textbf{${texteEchappe}}` : texteEchappe;
         lignes.push(`${case_}\\ ${lettres[i]}) ${texte} \\\\`);
       });
       lignes.push("");
