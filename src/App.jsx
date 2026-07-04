@@ -747,6 +747,11 @@ const CSS = `
     padding: 6px 8px; color: var(--text); font-family: var(--font); font-size: 12px; outline: none; text-align: center;
   }
   .creer-param-sep { font-size: 12px; color: var(--text-muted); }
+  .creer-param-liste-input {
+    flex: 1; background: var(--surface); border: 1px solid var(--border); border-radius: 6px;
+    padding: 6px 10px; color: var(--text); font-family: var(--mono); font-size: 12px; outline: none;
+  }
+  .creer-param-liste-input:focus { border-color: var(--accent); }
   .creer-param-type {
     background: var(--surface2); border: 1px solid var(--border); border-radius: 6px;
     padding: 6px 8px; color: var(--text); font-family: var(--font); font-size: 12px; outline: none; margin-left: auto;
@@ -1235,8 +1240,28 @@ function formatNombre(n) {
   return String(n).replace(".", ",");
 }
 
+// Construit l'objet "parametres" (stocké en jsonb) à partir des lignes du
+// formulaire de création. Pour le type "liste", parse le texte "20, 25, 50"
+// en tableau de nombres ; pour les autres types, conserve min/max/type.
+function construireParametres(params) {
+  const parametres = {};
+  params.forEach(p => {
+    if (p.type === "liste") {
+      const valeurs = (p.valeurs || "").split(",").map(s => Number(s.trim())).filter(n => !isNaN(n));
+      parametres[p.nom] = { type: "liste", valeurs };
+    } else {
+      parametres[p.nom] = { min: Number(p.min), max: Number(p.max), type: p.type };
+    }
+  });
+  return parametres;
+}
+
 function tirerValeurParametre(def) {
   const { min, max, type } = def;
+  if (type === "liste") {
+    const valeurs = def.valeurs || [];
+    return valeurs[Math.floor(Math.random() * valeurs.length)];
+  }
   if (type === "decimal") {
     const valeur = min + Math.random() * (max - min);
     return Math.round(valeur * 10) / 10;
@@ -2598,7 +2623,8 @@ function CreerQuestion({ chapitres, currentUser, niveauScolaire, onFermer, onCre
   // Initialiser les params depuis la question à éditer si mode aléatoire
   const paramsInitiaux = questionAEditer?.parametres
     ? Object.entries(questionAEditer.parametres).map(([nom, def]) => ({
-        nom, min: String(def.min), max: String(def.max), type: def.type || "entier"
+        nom, min: String(def.min ?? ""), max: String(def.max ?? ""), type: def.type || "entier",
+        valeurs: (def.valeurs || []).join(", "),
       }))
     : [];
   const [params, setParams] = useState(paramsInitiaux);
@@ -2639,7 +2665,7 @@ function CreerQuestion({ chapitres, currentUser, niveauScolaire, onFermer, onCre
     if (mode !== "aleatoire") return;
     setParams(prev => {
       const existants = Object.fromEntries(prev.map(p => [p.nom, p]));
-      return variablesDetectees.map(nom => existants[nom] || { nom, min: "-10", max: "10", type: "entier" });
+      return variablesDetectees.map(nom => existants[nom] || { nom, min: "-10", max: "10", type: "entier", valeurs: "" });
     });
   }, [variablesDetectees, mode]);
 
@@ -2650,8 +2676,7 @@ function CreerQuestion({ chapitres, currentUser, niveauScolaire, onFermer, onCre
   function lancerTest() {
     setTestErreur(null);
     try {
-      const parametres = {};
-      params.forEach(p => { parametres[p.nom] = { min: Number(p.min), max: Number(p.max), type: p.type }; });
+      const parametres = construireParametres(params);
       const valeurs = {};
       Object.entries(parametres).forEach(([nom, def]) => { valeurs[nom] = tirerValeurParametre(def); });
       const enonceGenere = substituerPlaceholders(enonce, valeurs);
@@ -2678,8 +2703,7 @@ function CreerQuestion({ chapitres, currentUser, niveauScolaire, onFermer, onCre
       setEnregistrement(false);
       if (error) { alert("Erreur : " + error.message); return; }
     } else {
-      const parametres = {};
-      params.forEach(p => { parametres[p.nom] = { min: Number(p.min), max: Number(p.max), type: p.type }; });
+      const parametres = construireParametres(params);
       if (estEdition && questionAEditer._source === "base_aleatoire") {
         const { error } = await supabase.from("exercices_application").update({
           chapitre_id: chapitreId, enonce_modele: enonce.trim(),
@@ -2770,13 +2794,22 @@ function CreerQuestion({ chapitres, currentUser, niveauScolaire, onFermer, onCre
                   ) : params.map((p, i) => (
                     <div key={p.nom} className="creer-param-row">
                       <span className="creer-param-name">{p.nom}</span>
-                      <input type="number" className="creer-param-input" value={p.min} onChange={e => mettreAJourParam(i, "min", e.target.value)} />
-                      <span className="creer-param-sep">à</span>
-                      <input type="number" className="creer-param-input" value={p.max} onChange={e => mettreAJourParam(i, "max", e.target.value)} />
+                      {p.type === "liste" ? (
+                        <input type="text" className="creer-param-liste-input" value={p.valeurs}
+                          onChange={e => mettreAJourParam(i, "valeurs", e.target.value)}
+                          placeholder="Ex : 20, 25, 50, 75, 80" />
+                      ) : (
+                        <>
+                          <input type="number" className="creer-param-input" value={p.min} onChange={e => mettreAJourParam(i, "min", e.target.value)} />
+                          <span className="creer-param-sep">à</span>
+                          <input type="number" className="creer-param-input" value={p.max} onChange={e => mettreAJourParam(i, "max", e.target.value)} />
+                        </>
+                      )}
                       <select className="creer-param-type" value={p.type} onChange={e => mettreAJourParam(i, "type", e.target.value)}>
                         <option value="entier">Entier</option>
                         <option value="entier_non_nul">Entier ≠ 0</option>
                         <option value="decimal">Décimal</option>
+                        <option value="liste">Liste de valeurs</option>
                       </select>
                     </div>
                   ))}
@@ -2826,7 +2859,8 @@ function CreerQcm({ chapitres, currentUser, niveauScolaire, onFermer, onCree, qc
   const [bonneReponse, setBonneReponse] = useState(qcmAEditer?.bonne_reponse ?? 0);
   const paramsInitiaux = qcmAEditer?.parametres
     ? Object.entries(qcmAEditer.parametres).map(([nom, def]) => ({
-        nom, min: String(def.min), max: String(def.max), type: def.type || "entier"
+        nom, min: String(def.min ?? ""), max: String(def.max ?? ""), type: def.type || "entier",
+        valeurs: (def.valeurs || []).join(", "),
       }))
     : [];
   const [params, setParams] = useState(paramsInitiaux);
@@ -2870,7 +2904,7 @@ function CreerQcm({ chapitres, currentUser, niveauScolaire, onFermer, onCree, qc
     if (mode !== "aleatoire") return;
     setParams(prev => {
       const existants = Object.fromEntries(prev.map(p => [p.nom, p]));
-      return variablesDetectees.map(nom => existants[nom] || { nom, min: "-10", max: "10", type: "entier" });
+      return variablesDetectees.map(nom => existants[nom] || { nom, min: "-10", max: "10", type: "entier", valeurs: "" });
     });
   }, [variablesDetectees, mode]);
 
@@ -2883,8 +2917,7 @@ function CreerQcm({ chapitres, currentUser, niveauScolaire, onFermer, onCree, qc
   function lancerTest() {
     setTestErreur(null);
     try {
-      const parametres = {};
-      params.forEach(p => { parametres[p.nom] = { min: Number(p.min), max: Number(p.max), type: p.type }; });
+      const parametres = construireParametres(params);
       const valeurs = {};
       Object.entries(parametres).forEach(([nom, def]) => { valeurs[nom] = tirerValeurParametre(def); });
       const enonceGenere = substituerPlaceholders(enonce, valeurs);
@@ -2909,8 +2942,7 @@ function CreerQcm({ chapitres, currentUser, niveauScolaire, onFermer, onCree, qc
         enonce_modele: null, choix_modele: null, parametres: null,
       };
     } else {
-      const parametres = {};
-      params.forEach(p => { parametres[p.nom] = { min: Number(p.min), max: Number(p.max), type: p.type }; });
+      const parametres = construireParametres(params);
       donnees = {
         chapitre_id: chapitreId, mode: "aleatoire",
         enonce_modele: enonce.trim(), choix_modele: choix.map(c => c.trim()),
@@ -2996,13 +3028,22 @@ function CreerQcm({ chapitres, currentUser, niveauScolaire, onFermer, onCree, qc
                   ) : params.map((p, i) => (
                     <div key={p.nom} className="creer-param-row">
                       <span className="creer-param-name">{p.nom}</span>
-                      <input type="number" className="creer-param-input" value={p.min} onChange={e => mettreAJourParam(i, "min", e.target.value)} />
-                      <span className="creer-param-sep">à</span>
-                      <input type="number" className="creer-param-input" value={p.max} onChange={e => mettreAJourParam(i, "max", e.target.value)} />
+                      {p.type === "liste" ? (
+                        <input type="text" className="creer-param-liste-input" value={p.valeurs}
+                          onChange={e => mettreAJourParam(i, "valeurs", e.target.value)}
+                          placeholder="Ex : 20, 25, 50, 75, 80" />
+                      ) : (
+                        <>
+                          <input type="number" className="creer-param-input" value={p.min} onChange={e => mettreAJourParam(i, "min", e.target.value)} />
+                          <span className="creer-param-sep">à</span>
+                          <input type="number" className="creer-param-input" value={p.max} onChange={e => mettreAJourParam(i, "max", e.target.value)} />
+                        </>
+                      )}
                       <select className="creer-param-type" value={p.type} onChange={e => mettreAJourParam(i, "type", e.target.value)}>
                         <option value="entier">Entier</option>
                         <option value="entier_non_nul">Entier ≠ 0</option>
                         <option value="decimal">Décimal</option>
+                        <option value="liste">Liste de valeurs</option>
                       </select>
                     </div>
                   ))}
