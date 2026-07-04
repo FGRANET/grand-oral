@@ -90,6 +90,7 @@ const CSS = `
     --border: #2e3250;
     --accent: #5b73ff;
     --accent-light: #7b8fff;
+    --accent-rgb: 91,115,255;
     --green: #34d399;
     --red: #f87171;
     --text: #e8eaf6;
@@ -436,7 +437,7 @@ const CSS = `
     font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em;
     padding: 2px 8px; border-radius: 10px; background: var(--surface2); color: var(--text-muted);
   }
-  .hist-badge.partage { background: rgba(91,115,255,0.15); color: var(--accent-light); }
+  .hist-badge.partage { background: rgba(var(--accent-rgb), 0.15); color: var(--accent-light); }
   .hist-card-actions { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
   .hist-icon-btn {
     background: none; border: none; color: var(--text-muted); cursor: pointer;
@@ -4093,8 +4094,29 @@ export default function App() {
     premiere:      "#7c3aed",
     seconde:       "#059669",
   };
+  // Variante claire (hover, textes accentués) et triplet RGB (badges semi-transparents)
+  // pour chaque couleur de niveau — mêmes usages que --accent-light / --accent-rgb.
+  const COULEURS_NIVEAU_LIGHT = {
+    terminale_spe: "#60a5fa",
+    premiere:      "#a78bfa",
+    seconde:       "#34d399",
+  };
+  const COULEURS_NIVEAU_RGB = {
+    terminale_spe: "37,99,235",
+    premiere:      "124,58,237",
+    seconde:       "5,150,105",
+  };
   const couleurActive = COULEURS_NIVEAU[niveauScolaire] || "#2563eb";
   const estTerminaleSpe = niveauScolaire === "terminale_spe";
+  // Injectées en CSS custom properties sur le conteneur de contenu : tout ce qui
+  // utilise déjà var(--accent) / var(--accent-light) / var(--accent-rgb) (filtres,
+  // badges, boutons, checkboxes, tirage, barre de progression…) se reteinte
+  // automatiquement selon le niveau actif, sans toucher au CSS de chaque composant.
+  const styleNiveau = {
+    "--accent": couleurActive,
+    "--accent-light": COULEURS_NIVEAU_LIGHT[niveauScolaire] || "#7b8fff",
+    "--accent-rgb": COULEURS_NIVEAU_RGB[niveauScolaire] || "91,115,255",
+  };
   const [sessionARecharger, setSessionARecharger] = useState(null); // ids de questions à charger dans le générateur
 
   // Charger le CSS de KaTeX une seule fois (nécessaire pour un rendu correct des formules)
@@ -4205,7 +4227,7 @@ export default function App() {
       <style>{CSS}</style>
       <div className="app">
         {profile.role === "professeur" && (
-          <div style={{ display: "flex", flexDirection: "column", flex: 1, minWidth: 0, minHeight: 0 }}>
+          <div style={{ display: "flex", flexDirection: "column", flex: 1, minWidth: 0, minHeight: 0, ...styleNiveau }}>
 
             {/* Barre unifiée : pills de niveau + séparateur + sous-onglets */}
             <div className="niveau-top-bar">
