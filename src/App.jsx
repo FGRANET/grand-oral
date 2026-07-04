@@ -446,6 +446,7 @@ const CSS = `
     padding: 2px 8px; border-radius: 10px; background: var(--surface2); color: var(--text-muted);
   }
   .hist-badge.partage { background: rgba(var(--accent-rgb), 0.15); color: var(--accent-light); }
+  .hist-badge.qcm { background: rgba(245,158,11,0.15); color: #f59e0b; }
   .hist-card-actions { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
   .hist-icon-btn {
     background: none; border: none; color: var(--text-muted); cursor: pointer;
@@ -621,6 +622,18 @@ const CSS = `
   .diapo-reponse-divider { width: 80px; height: 2px; background: var(--accent); margin: 32px 0; }
   .diapo-reponse { font-size: 24px; line-height: 1.6; max-width: 900px; color: var(--accent-light); }
   .diapo-hint { font-size: 12px; color: var(--text-muted); margin-top: 40px; }
+  .diapo-qcm-choix-liste { display: flex; flex-direction: column; gap: 14px; width: 100%; max-width: 720px; margin-top: 36px; }
+  .diapo-qcm-choix {
+    display: flex; align-items: center; gap: 14px; padding: 16px 20px; border-radius: 12px;
+    border: 1.5px solid var(--border); background: var(--surface); font-size: 18px; text-align: left;
+    transition: all .2s;
+  }
+  .diapo-qcm-choix.correcte { border-color: var(--green); background: rgba(52,211,153,.12); }
+  .diapo-qcm-choix-lettre {
+    width: 30px; height: 30px; border-radius: 50%; background: var(--surface2); flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center; font-family: var(--mono); font-weight: 600; font-size: 14px;
+  }
+  .diapo-qcm-choix.correcte .diapo-qcm-choix-lettre { background: var(--green); color: #0f1117; }
 
   .diapo-recap { flex: 1; overflow-y: auto; padding: 40px 60px; max-width: 900px; margin: 0 auto; width: 100%; }
   .diapo-recap-title { font-size: 22px; font-weight: 600; margin-bottom: 24px; text-align: center; }
@@ -714,6 +727,16 @@ const CSS = `
   .creer-textarea:focus { border-color: var(--accent); }
   .creer-hint { font-size: 11px; color: var(--text-muted); }
   .creer-hint code { background: var(--surface2); padding: 1px 5px; border-radius: 4px; font-family: var(--mono); }
+  .creer-choix-list { display: flex; flex-direction: column; gap: 8px; }
+  .creer-choix-row { display: flex; align-items: center; gap: 10px; }
+  .creer-choix-radio { width: 16px; height: 16px; accent-color: var(--accent); cursor: pointer; flex-shrink: 0; }
+  .creer-choix-lettre { font-family: var(--mono); font-size: 13px; font-weight: 600; color: var(--accent-light); width: 16px; flex-shrink: 0; }
+  .creer-choix-input {
+    flex: 1; background: var(--surface2); border: 1px solid var(--border); border-radius: 8px;
+    padding: 9px 12px; color: var(--text); font-family: var(--mono); font-size: 13px; outline: none;
+  }
+  .creer-choix-input:focus { border-color: var(--accent); }
+  .creer-choix-row.bonne .creer-choix-input { border-color: var(--green); }
 
   /* Paramètres aléatoires */
   .creer-params { border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; }
@@ -1356,6 +1379,25 @@ function formaterPolynome(coeffs, variable = "x") {
   }).join("");
 }
 
+// Tire un QCM complet à partir de son modèle stocké en base (mode "aleatoire") :
+// applique le même moteur que tirerExercice, mais sur l'énoncé ET sur les 4 choix.
+// En mode "fixe", retourne directement les valeurs telles quelles (rien à tirer).
+// L'index de la bonne réponse ne bouge jamais : on ne mélange pas l'ordre des choix.
+function tirerQcm(qcm) {
+  if (qcm.mode !== "aleatoire") {
+    return { enonce: qcm.enonce, choix: qcm.choix, valeurs: {} };
+  }
+  const valeurs = {};
+  Object.entries(qcm.parametres || {}).forEach(([nom, def]) => {
+    valeurs[nom] = tirerValeurParametre(def);
+  });
+  return {
+    enonce: substituerPlaceholders(qcm.enonce_modele, valeurs),
+    choix: (qcm.choix_modele || []).map(c => substituerPlaceholders(c, valeurs)),
+    valeurs,
+  };
+}
+
 // Tire un exercice complet à partir de son modèle stocké en base :
 // retourne { enonce, reponse, valeurs } prêt à être affiché/sélectionné.
 function tirerExercice(exercice) {
@@ -1932,6 +1974,144 @@ function DiapoViewer({ questions, mode, delai, nomChapitre, onFermer }) {
 }
 
 // ─── Composant ImportQuestions ──────────────────────────────────────────
+// ─── Composant DiapoViewerQcm (projection au tableau des QCM) ──────────
+// Même structure que DiapoViewer (minuteur, pause, récap, clavier), mais le
+// contenu affiche les 4 choix au lieu d'une réponse libre. Non interactif
+// pour l'instant (les choix ne sont pas cliquables) — la révélation se fait
+// comme les autres questions, au clic/avancée. Le clic sur un choix pourra
+// être ajouté plus tard sans reprendre le reste (voir le composant ChoixQcm).
+function ChoixQcm({ texte, lettre, correcte }) {
+  return (
+    <div className={`diapo-qcm-choix${correcte ? " correcte" : ""}`}>
+      <span className="diapo-qcm-choix-lettre">{lettre}</span>
+      <MathText>{texte}</MathText>
+    </div>
+  );
+}
+
+function DiapoViewerQcm({ questions, mode, delai, nomChapitre, onFermer }) {
+  const [index, setIndex] = useState(0);
+  const [etape, setEtape] = useState("question"); // "question" | "reponse" | "recap"
+  const [enPause, setEnPause] = useState(false);
+  const [tempsRestant, setTempsRestant] = useState(delai);
+  const intervalRef = useRef(null);
+
+  const question = questions[index];
+  const estDerniereQuestion = index === questions.length - 1;
+  const lettres = ["a", "b", "c", "d"];
+
+  const avancer = useCallback(() => {
+    if (mode === "apres_chaque_question") {
+      if (etape === "question") {
+        setEtape("reponse");
+        setTempsRestant(delai);
+      } else {
+        if (estDerniereQuestion) {
+          setEtape("recap");
+        } else {
+          setIndex(i => i + 1);
+          setEtape("question");
+          setTempsRestant(delai);
+        }
+      }
+    } else {
+      if (estDerniereQuestion) {
+        setEtape("recap");
+      } else {
+        setIndex(i => i + 1);
+        setTempsRestant(delai);
+      }
+    }
+  }, [mode, etape, estDerniereQuestion, delai]);
+
+  useEffect(() => {
+    if (etape === "recap" || enPause) return;
+    if (intervalRef.current) clearInterval(intervalRef.current);
+    intervalRef.current = setInterval(() => {
+      setTempsRestant(t => {
+        if (t <= 1) {
+          avancer();
+          return delai;
+        }
+        return t - 1;
+      });
+    }, 1000);
+    return () => clearInterval(intervalRef.current);
+  }, [etape, enPause, avancer, delai]);
+
+  function avancerManuel() {
+    if (etape === "recap") return;
+    clearInterval(intervalRef.current);
+    avancer();
+  }
+
+  useEffect(() => {
+    function onKeyDown(e) {
+      if (e.key === "Escape") { onFermer(); return; }
+      if (e.key === " " || e.key === "ArrowRight" || e.key === "Enter") {
+        e.preventDefault();
+        avancerManuel();
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  });
+
+  const progressionPct = ((index + (etape === "reponse" ? 0.5 : 0)) / questions.length) * 100;
+
+  return (
+    <div className="diapo-viewer">
+      <div className="diapo-topbar">
+        <div className="diapo-progress">
+          {etape === "recap" ? "Récapitulatif" : `QCM ${index + 1} / ${questions.length}`}
+        </div>
+        <div className="diapo-topbar-actions">
+          {etape !== "recap" && (
+            <>
+              <div className="diapo-timer-display">
+                <span className="diapo-timer-ring" style={{ opacity: enPause ? 0.3 : 1 }} />
+                {tempsRestant}s
+              </div>
+              <button className="diapo-pause-btn" onClick={() => setEnPause(p => !p)}>
+                {enPause ? "▶ Reprendre" : "⏸ Pause"}
+              </button>
+            </>
+          )}
+          <button className="diapo-close-btn" onClick={onFermer}>✕ Fermer</button>
+        </div>
+      </div>
+
+      <div className="diapo-progress-bar">
+        <div className="diapo-progress-bar-fill" style={{ width: `${etape === "recap" ? 100 : progressionPct}%` }} />
+      </div>
+
+      {etape !== "recap" ? (
+        <div className="diapo-content" onClick={avancerManuel}>
+          <div className="diapo-chapitre-tag">{nomChapitre(question.chapitre_id)}</div>
+          <div className="diapo-enonce"><MathText inline={false}>{question.enonce}</MathText></div>
+          <div className="diapo-qcm-choix-liste">
+            {question.choix.map((c, i) => (
+              <ChoixQcm key={i} texte={c} lettre={lettres[i]} correcte={etape === "reponse" && i === question.bonne_reponse} />
+            ))}
+          </div>
+          <div className="diapo-hint">Clic, Espace ou → pour avancer · Échap pour fermer</div>
+        </div>
+      ) : (
+        <div className="diapo-recap">
+          <div className="diapo-recap-title">📋 Récapitulatif des bonnes réponses</div>
+          {questions.map((q, i) => (
+            <div key={q.id} className="diapo-recap-item">
+              <div className="diapo-recap-num">QCM {i + 1} · {nomChapitre(q.chapitre_id)}</div>
+              <div className="diapo-recap-enonce"><MathText inline={false}>{q.enonce}</MathText></div>
+              <div className="diapo-recap-reponse">{lettres[q.bonne_reponse]}) <MathText>{q.choix[q.bonne_reponse]}</MathText></div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ImportQuestions({ currentUser, currentProfile, chapitres, onFermer, onImportTermine }) {
   const [fichier, setFichier] = useState(null);
   const [analyse, setAnalyse] = useState(null); // { valides, conflits, chapitresInconnus }
@@ -2330,6 +2510,7 @@ function HistoriqueZone({ currentUser, currentProfile, allProfiles, onRejouer, n
                   <div className="hist-card-meta">
                     <span>{session.question_ids.length} question{session.question_ids.length !== 1 ? "s" : ""}</span>
                     {session.derniere_action && <span className="hist-badge">{libelleAction(session.derniere_action)}</span>}
+                    {session.type_session === "qcm" && <span className="hist-badge qcm">🔤 QCM</span>}
                     {session.partage && <span className="hist-badge partage">Partagée</span>}
                     {!estProprietaire(session) && <span className="hist-card-auteur">par {nomAuteur(session.prof_id)}</span>}
                   </div>
@@ -2351,7 +2532,7 @@ function HistoriqueZone({ currentUser, currentProfile, allProfiles, onRejouer, n
                   )}
                 </div>
               </div>
-              <button className="hist-card-rejouer" onClick={() => onRejouer(session.question_ids)}>
+              <button className="hist-card-rejouer" onClick={() => onRejouer(session)}>
                 ↻ Rejouer cette sélection
               </button>
             </div>
@@ -2617,6 +2798,231 @@ function CreerQuestion({ chapitres, currentUser, niveauScolaire, onFermer, onCre
   );
 }
 
+// ─── Composant CreerQcm (création/édition d'un QCM, fixe ou aléatoire) ──
+function CreerQcm({ chapitres, currentUser, niveauScolaire, onFermer, onCree, qcmAEditer }) {
+  const estEdition = !!qcmAEditer;
+  const [mode, setMode] = useState(qcmAEditer?.mode || "fixe");
+  const [chapitreId, setChapitreId] = useState(qcmAEditer?.chapitre_id || chapitres[0]?.id || "");
+  const [niveau, setNiveau] = useState(qcmAEditer?.niveau || 1);
+  const [enonce, setEnonce] = useState(
+    qcmAEditer?.enonce_modele || qcmAEditer?.enonce || ""
+  );
+  const [choix, setChoix] = useState(
+    qcmAEditer?.choix_modele || qcmAEditer?.choix || ["", "", "", ""]
+  );
+  const [bonneReponse, setBonneReponse] = useState(qcmAEditer?.bonne_reponse ?? 0);
+  const paramsInitiaux = qcmAEditer?.parametres
+    ? Object.entries(qcmAEditer.parametres).map(([nom, def]) => ({
+        nom, min: String(def.min), max: String(def.max), type: def.type || "entier"
+      }))
+    : [];
+  const [params, setParams] = useState(paramsInitiaux);
+  const [testResultat, setTestResultat] = useState(null);
+  const [testErreur, setTestErreur] = useState(null);
+  const [enregistrement, setEnregistrement] = useState(false);
+
+  function mettreAJourChoix(index, valeur) {
+    setChoix(prev => prev.map((c, i) => i === index ? valeur : c));
+  }
+
+  // Détecte les variables {a}, {poly(...)}, {frac(...)} dans l'énoncé ET les 4 choix
+  const variablesDetectees = useMemo(() => {
+    const texteNorm = (enonce + " " + choix.join(" ")).replace(/\\{([^{}]+)\\}/g, "{$1}");
+    const variables = new Set();
+    const regex = /\{([^{}]+)\}/g;
+    let match;
+    while ((match = regex.exec(texteNorm)) !== null) {
+      const expr = match[1].trim();
+      if (/^poly\(/.test(expr)) {
+        const interieur = expr.match(/^poly\((.+)\)$/)?.[1] || "";
+        interieur.split(",").forEach(t => {
+          const nom = t.split(":")[0].trim();
+          if (/^[a-zA-Z]+$/.test(nom)) variables.add(nom);
+        });
+      } else if (/^frac\(/.test(expr)) {
+        const interieur = expr.match(/^frac\((.+),(.+)\)$/);
+        if (interieur) {
+          [interieur[1], interieur[2]].forEach(arg => {
+            (arg.match(/[a-zA-Z]+/g) || []).forEach(l => variables.add(l));
+          });
+        }
+      } else {
+        (expr.match(/[a-zA-Z]+/g) || []).forEach(l => variables.add(l));
+      }
+    }
+    return [...variables].sort();
+  }, [enonce, choix]);
+
+  useEffect(() => {
+    if (mode !== "aleatoire") return;
+    setParams(prev => {
+      const existants = Object.fromEntries(prev.map(p => [p.nom, p]));
+      return variablesDetectees.map(nom => existants[nom] || { nom, min: "-10", max: "10", type: "entier" });
+    });
+  }, [variablesDetectees, mode]);
+
+  function mettreAJourParam(index, champ, valeur) {
+    setParams(prev => prev.map((p, i) => i === index ? { ...p, [champ]: valeur } : p));
+  }
+
+  const choixValides = choix.every(c => c.trim().length > 0);
+
+  function lancerTest() {
+    setTestErreur(null);
+    try {
+      const parametres = {};
+      params.forEach(p => { parametres[p.nom] = { min: Number(p.min), max: Number(p.max), type: p.type }; });
+      const valeurs = {};
+      Object.entries(parametres).forEach(([nom, def]) => { valeurs[nom] = tirerValeurParametre(def); });
+      const enonceGenere = substituerPlaceholders(enonce, valeurs);
+      const choixGeneres = choix.map(c => substituerPlaceholders(c, valeurs));
+      setTestResultat({ enonce: enonceGenere, choix: choixGeneres, valeurs });
+    } catch (e) {
+      setTestErreur(e.message);
+      setTestResultat(null);
+    }
+  }
+
+  async function enregistrer() {
+    if (!enonce.trim() || !choixValides || !chapitreId) return;
+    setEnregistrement(true);
+
+    let donnees;
+    if (mode === "fixe") {
+      donnees = {
+        chapitre_id: chapitreId, mode: "fixe",
+        enonce: enonce.trim(), choix: choix.map(c => c.trim()),
+        bonne_reponse: bonneReponse, niveau,
+        enonce_modele: null, choix_modele: null, parametres: null,
+      };
+    } else {
+      const parametres = {};
+      params.forEach(p => { parametres[p.nom] = { min: Number(p.min), max: Number(p.max), type: p.type }; });
+      donnees = {
+        chapitre_id: chapitreId, mode: "aleatoire",
+        enonce_modele: enonce.trim(), choix_modele: choix.map(c => c.trim()),
+        bonne_reponse: bonneReponse, niveau, parametres,
+        enonce: null, choix: null,
+      };
+    }
+
+    const { error } = estEdition
+      ? await supabase.from("qcm").update(donnees).eq("id", qcmAEditer.id)
+      : await supabase.from("qcm").insert({ ...donnees, prof_id: currentUser.id });
+
+    setEnregistrement(false);
+    if (error) { alert("Erreur : " + error.message); return; }
+    onCree();
+  }
+
+  const lettres = ["a", "b", "c", "d"];
+
+  return (
+    <div className="creer-overlay" onClick={e => e.target === e.currentTarget && onFermer()}>
+      <div className="creer-card">
+        <div className="creer-title">{estEdition ? "✏️ Modifier le QCM" : "➕ Créer un QCM"}</div>
+        <div className="creer-mode-tabs">
+          <button className={`creer-mode-tab${mode === "fixe" ? " active" : ""}`} onClick={() => setMode("fixe")}>📝 QCM fixe</button>
+          <button className={`creer-mode-tab${mode === "aleatoire" ? " active" : ""}`} onClick={() => setMode("aleatoire")}>🎲 QCM aléatoire</button>
+        </div>
+        <div className="creer-body">
+          <div className="creer-field">
+            <label>Chapitre</label>
+            <select value={chapitreId} onChange={e => setChapitreId(e.target.value)}>
+              {chapitres.map(ch => <option key={ch.id} value={ch.id}>{ch.nom}</option>)}
+            </select>
+          </div>
+          <div className="creer-field">
+            <label>Niveau</label>
+            <select value={niveau} onChange={e => setNiveau(Number(e.target.value))} style={{ width: 140 }}>
+              <option value={1}>Niveau 1</option>
+              <option value={2}>Niveau 2</option>
+              <option value={3}>Niveau 3</option>
+            </select>
+          </div>
+          <div className="creer-field">
+            <label>Énoncé {mode === "aleatoire" ? "modèle" : ""}</label>
+            <textarea className="creer-textarea" value={enonce} onChange={e => setEnonce(e.target.value)}
+              placeholder={mode === "aleatoire"
+                ? "Ex : Quelle est la dérivée de $f(x) = \\{a\\}x^2$ ?"
+                : "Ex : Quelle est la limite de cette suite ?"} />
+            {mode === "aleatoire" && (
+              <div className="creer-hint">
+                Variable : <code>{"{a}"}</code> · Calcul : <code>{"{2a}"}</code> · Polynôme : <code>{"{poly(a:2, b:1, c:0)}"}</code> · Fraction exacte : <code>{"{frac(-b, a)}"}</code>
+              </div>
+            )}
+          </div>
+          <div className="creer-field">
+            <label>Choix {mode === "aleatoire" ? "modèles" : ""} — coche la bonne réponse</label>
+            <div className="creer-choix-list">
+              {choix.map((c, i) => (
+                <div key={i} className={`creer-choix-row${bonneReponse === i ? " bonne" : ""}`}>
+                  <input type="radio" className="creer-choix-radio" name="bonne-reponse"
+                    checked={bonneReponse === i} onChange={() => setBonneReponse(i)}
+                    title="Marquer comme bonne réponse" />
+                  <span className="creer-choix-lettre">{lettres[i]})</span>
+                  <input type="text" className="creer-choix-input" value={c}
+                    onChange={e => mettreAJourChoix(i, e.target.value)}
+                    placeholder={`Proposition ${lettres[i]}`} />
+                </div>
+              ))}
+            </div>
+          </div>
+          {mode === "aleatoire" && (
+            <>
+              <div className="creer-field">
+                <label>Paramètres détectés</label>
+                <div className="creer-params">
+                  {params.length === 0 ? (
+                    <div className="creer-params-empty">Écris l'énoncé ou les choix avec des variables {"{a}"} pour les voir apparaître ici.</div>
+                  ) : params.map((p, i) => (
+                    <div key={p.nom} className="creer-param-row">
+                      <span className="creer-param-name">{p.nom}</span>
+                      <input type="number" className="creer-param-input" value={p.min} onChange={e => mettreAJourParam(i, "min", e.target.value)} />
+                      <span className="creer-param-sep">à</span>
+                      <input type="number" className="creer-param-input" value={p.max} onChange={e => mettreAJourParam(i, "max", e.target.value)} />
+                      <select className="creer-param-type" value={p.type} onChange={e => mettreAJourParam(i, "type", e.target.value)}>
+                        <option value="entier">Entier</option>
+                        <option value="entier_non_nul">Entier ≠ 0</option>
+                        <option value="decimal">Décimal</option>
+                      </select>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="creer-test">
+                <div className="creer-test-header">
+                  <span className="creer-test-label">Aperçu du tirage</span>
+                  <button className="creer-test-btn" onClick={lancerTest} disabled={!enonce.trim() || !choixValides}>🎲 Tirer un exemple</button>
+                </div>
+                {testErreur && <div className="creer-test-err">Erreur : {testErreur}</div>}
+                {testResultat ? (
+                  <div className="creer-test-result">
+                    <MathText inline={false}>{testResultat.enonce}</MathText>
+                    <div className="creer-test-reponse">
+                      {testResultat.choix.map((c, i) => (
+                        <div key={i}>{lettres[i]}) <MathText>{c}</MathText>{i === bonneReponse ? " ✓" : ""}</div>
+                      ))}
+                    </div>
+                    <div className="creer-test-vals">Valeurs : {JSON.stringify(testResultat.valeurs)}</div>
+                  </div>
+                ) : !testErreur && <div className="creer-test-empty">Lance un tirage pour vérifier le rendu avant d'enregistrer.</div>}
+              </div>
+            </>
+          )}
+        </div>
+        <div className="creer-actions">
+          <button className="diapo-cancel-btn" onClick={onFermer}>Annuler</button>
+          <button className="diapo-launch-btn" onClick={enregistrer}
+            disabled={enregistrement || !enonce.trim() || !choixValides || !chapitreId}>
+            {enregistrement ? "Enregistrement…" : estEdition ? "Mettre à jour" : "Enregistrer"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function TirageAleatoire({ chapitres, onAnnuler, onTirer, niveauScolaire }) {
   const [chapitresChoisis, setChapitresChoisis] = useState(new Set());
   const [typesChoisis, setTypesChoisis] = useState(new Set(TYPES_TIRAGE));
@@ -2796,6 +3202,140 @@ function TirageAleatoire({ chapitres, onAnnuler, onTirer, niveauScolaire }) {
 }
 
 // ─── Composant GenerateurZone ──────────────────────────────────────────
+// ─── Composant TirageAleatoireQcm ────────────────────────────────────────
+function TirageAleatoireQcm({ chapitres, onAnnuler, onTirer }) {
+  const [chapitresChoisis, setChapitresChoisis] = useState(new Set());
+  const [niveauxChoisis, setNiveauxChoisis] = useState(new Set([1, 2, 3]));
+  const [nombre, setNombre] = useState(10);
+  const [equilibrer, setEquilibrer] = useState(true);
+  const [tirageEnCours, setTirageEnCours] = useState(false);
+  const [avertissement, setAvertissement] = useState(null);
+
+  function toggleChapitre(id) {
+    setChapitresChoisis(prev => {
+      const copie = new Set(prev);
+      copie.has(id) ? copie.delete(id) : copie.add(id);
+      return copie;
+    });
+  }
+  function toggleNiveau(n) {
+    setNiveauxChoisis(prev => {
+      const copie = new Set(prev);
+      copie.has(n) ? copie.delete(n) : copie.add(n);
+      return copie;
+    });
+  }
+  function toutSelectionner() { setChapitresChoisis(new Set(chapitres.map(c => c.id))); }
+  function toutDeselectionner() { setChapitresChoisis(new Set()); }
+
+  async function lancerTirage() {
+    if (chapitresChoisis.size === 0 || niveauxChoisis.size === 0) return;
+    setTirageEnCours(true);
+    setAvertissement(null);
+
+    const { data: candidats } = await supabase.from("qcm").select("*")
+      .in("chapitre_id", [...chapitresChoisis])
+      .in("niveau", [...niveauxChoisis]);
+
+    const pool = candidats || [];
+    let resultat = [];
+
+    if (equilibrer) {
+      const parChapitre = {};
+      pool.forEach(q => { (parChapitre[q.chapitre_id] = parChapitre[q.chapitre_id] || []).push(q); });
+      const chapitresAvecQcm = Object.keys(parChapitre);
+      const quotaParChapitre = Math.ceil(nombre / (chapitresAvecQcm.length || 1));
+      chapitresAvecQcm.forEach(chId => {
+        resultat.push(...melanger(parChapitre[chId]).slice(0, quotaParChapitre));
+      });
+      resultat = melanger(resultat).slice(0, nombre);
+    } else {
+      resultat = melanger(pool).slice(0, nombre);
+    }
+
+    // Chaque QCM aléatoire est tiré immédiatement pour obtenir un énoncé/choix concrets
+    const tires = resultat.map(q => {
+      const tirage = tirerQcm(q);
+      return { id: q.id, chapitre_id: q.chapitre_id, niveau: q.niveau, mode: q.mode,
+        enonce: tirage.enonce, choix: tirage.choix, bonne_reponse: q.bonne_reponse };
+    });
+
+    if (tires.length < nombre) {
+      setAvertissement(`Seulement ${tires.length} QCM trouvé${tires.length !== 1 ? "s" : ""} sur ${nombre} demandé${nombre !== 1 ? "s" : ""} selon ces critères.`);
+    }
+
+    setTirageEnCours(false);
+    onTirer(tires);
+  }
+
+  const chapitresTries = [...chapitres].sort((a, b) => a.ordre - b.ordre);
+
+  return (
+    <div className="random-overlay" onClick={e => e.target === e.currentTarget && onAnnuler()}>
+      <div className="random-card">
+        <div className="random-title">🎲 Tirage aléatoire de QCM</div>
+        <div className="random-sub">Compose automatiquement une sélection de QCM selon tes critères. Remplace la sélection actuelle.</div>
+
+        <div className="random-body">
+          <div>
+            <div className="random-section-label">
+              Chapitres
+              <span style={{ marginLeft: 8, fontWeight: 400, textTransform: "none" }}>
+                <a href="#" onClick={e => { e.preventDefault(); toutSelectionner(); }} style={{ color: "var(--accent-light)" }}>Tout cocher</a>
+                {" · "}
+                <a href="#" onClick={e => { e.preventDefault(); toutDeselectionner(); }} style={{ color: "var(--accent-light)" }}>Tout décocher</a>
+              </span>
+            </div>
+            <div className="random-chapitres-grid">
+              {chapitresTries.map(ch => (
+                <label key={ch.id} className="random-chapitre-item">
+                  <input type="checkbox" checked={chapitresChoisis.has(ch.id)} onChange={() => toggleChapitre(ch.id)} />
+                  {ch.nom}
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <div className="random-section-label">Niveau</div>
+            <div className="random-chips-row">
+              {[1, 2, 3].map(n => (
+                <button key={n} className={`random-chip${niveauxChoisis.has(n) ? " active" : ""}`} onClick={() => toggleNiveau(n)}>Niveau {n}</button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <div className="random-section-label">Nombre de QCM</div>
+            <div className="random-nb-row">
+              <input type="number" className="random-nb-input" min={1} max={200} value={nombre}
+                onChange={e => setNombre(Math.max(1, Number(e.target.value) || 1))} />
+            </div>
+          </div>
+
+          <div>
+            <label className="random-checkbox-row">
+              <input type="checkbox" checked={equilibrer} onChange={() => setEquilibrer(e => !e)} />
+              Équilibrer entre chapitres
+            </label>
+            <div className="random-checkbox-desc">Répartit le nombre de QCM à peu près équitablement entre les chapitres cochés.</div>
+          </div>
+
+          {avertissement && <div className="random-warning">⚠️ {avertissement}</div>}
+        </div>
+
+        <div className="random-actions">
+          <button className="diapo-cancel-btn" onClick={onAnnuler}>Annuler</button>
+          <button className="diapo-launch-btn" onClick={lancerTirage}
+            disabled={tirageEnCours || chapitresChoisis.size === 0 || niveauxChoisis.size === 0}>
+            {tirageEnCours ? "Tirage en cours…" : "🎲 Tirer les QCM"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSessionChargee, niveauScolaire }) {
   const [chapitres, setChapitres] = useState([]);
   const [questionsParChapitre, setQuestionsParChapitre] = useState({}); // { chapitre_id: [questions] }
@@ -3238,7 +3778,7 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
     const niveau = niveauScolaire || "terminale_spe";
 
     const { data: existante } = await supabase.from("sessions_historique")
-      .select("id").eq("prof_id", currentUser.id).eq("signature", signature).maybeSingle();
+      .select("id").eq("prof_id", currentUser.id).eq("signature", signature).eq("type_session", "classique").maybeSingle();
 
     if (existante) {
       await supabase.from("sessions_historique").update({
@@ -3254,6 +3794,7 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
         signature,
         derniere_action: action,
         niveau_scolaire: niveau,
+        type_session: "classique",
       });
     }
   }
@@ -3727,6 +4268,533 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
 }
 
 // ─── Composant RessourcesZone ──────────────────────────────────────────
+// ─── Composant QcmZone ────────────────────────────────────────────────
+// Rubrique indépendante pour les QCM (fixe + aléatoire), sur le modèle de
+// GenerateurZone mais simplifiée : un seul "type" de contenu, pas de filtre
+// par type de question, tirage/édition/export propres aux QCM.
+function QcmZone({ currentUser, currentProfile, qcmSessionARecharger, onSessionChargee, niveauScolaire }) {
+  const [chapitres, setChapitres] = useState([]);
+  const [qcmParChapitre, setQcmParChapitre] = useState({});       // { chapitre_id: [qcm] }
+  const [chapitresOuverts, setChapitresOuverts] = useState({});
+  const [chargementChapitre, setChargementChapitre] = useState({});
+  const [detailOuvert, setDetailOuvert] = useState({});            // { qcm_id: bool }
+  const [tiragesQcm, setTiragesQcm] = useState({});                 // { qcm_id: {enonce, choix, valeurs} } dernier tirage
+  const [selection, setSelection] = useState([]);
+  const [elementsCoches, setElementsCoches] = useState(new Set());
+  const NIVEAUX_DISPONIBLES = [1, 2, 3];
+  const [niveauxActifs, setNiveauxActifs] = useState(new Set(NIVEAUX_DISPONIBLES));
+  const [afficherReglagesDiapo, setAfficherReglagesDiapo] = useState(false);
+  const [diapoActive, setDiapoActive] = useState(null);
+  const [afficherTirage, setAfficherTirage] = useState(false);
+  const [afficherCreerQcm, setAfficherCreerQcm] = useState(false);
+  const [qcmAModifier, setQcmAModifier] = useState(null);
+  const [dragIndex, setDragIndex] = useState(null);
+  const [overIndex, setOverIndex] = useState(null);
+  const [overZone, setOverZone] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [qcmASupprimer, setQcmASupprimer] = useState(null);
+  const [confirmerToutRetirer, setConfirmerToutRetirer] = useState(false);
+
+  function toggleNiveauFiltre(niveau) {
+    setNiveauxActifs(prev => {
+      const copie = new Set(prev);
+      copie.has(niveau) ? copie.delete(niveau) : copie.add(niveau);
+      return copie;
+    });
+  }
+  function qcmVisible(q) { return niveauxActifs.has(q.niveau); }
+
+  // Charger la liste des chapitres au changement de niveau
+  useEffect(() => {
+    setLoading(true);
+    setChapitres([]);
+    setChapitresOuverts({});
+    setQcmParChapitre({});
+    setSelection([]);
+    const niveau = niveauScolaire || "terminale_spe";
+    supabase.from("chapitres").select("*")
+      .eq("niveau_scolaire", niveau)
+      .order("ordre")
+      .then(({ data }) => {
+        setChapitres(data || []);
+        setLoading(false);
+      });
+  }, [niveauScolaire]);
+
+  // Recharger une sélection depuis l'historique (clic sur "Rejouer")
+  useEffect(() => {
+    if (!qcmSessionARecharger) return;
+    supabase.from("qcm").select("*").in("id", qcmSessionARecharger.length ? qcmSessionARecharger : ["__aucun__"]).then(({ data }) => {
+      const parId = {};
+      (data || []).forEach(q => { parId[q.id] = q; });
+      const nouvelleSelection = qcmSessionARecharger
+        .filter(id => parId[id])
+        .map(id => {
+          const q = parId[id];
+          const tirage = tirerQcm(q);
+          return { id: q.id, chapitre_id: q.chapitre_id, niveau: q.niveau, mode: q.mode,
+            enonce: tirage.enonce, choix: tirage.choix, bonne_reponse: q.bonne_reponse };
+        });
+      setSelection(nouvelleSelection);
+      onSessionChargee();
+    });
+  }, [qcmSessionARecharger]);
+
+  async function toggleChapitre(chapitreId) {
+    const estOuvert = chapitresOuverts[chapitreId];
+    setChapitresOuverts(prev => ({ ...prev, [chapitreId]: !estOuvert }));
+    if (!estOuvert && !qcmParChapitre[chapitreId]) {
+      setChargementChapitre(prev => ({ ...prev, [chapitreId]: true }));
+      const { data } = await supabase.from("qcm").select("*").eq("chapitre_id", chapitreId).order("created_at");
+      setQcmParChapitre(prev => ({ ...prev, [chapitreId]: data || [] }));
+      setChargementChapitre(prev => ({ ...prev, [chapitreId]: false }));
+    }
+  }
+
+  function toggleDetail(qcmId) {
+    setDetailOuvert(prev => {
+      const ouvert = !prev[qcmId];
+      return { ...prev, [qcmId]: ouvert };
+    });
+    // Tire un aperçu à l'ouverture pour un QCM aléatoire, s'il n'y en a pas déjà un
+    const q = Object.values(qcmParChapitre).flat().find(item => item.id === qcmId);
+    if (q && q.mode === "aleatoire" && !detailOuvert[qcmId] && !tiragesQcm[qcmId]) {
+      retirerAuSort(q);
+    }
+  }
+
+  function retirerAuSort(q) {
+    const tirage = tirerQcm(q);
+    setTiragesQcm(prev => ({ ...prev, [q.id]: tirage }));
+    setSelection(prev => prev.map(s => s.id === q.id ? { ...s, enonce: tirage.enonce, choix: tirage.choix } : s));
+  }
+
+  function estSelectionne(qcmId) { return selection.some(s => s.id === qcmId); }
+
+  function toggleSelection(q) {
+    if (estSelectionne(q.id)) {
+      setSelection(prev => prev.filter(s => s.id !== q.id));
+      return;
+    }
+    let tirage = tiragesQcm[q.id];
+    if (!tirage) {
+      tirage = tirerQcm(q);
+      setTiragesQcm(prev => ({ ...prev, [q.id]: tirage }));
+    }
+    setSelection(prev => [...prev, {
+      id: q.id, chapitre_id: q.chapitre_id, niveau: q.niveau, mode: q.mode,
+      enonce: tirage.enonce, choix: tirage.choix, bonne_reponse: q.bonne_reponse,
+    }]);
+  }
+
+  function retirerSelection(qcmId) {
+    setSelection(prev => prev.filter(s => s.id !== qcmId));
+    setElementsCoches(prev => { const c = new Set(prev); c.delete(qcmId); return c; });
+  }
+
+  function toggleCocheElement(id) {
+    setElementsCoches(prev => { const c = new Set(prev); c.has(id) ? c.delete(id) : c.add(id); return c; });
+  }
+
+  function retirerElementsCoches() {
+    setSelection(prev => prev.filter(s => !elementsCoches.has(s.id)));
+    setElementsCoches(new Set());
+  }
+
+  function toutRetirer() {
+    if (selection.length === 0) return;
+    setConfirmerToutRetirer(true);
+  }
+  function confirmerToutRetirerAction() {
+    setConfirmerToutRetirer(false);
+    setSelection([]);
+    setElementsCoches(new Set());
+  }
+
+  function deplacerSelection(indexDepart, indexArrivee) {
+    setSelection(prev => {
+      const copie = [...prev];
+      const [item] = copie.splice(indexDepart, 1);
+      copie.splice(indexArrivee, 0, item);
+      return copie;
+    });
+  }
+  function intervertirSelection(indexA, indexB) {
+    setSelection(prev => {
+      const copie = [...prev];
+      [copie[indexA], copie[indexB]] = [copie[indexB], copie[indexA]];
+      return copie;
+    });
+  }
+
+  function nomChapitre(chapitreId) { return chapitres.find(c => c.id === chapitreId)?.nom || ""; }
+
+  function demanderSuppressionQcm(q) { setQcmASupprimer(q); }
+  async function confirmerSuppressionQcm() {
+    const q = qcmASupprimer;
+    if (!q) return;
+    setQcmASupprimer(null);
+    const { error } = await supabase.from("qcm").delete().eq("id", q.id);
+    if (error) { alert("Erreur lors de la suppression : " + error.message); return; }
+    setQcmParChapitre(prev => ({ ...prev, [q.chapitre_id]: (prev[q.chapitre_id] || []).filter(item => item.id !== q.id) }));
+    setSelection(prev => prev.filter(s => s.id !== q.id));
+  }
+
+  // ── Historique (partagé avec les sessions classiques, différencié par type_session) ──
+  function calculerSignature(qcmSelection) {
+    return qcmSelection.map(q => q.id).slice().sort().join(",");
+  }
+  function genererNomSession(qcmSelection) {
+    const chapitresUniques = [...new Set(qcmSelection.map(q => nomChapitre(q.chapitre_id)))];
+    let partieChapitres = chapitresUniques.length <= 2
+      ? chapitresUniques.join(", ")
+      : `${chapitresUniques.slice(0, 2).join(", ")} +${chapitresUniques.length - 2} autre${chapitresUniques.length - 2 > 1 ? "s" : ""}`;
+    const dateStr = new Date().toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric" });
+    return `${partieChapitres} · ${dateStr} · ${qcmSelection.length} QCM`;
+  }
+  async function sauvegarderDansHistorique(action) {
+    if (selection.length === 0) return;
+    const signature = calculerSignature(selection);
+    const niveau = niveauScolaire || "terminale_spe";
+    const { data: existante } = await supabase.from("sessions_historique")
+      .select("id").eq("prof_id", currentUser.id).eq("signature", signature).eq("type_session", "qcm").maybeSingle();
+    if (existante) {
+      await supabase.from("sessions_historique").update({
+        question_ids: selection.map(q => q.id),
+        derniere_action: action,
+        updated_at: new Date().toISOString(),
+      }).eq("id", existante.id);
+    } else {
+      await supabase.from("sessions_historique").insert({
+        prof_id: currentUser.id,
+        nom: genererNomSession(selection),
+        question_ids: selection.map(q => q.id),
+        signature,
+        derniere_action: action,
+        niveau_scolaire: niveau,
+        type_session: "qcm",
+      });
+    }
+  }
+
+  // ── Export .tex — feuille avec cases à cocher ──
+  function genererTexQcm(avecCorrige) {
+    const lettres = ["a", "b", "c", "d"];
+    const lignes = [];
+    lignes.push("\\documentclass[12pt]{article}");
+    lignes.push("\\usepackage[utf8]{inputenc}");
+    lignes.push("\\usepackage[T1]{fontenc}");
+    lignes.push("\\usepackage[french]{babel}");
+    lignes.push("\\usepackage{amsmath,amssymb}");
+    lignes.push("\\usepackage{fancyhdr}");
+    lignes.push("\\usepackage[margin=2cm]{geometry}");
+    lignes.push("\\pagestyle{fancy}");
+    lignes.push("\\fancyhf{}");
+    lignes.push("\\lhead{QCM}");
+    lignes.push("\\chead{Interrogation" + (avecCorrige ? " — Corrigé" : "") + "}");
+    lignes.push("\\rhead{Durée : 20 min}");
+    lignes.push("\\newcounter{qnum}");
+    lignes.push("\\begin{document}");
+    lignes.push("");
+
+    selection.forEach(q => {
+      lignes.push(`\\stepcounter{qnum}`);
+      lignes.push(`\\noindent\\textbf{Question \\theqnum.} ${q.enonce}`);
+      lignes.push("");
+      q.choix.forEach((c, i) => {
+        const estBonne = avecCorrige && i === q.bonne_reponse;
+        const case_ = estBonne ? "$\\blacksquare$" : "$\\square$";
+        const texte = estBonne ? `\\textbf{${c}}` : c;
+        lignes.push(`${case_}\\ ${lettres[i]}) ${texte} \\\\`);
+      });
+      lignes.push("");
+      lignes.push("\\vspace{6mm}");
+      lignes.push("");
+    });
+
+    lignes.push("\\end{document}");
+    return lignes.join("\n");
+  }
+
+  function telechargerTexQcm(avecCorrige) {
+    const contenu = genererTexQcm(avecCorrige);
+    const blob = new Blob([contenu], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    const date = new Date().toISOString().slice(0, 10);
+    a.href = url;
+    a.download = `qcm_${date}${avecCorrige ? "_corrige" : "_eleve"}.tex`;
+    a.click();
+    URL.revokeObjectURL(url);
+    sauvegarderDansHistorique(avecCorrige ? "tex_corrige" : "tex_eleve");
+  }
+
+  if (loading) {
+    return <div className="generateur-area"><div className="gen-selection-empty"><div className="spinner"></div>Chargement des chapitres…</div></div>;
+  }
+
+  return (
+    <div className="generateur-area">
+      <div className="gen-chapitres-col">
+        <div className="gen-import-bar">
+          <button className="gen-random-btn" onClick={() => setAfficherTirage(true)}>
+            🎲 Tirage aléatoire
+          </button>
+          <button className="creer-btn" onClick={() => setAfficherCreerQcm(true)}>
+            ➕ Créer un QCM
+          </button>
+        </div>
+
+        <div className="gen-filters-bar">
+          <div className="gen-filters-row">
+            <span className="gen-filters-label">Niveau</span>
+            {NIVEAUX_DISPONIBLES.map(niveau => (
+              <button key={niveau} className={`gen-filter-chip${niveauxActifs.has(niveau) ? " active" : ""}`}
+                onClick={() => toggleNiveauFiltre(niveau)}>
+                Niveau {niveau}
+              </button>
+            ))}
+            {niveauxActifs.size < NIVEAUX_DISPONIBLES.length && (
+              <button className="gen-filter-reset" onClick={() => setNiveauxActifs(new Set(NIVEAUX_DISPONIBLES))}>
+                Réinitialiser
+              </button>
+            )}
+          </div>
+        </div>
+
+        {chapitres.map(ch => {
+          const ouvert = chapitresOuverts[ch.id];
+          const qcmDuChapitre = qcmParChapitre[ch.id] || [];
+          const qcmFiltres = qcmDuChapitre.filter(qcmVisible);
+          const nbMasques = qcmDuChapitre.length - qcmFiltres.length;
+          const nbSelectionnes = qcmDuChapitre.filter(q => estSelectionne(q.id)).length;
+          return (
+            <div key={ch.id} className="gen-chapitre-block">
+              <div className="gen-chapitre-row" onClick={() => toggleChapitre(ch.id)}>
+                <span className={`gen-chevron${ouvert ? " open" : ""}`}>▶</span>
+                <span className="gen-chapitre-nom">{ch.nom}</span>
+                {nbSelectionnes > 0 && <span className="gen-chapitre-count">{nbSelectionnes} sélectionné{nbSelectionnes > 1 ? "s" : ""}</span>}
+                {ouvert && nbMasques > 0 && (
+                  <span className="gen-chapitre-count" style={{ background: "var(--surface2)", color: "var(--text-muted)" }}>
+                    {nbMasques} masqué{nbMasques > 1 ? "s" : ""}
+                  </span>
+                )}
+              </div>
+              {ouvert && (
+                <div className="gen-questions-list">
+                  {chargementChapitre[ch.id] && <div className="gen-empty-chapitre">Chargement…</div>}
+                  {!chargementChapitre[ch.id] && qcmDuChapitre.length === 0 && (
+                    <div className="gen-empty-chapitre">Aucun QCM dans ce chapitre pour l'instant.</div>
+                  )}
+                  {!chargementChapitre[ch.id] && qcmDuChapitre.length > 0 && qcmFiltres.length === 0 && (
+                    <div className="gen-empty-chapitre">Aucun QCM ne correspond aux filtres actifs.</div>
+                  )}
+                  {qcmFiltres.map(q => {
+                    const tirage = tiragesQcm[q.id];
+                    const apercu = q.mode === "aleatoire" ? (tirage?.enonce || q.enonce_modele) : q.enonce;
+                    return (
+                      <div key={q.id}>
+                        <div className="gen-exercice-row">
+                          <input type="checkbox" checked={estSelectionne(q.id)}
+                            onChange={() => toggleSelection(q)} onClick={e => e.stopPropagation()} />
+                          <div style={{ flex: 1, minWidth: 0 }} onClick={() => toggleDetail(q.id)}>
+                            <div className="gen-question-type">
+                              {q.mode === "aleatoire" ? "🎲 aléatoire" : "📝 fixe"} · niveau {q.niveau}
+                            </div>
+                            <div className="gen-question-apercu"><MathText>{apercu}</MathText></div>
+                          </div>
+                        </div>
+                        {detailOuvert[q.id] && (
+                          <div className="gen-question-detail">
+                            {(() => {
+                              const t = q.mode === "aleatoire" ? tirage : { enonce: q.enonce, choix: q.choix };
+                              if (!t) return null;
+                              return (
+                                <>
+                                  <MathText inline={false}>{t.enonce}</MathText>
+                                  <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 6 }}>
+                                    {t.choix.map((c, i) => (
+                                      <div key={i} style={{ color: i === q.bonne_reponse ? "var(--green)" : "var(--text-muted)" }}>
+                                        {["a", "b", "c", "d"][i]}) <MathText>{c}</MathText>{i === q.bonne_reponse ? " ✓" : ""}
+                                      </div>
+                                    ))}
+                                  </div>
+                                </>
+                              );
+                            })()}
+                            <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+                              {q.mode === "aleatoire" && (
+                                <button className="gen-exercice-refresh-btn" onClick={() => retirerAuSort(q)}>🎲 Retirer</button>
+                              )}
+                              <button className="gen-edit-question-btn" onClick={() => { setQcmAModifier(q); setAfficherCreerQcm(true); }}>
+                                ✏️ Modifier
+                              </button>
+                              <button className="gen-delete-question-btn" onClick={() => demanderSuppressionQcm(q)}>
+                                🗑️ Supprimer
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="gen-selection-col">
+        <div className="gen-header">
+          <div className="gen-header-row">
+            <div>
+              <div className="gen-header-title">Sélection pour le QCM</div>
+              <div className="gen-header-sub">Coche des QCM dans les chapitres à gauche pour les ajouter ici</div>
+            </div>
+            {selection.length > 0 && (
+              <div className="gen-header-actions">
+                {elementsCoches.size > 0 && (
+                  <button className="gen-header-action-btn danger" onClick={retirerElementsCoches}>
+                    Retirer la sélection ({elementsCoches.size})
+                  </button>
+                )}
+                <button className="gen-header-action-btn danger" onClick={toutRetirer}>🗑️ Tout retirer</button>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {selection.length === 0 ? (
+          <div className="gen-selection-empty">
+            <div style={{ fontSize: 32, opacity: .3 }}>🔤</div>
+            <div>Aucun QCM sélectionné pour l'instant.</div>
+          </div>
+        ) : (
+          <div className="gen-selection-list">
+            {selection.map((q, idx) => (
+              <div
+                key={q.id}
+                className={`gen-selected-item${dragIndex === idx ? " dragging" : ""}${overIndex === idx && dragIndex !== null && dragIndex !== idx ? ` drag-over-${overZone}` : ""}`}
+                draggable
+                onDragStart={() => setDragIndex(idx)}
+                onDragEnter={() => { if (dragIndex !== null && dragIndex !== idx) setOverIndex(idx); }}
+                onDragEnd={() => { setDragIndex(null); setOverIndex(null); setOverZone(null); }}
+                onDragOver={e => {
+                  e.preventDefault();
+                  if (dragIndex === null || dragIndex === idx) return;
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  const ratio = (e.clientY - rect.top) / rect.height;
+                  const zone = ratio < 0.3 ? "top" : ratio > 0.7 ? "bottom" : "middle";
+                  setOverIndex(idx); setOverZone(zone);
+                }}
+                onDrop={() => {
+                  if (dragIndex !== null && dragIndex !== idx) {
+                    if (overZone === "middle") intervertirSelection(dragIndex, idx);
+                    else deplacerSelection(dragIndex, overZone === "top" ? idx : (dragIndex < idx ? idx : idx + 1));
+                  }
+                  setDragIndex(null); setOverIndex(null); setOverZone(null);
+                }}
+              >
+                <span className="gen-drag-handle" title="Glisser pour réordonner">⠿</span>
+                <input type="checkbox" className="gen-selected-checkbox" checked={elementsCoches.has(q.id)}
+                  onChange={() => toggleCocheElement(q.id)} onClick={e => e.stopPropagation()} />
+                <div className="gen-selected-num">{idx + 1}</div>
+                <div className="gen-selected-content">
+                  <div className="gen-selected-chapitre">{nomChapitre(q.chapitre_id)}</div>
+                  <div className="gen-selected-enonce"><MathText>{q.enonce}</MathText></div>
+                </div>
+                <button className="gen-selected-remove" onClick={() => retirerSelection(q.id)} title="Retirer">✕</button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div className="gen-footer">
+          <div className="gen-footer-count">
+            <strong>{selection.length}</strong> QCM sélectionné{selection.length !== 1 ? "s" : ""}
+          </div>
+          <button className="gen-export-btn-secondary" onClick={() => telechargerTexQcm(false)} disabled={selection.length === 0}>
+            📝 .tex élève
+          </button>
+          <button className="gen-export-btn-secondary" onClick={() => telechargerTexQcm(true)} disabled={selection.length === 0}>
+            📝 .tex corrigé
+          </button>
+          <button className="gen-export-btn" onClick={() => setAfficherReglagesDiapo(true)} disabled={selection.length === 0}>
+            ▶ Diaporama
+          </button>
+        </div>
+      </div>
+
+      {afficherReglagesDiapo && (
+        <DiapoSettings
+          nbQuestions={selection.length}
+          onAnnuler={() => setAfficherReglagesDiapo(false)}
+          onLancer={(reglages) => {
+            setDiapoActive(reglages);
+            setAfficherReglagesDiapo(false);
+            sauvegarderDansHistorique("diaporama");
+          }}
+        />
+      )}
+
+      {diapoActive && (
+        <DiapoViewerQcm
+          questions={selection}
+          mode={diapoActive.mode}
+          delai={diapoActive.delai}
+          nomChapitre={nomChapitre}
+          onFermer={() => setDiapoActive(null)}
+        />
+      )}
+
+      {afficherTirage && (
+        <TirageAleatoireQcm
+          chapitres={chapitres}
+          onAnnuler={() => setAfficherTirage(false)}
+          onTirer={(tirage) => { setSelection(tirage); setAfficherTirage(false); }}
+        />
+      )}
+
+      {afficherCreerQcm && (
+        <CreerQcm
+          chapitres={chapitres}
+          currentUser={currentUser}
+          niveauScolaire={niveauScolaire}
+          qcmAEditer={qcmAModifier}
+          onFermer={() => { setAfficherCreerQcm(false); setQcmAModifier(null); }}
+          onCree={() => {
+            setAfficherCreerQcm(false);
+            setQcmAModifier(null);
+            setQcmParChapitre({});
+            setChapitresOuverts({});
+          }}
+        />
+      )}
+
+      {qcmASupprimer && (
+        <ConfirmModal
+          titre="Supprimer ce QCM ?"
+          message="Supprimé définitivement, cette action est irréversible."
+          texteConfirmer="Supprimer"
+          danger
+          onConfirm={confirmerSuppressionQcm}
+          onAnnuler={() => setQcmASupprimer(null)}
+        />
+      )}
+      {confirmerToutRetirer && (
+        <ConfirmModal
+          titre="Vider la sélection ?"
+          message={`Retirer les ${selection.length} QCM de la sélection en cours.`}
+          texteConfirmer="Retirer"
+          onConfirm={confirmerToutRetirerAction}
+          onAnnuler={() => setConfirmerToutRetirer(false)}
+        />
+      )}
+    </div>
+  );
+}
+
 function RessourcesZone({ currentUser, currentProfile }) {
   const [ressources, setRessources] = useState([]);
   const [titre, setTitre] = useState("");
@@ -4230,6 +5298,7 @@ export default function App() {
     background: "radial-gradient(ellipse 1200px 800px at 15% 0%, rgba(var(--accent-rgb), 0.06), transparent 60%), var(--bg)",
   };
   const [sessionARecharger, setSessionARecharger] = useState(null); // ids de questions à charger dans le générateur
+  const [qcmSessionARecharger, setQcmSessionARecharger] = useState(null); // ids de qcm à charger dans la rubrique QCM
 
   // Charger le CSS de KaTeX une seule fois (nécessaire pour un rendu correct des formules)
   useEffect(() => {
@@ -4439,7 +5508,10 @@ export default function App() {
                 <div style={{ display: activeTab === "historique" ? "flex" : "none", flex: 1, minHeight: 0 }}>
                   <HistoriqueZone currentUser={user} currentProfile={profile} allProfiles={allProfiles}
                     niveauScolaire={niveauScolaire}
-                    onRejouer={(ids) => { setSessionARecharger(ids); setActiveTab("generateur"); }} />
+                    onRejouer={(session) => {
+                      if (session.type_session === "qcm") { setQcmSessionARecharger(session.question_ids); setActiveTab("qcm"); }
+                      else { setSessionARecharger(session.question_ids); setActiveTab("generateur"); }
+                    }} />
                 </div>
               </>
             )}
@@ -4456,17 +5528,19 @@ export default function App() {
               <div style={{ display: activeTab === "historique" ? "flex" : "none", flex: 1, minHeight: 0 }}>
                 <HistoriqueZone currentUser={user} currentProfile={profile} allProfiles={allProfiles}
                   niveauScolaire={niveauScolaire}
-                  onRejouer={(ids) => { setSessionARecharger(ids); setActiveTab("automatismes"); }} />
+                  onRejouer={(session) => {
+                    if (session.type_session === "qcm") { setQcmSessionARecharger(session.question_ids); setActiveTab("qcm"); }
+                    else { setSessionARecharger(session.question_ids); setActiveTab("automatismes"); }
+                  }} />
               </div>
             )}
 
-            {/* QCM — à venir */}
-            {!estTerminaleSpe && activeTab === "qcm" && (
-              <div style={{ display: "flex", flex: 1, alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 12, color: "var(--text-muted)" }}>
-                <div style={{ fontSize: 32, opacity: .3 }}>🚧</div>
-                <div style={{ fontSize: 14 }}>Interface QCM — bientôt disponible</div>
-              </div>
-            )}
+            {/* QCM */}
+            <div style={{ display: activeTab === "qcm" ? "flex" : "none", flex: 1, minHeight: 0 }}>
+              <QcmZone currentUser={user} currentProfile={profile}
+                qcmSessionARecharger={qcmSessionARecharger} onSessionChargee={() => setQcmSessionARecharger(null)}
+                niveauScolaire={niveauScolaire} />
+            </div>
 
           </div>
         )}
