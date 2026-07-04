@@ -930,6 +930,8 @@ const CSS = `
   .modal-btn-cancel:hover { color: var(--text); }
   .modal-btn-confirm { background: var(--accent); color: #fff; }
   .modal-btn-confirm:hover { background: var(--accent-light); }
+  .modal-btn-danger { background: var(--red); color: #fff; }
+  .modal-btn-danger:hover { filter: brightness(1.12); }
   .modal-error { font-size: 12px; color: var(--red); margin-top: 4px; }
   .modal-success { font-size: 12px; color: var(--green); margin-top: 4px; }
 
@@ -1661,6 +1663,27 @@ function ChangePasswordModal({ onClose }) {
   );
 }
 
+// ─── Composant ConfirmModal (remplace window.confirm par une modale stylée,
+// cohérente avec le reste de l'interface) ──────────────────────────────
+// Usage : passer titre + message, danger=true pour une action irréversible
+// (bouton rouge) ou false pour une action bénigne (bouton coloré niveau actif).
+function ConfirmModal({ titre, message, texteConfirmer = "Confirmer", danger = false, onConfirm, onAnnuler }) {
+  return (
+    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onAnnuler()}>
+      <div className="modal-card">
+        <div className="modal-title">{titre}</div>
+        {message && <div className="modal-sub" style={{ whiteSpace: "pre-line" }}>{message}</div>}
+        <div className="modal-actions">
+          <button className="modal-btn modal-btn-cancel" onClick={onAnnuler}>Annuler</button>
+          <button className={`modal-btn ${danger ? "modal-btn-danger" : "modal-btn-confirm"}`} onClick={onConfirm}>
+            {texteConfirmer}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Composant Message ───────────────────────────────────────────────
 function Message({ msg, isMe, profile, onSupprimer, currentProfile, onSupprimerFichier }) {
   const hasFile = !!msg.fichier_url;
@@ -2192,6 +2215,7 @@ function HistoriqueZone({ currentUser, currentProfile, allProfiles, onRejouer, n
   const [filtre, setFiltre] = useState("mes_sessions"); // "mes_sessions" | "favoris" | "partagees"
   const [renommageId, setRenommageId] = useState(null);
   const [brouillonNom, setBrouillonNom] = useState("");
+  const [sessionASupprimer, setSessionASupprimer] = useState(null); // session en attente de confirmation
 
   const fetchSessions = useCallback(async () => {
     setLoading(true);
@@ -2224,9 +2248,14 @@ function HistoriqueZone({ currentUser, currentProfile, allProfiles, onRejouer, n
     setSessions(prev => prev.map(s => s.id === session.id ? { ...s, partage: !s.partage } : s));
   }
 
-  async function supprimerSession(session) {
-    const confirme = window.confirm(`Supprimer définitivement la session "${session.nom}" ?`);
-    if (!confirme) return;
+  function demanderSuppressionSession(session) {
+    setSessionASupprimer(session);
+  }
+
+  async function confirmerSuppressionSession() {
+    const session = sessionASupprimer;
+    if (!session) return;
+    setSessionASupprimer(null);
     await supabase.from("sessions_historique").delete().eq("id", session.id);
     setSessions(prev => prev.filter(s => s.id !== session.id));
   }
@@ -2254,6 +2283,7 @@ function HistoriqueZone({ currentUser, currentProfile, allProfiles, onRejouer, n
   const estProprietaire = (session) => session.prof_id === currentUser.id;
 
   return (
+    <>
     <div className="hist-area">
       <div className="hist-toolbar">
         <button className={`hist-toolbar-filter${filtre === "mes_sessions" ? " active" : ""}`}
@@ -2306,7 +2336,7 @@ function HistoriqueZone({ currentUser, currentProfile, allProfiles, onRejouer, n
                         title={session.partage ? "Rendre privée" : "Partager avec mes collègues"}>
                         {session.partage ? "🔓" : "🔒"}
                       </button>
-                      <button className="hist-icon-btn" onClick={() => supprimerSession(session)} title="Supprimer">🗑️</button>
+                      <button className="hist-icon-btn" onClick={() => demanderSuppressionSession(session)} title="Supprimer">🗑️</button>
                     </>
                   )}
                 </div>
@@ -2319,6 +2349,17 @@ function HistoriqueZone({ currentUser, currentProfile, allProfiles, onRejouer, n
         </div>
       )}
     </div>
+    {sessionASupprimer && (
+      <ConfirmModal
+        titre="Supprimer cette session ?"
+        message={`"${sessionASupprimer.nom}" sera définitivement supprimée.\nCette action est irréversible.`}
+        texteConfirmer="Supprimer"
+        danger
+        onConfirm={confirmerSuppressionSession}
+        onAnnuler={() => setSessionASupprimer(null)}
+      />
+    )}
+    </>
   );
 }
 
@@ -2794,6 +2835,8 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
   const [questionEnEdition, setQuestionEnEdition] = useState(null); // id de la question en cours d'édition
   const [brouillonEdition, setBrouillonEdition] = useState(null);    // { type, enonce, reponse, niveau }
   const [sauvegardeEnCours, setSauvegardeEnCours] = useState(false);
+  const [questionASupprimer, setQuestionASupprimer] = useState(null); // question en attente de confirmation
+  const [confirmerToutRetirer, setConfirmerToutRetirer] = useState(false);
 
   // Charger la liste des chapitres et les exercices depuis la base au changement de niveau
   useEffect(() => {
@@ -2885,11 +2928,14 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
     setReponsesVisibles(prev => ({ ...prev, [questionId]: !prev[questionId] }));
   }
 
-  async function supprimerQuestion(question) {
-    const confirme = window.confirm(
-      `Supprimer définitivement cette question de la banque commune ?\n\n"${question.enonce.slice(0, 80)}${question.enonce.length > 80 ? "…" : ""}"\n\nCette action est irréversible.`
-    );
-    if (!confirme) return;
+  function demanderSuppressionQuestion(question) {
+    setQuestionASupprimer(question);
+  }
+
+  async function confirmerSuppressionQuestion() {
+    const question = questionASupprimer;
+    if (!question) return;
+    setQuestionASupprimer(null);
 
     const { error } = await supabase.from("questions").delete().eq("id", question.id);
     if (error) {
@@ -2970,8 +3016,11 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
 
   function toutRetirer() {
     if (selection.length === 0) return;
-    const confirme = window.confirm(`Retirer les ${selection.length} question${selection.length !== 1 ? "s" : ""} de la sélection ?`);
-    if (!confirme) return;
+    setConfirmerToutRetirer(true);
+  }
+
+  function confirmerToutRetirerAction() {
+    setConfirmerToutRetirer(false);
     setSelection([]);
     setElementsCoches(new Set());
   }
@@ -3420,7 +3469,7 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
                                   <button className="gen-edit-question-btn" onClick={() => { setQuestionAModifier({ ...q, _source: "base_fixe" }); setAfficherCreerQuestion(true); }}>
                                     ✏️ Modifier
                                   </button>
-                                  <button className="gen-delete-question-btn" onClick={() => supprimerQuestion(q)}>
+                                  <button className="gen-delete-question-btn" onClick={() => demanderSuppressionQuestion(q)}>
                                     🗑️ Supprimer cette question
                                   </button>
                                 </div>
@@ -3644,6 +3693,25 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
           }}
         />
       )}
+      {questionASupprimer && (
+        <ConfirmModal
+          titre="Supprimer cette question ?"
+          message={`"${questionASupprimer.enonce.slice(0, 80)}${questionASupprimer.enonce.length > 80 ? "…" : ""}"\n\nSupprimée de la banque commune, définitivement.`}
+          texteConfirmer="Supprimer"
+          danger
+          onConfirm={confirmerSuppressionQuestion}
+          onAnnuler={() => setQuestionASupprimer(null)}
+        />
+      )}
+      {confirmerToutRetirer && (
+        <ConfirmModal
+          titre="Vider la sélection ?"
+          message={`Retirer les ${selection.length} question${selection.length !== 1 ? "s" : ""} de la sélection en cours.`}
+          texteConfirmer="Retirer"
+          onConfirm={confirmerToutRetirerAction}
+          onAnnuler={() => setConfirmerToutRetirer(false)}
+        />
+      )}
     </div>
   );
 }
@@ -3811,6 +3879,8 @@ function ChatZone({ eleveId, currentUser, currentProfile, allProfiles }) {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [editingSubject, setEditingSubject] = useState(false);
   const [subjectDraft, setSubjectDraft] = useState("");
+  const [messageASupprimer, setMessageASupprimer] = useState(null); // message en attente de confirmation
+  const [fichierASupprimer, setFichierASupprimer] = useState(null); // message dont le fichier est en attente de confirmation
   const bottomRef = useRef(null);
   const fileRef = useRef(null);
   const textRef = useRef(null);
@@ -3897,9 +3967,14 @@ function ChatZone({ eleveId, currentUser, currentProfile, allProfiles }) {
     return decodeURIComponent(url.slice(indexMarqueur + marqueur.length));
   }
 
-  async function supprimerMessage(msg) {
-    const confirme = window.confirm("Supprimer ce message ? Cette action est irréversible.");
-    if (!confirme) return;
+  function demanderSuppressionMessage(msg) {
+    setMessageASupprimer(msg);
+  }
+
+  async function confirmerSuppressionMessage() {
+    const msg = messageASupprimer;
+    if (!msg) return;
+    setMessageASupprimer(null);
 
     // Si le message a un fichier joint, on le supprime réellement du stockage
     // pour libérer l'espace (le message, lui, reste visible comme "supprimé")
@@ -3926,9 +4001,14 @@ function ChatZone({ eleveId, currentUser, currentProfile, allProfiles }) {
 
   // Le prof retire uniquement le fichier d'un message de son élève (gestion
   // d'espace), sans toucher au texte éventuellement présent dans ce message
-  async function supprimerFichierParProf(msg) {
-    const confirme = window.confirm("Supprimer ce fichier pour libérer de l'espace ? Le texte du message, s'il y en a, sera conservé.");
-    if (!confirme) return;
+  function demanderSuppressionFichier(msg) {
+    setFichierASupprimer(msg);
+  }
+
+  async function confirmerSuppressionFichier() {
+    const msg = fichierASupprimer;
+    if (!msg) return;
+    setFichierASupprimer(null);
 
     const path = extrairePathStorage(msg.fichier_url);
     if (path) {
@@ -4038,8 +4118,8 @@ function ChatZone({ eleveId, currentUser, currentProfile, allProfiles }) {
                 isMe={item.msg.sender_id === currentUser.id}
                 profile={allProfiles.find(p => p.id === item.msg.sender_id)}
                 currentProfile={currentProfile}
-                onSupprimer={supprimerMessage}
-                onSupprimerFichier={supprimerFichierParProf} />
+                onSupprimer={demanderSuppressionMessage}
+                onSupprimerFichier={demanderSuppressionFichier} />
         )}
         {messages.length === 0 && (
           <div style={{ textAlign: "center", color: "var(--text-muted)", fontSize: 13, marginTop: 40 }}>
@@ -4074,6 +4154,26 @@ function ChatZone({ eleveId, currentUser, currentProfile, allProfiles }) {
           <button className="btn-send" onClick={send} disabled={!text.trim() && !file || uploading} title="Envoyer">➤</button>
         </div>
       </div>
+      {messageASupprimer && (
+        <ConfirmModal
+          titre="Supprimer ce message ?"
+          message="Cette action est irréversible."
+          texteConfirmer="Supprimer"
+          danger
+          onConfirm={confirmerSuppressionMessage}
+          onAnnuler={() => setMessageASupprimer(null)}
+        />
+      )}
+      {fichierASupprimer && (
+        <ConfirmModal
+          titre="Supprimer ce fichier ?"
+          message="Le texte du message, s'il y en a, sera conservé. Seul le fichier joint sera effacé du stockage."
+          texteConfirmer="Supprimer le fichier"
+          danger
+          onConfirm={confirmerSuppressionFichier}
+          onAnnuler={() => setFichierASupprimer(null)}
+        />
+      )}
     </div>
   );
 }
