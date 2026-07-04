@@ -4564,18 +4564,20 @@ function QcmZone({ currentUser, currentProfile, qcmSessionARecharger, onSessionC
       lignes.push("");
       lignes.push("\\vspace{4mm}");
       lignes.push("");
-      lignes.push("\\noindent");
+      lignes.push("\\small");
+      lignes.push("\\begin{tabular}{@{}p{1.3em}p{0.9\\linewidth}@{}}");
       q.choix.forEach((c, i) => {
         const estBonne = avecCorrige && i === q.bonne_reponse;
         const case_ = estBonne ? "$\\blacksquare$" : "$\\square$";
         const texteEchappe = echapperLatex(c);
         const texte = estBonne ? `\\textbf{${texteEchappe}}` : texteEchappe;
-        const finDeLigne = i === q.choix.length - 1 ? "" : " \\\\[5mm]";
-        lignes.push(`\\hspace{1.2em}${case_}\\ \\ ${lettres[i]}) \\ ${texte}${finDeLigne}`);
+        lignes.push(`${case_} & ${lettres[i]}) \\ ${texte} \\\\[4mm]`);
       });
+      lignes.push("\\end{tabular}");
+      lignes.push("\\normalsize");
       lignes.push("");
       if (idx < selection.length - 1) {
-        lignes.push("\\vspace{8mm}");
+        lignes.push("\\vspace{6mm}");
         lignes.push("\\noindent\\hrulefill");
         lignes.push("\\vspace{6mm}");
       }
