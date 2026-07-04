@@ -4546,7 +4546,9 @@ function QcmZone({ currentUser, currentProfile, qcmSessionARecharger, onSessionC
     lignes.push("\\usepackage[french]{babel}");
     lignes.push("\\usepackage{amsmath,amssymb}");
     lignes.push("\\usepackage{fancyhdr}");
-    lignes.push("\\usepackage[margin=2cm]{geometry}");
+    lignes.push("\\usepackage[margin=2.5cm]{geometry}");
+    lignes.push("\\setlength{\\parindent}{0pt}");
+    lignes.push("\\setlength{\\parskip}{0pt}");
     lignes.push("\\pagestyle{fancy}");
     lignes.push("\\fancyhf{}");
     lignes.push("\\lhead{QCM}");
@@ -4556,19 +4558,27 @@ function QcmZone({ currentUser, currentProfile, qcmSessionARecharger, onSessionC
     lignes.push("\\begin{document}");
     lignes.push("");
 
-    selection.forEach(q => {
+    selection.forEach((q, idx) => {
       lignes.push(`\\stepcounter{qnum}`);
       lignes.push(`\\noindent\\textbf{Question \\theqnum.} ${echapperLatex(q.enonce)}`);
       lignes.push("");
+      lignes.push("\\vspace{4mm}");
+      lignes.push("");
+      lignes.push("\\noindent");
       q.choix.forEach((c, i) => {
         const estBonne = avecCorrige && i === q.bonne_reponse;
         const case_ = estBonne ? "$\\blacksquare$" : "$\\square$";
         const texteEchappe = echapperLatex(c);
         const texte = estBonne ? `\\textbf{${texteEchappe}}` : texteEchappe;
-        lignes.push(`${case_}\\ ${lettres[i]}) ${texte} \\\\`);
+        const finDeLigne = i === q.choix.length - 1 ? "" : " \\\\[5mm]";
+        lignes.push(`\\hspace{1.2em}${case_}\\ \\ ${lettres[i]}) \\ ${texte}${finDeLigne}`);
       });
       lignes.push("");
-      lignes.push("\\vspace{6mm}");
+      if (idx < selection.length - 1) {
+        lignes.push("\\vspace{8mm}");
+        lignes.push("\\noindent\\hrulefill");
+        lignes.push("\\vspace{6mm}");
+      }
       lignes.push("");
     });
 
