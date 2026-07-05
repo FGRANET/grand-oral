@@ -4545,6 +4545,8 @@ function QcmZone({ currentUser, currentProfile, qcmSessionARecharger, onSessionC
     lignes.push("\\usepackage[T1]{fontenc}");
     lignes.push("\\usepackage[french]{babel}");
     lignes.push("\\usepackage{amsmath,amssymb}");
+    lignes.push("\\usepackage{enumitem}");
+    lignes.push("\\usepackage{multicol}");
     lignes.push("\\usepackage{fancyhdr}");
     lignes.push("\\usepackage[margin=2.5cm]{geometry}");
     lignes.push("\\setlength{\\parindent}{0pt}");
@@ -4565,15 +4567,21 @@ function QcmZone({ currentUser, currentProfile, qcmSessionARecharger, onSessionC
       lignes.push("\\vspace{4mm}");
       lignes.push("");
       lignes.push("\\small");
-      lignes.push("\\begin{tabular}{@{}p{1.3em}p{0.9\\linewidth}@{}}");
+      lignes.push("\\begin{multicols}{2}");
+      lignes.push("\\begin{enumerate}[leftmargin=2.4em, itemsep=4mm, label=$\\square$~\\alph*)]");
       q.choix.forEach((c, i) => {
         const estBonne = avecCorrige && i === q.bonne_reponse;
-        const case_ = estBonne ? "$\\blacksquare$" : "$\\square$";
         const texteEchappe = echapperLatex(c);
         const texte = estBonne ? `\\textbf{${texteEchappe}}` : texteEchappe;
-        lignes.push(`${case_} & ${lettres[i]}) \\ ${texte} \\\\[4mm]`);
+        if (estBonne) {
+          lignes.push(`\\item[$\\blacksquare$~${lettres[i]})] ${texte}`);
+        } else {
+          lignes.push(`\\item ${texte}`);
+        }
+        if (i === 1) lignes.push("\\columnbreak"); // force a,b à gauche / c,d à droite
       });
-      lignes.push("\\end{tabular}");
+      lignes.push("\\end{enumerate}");
+      lignes.push("\\end{multicols}");
       lignes.push("\\normalsize");
       lignes.push("");
       if (idx < selection.length - 1) {
