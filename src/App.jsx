@@ -2381,22 +2381,24 @@ function ImportQuestions({ currentUser, currentProfile, chapitres, niveauScolair
 
     let nbImportees = 0;
     let nbErreurs = 0;
-    // Insertion par lots de 50 pour rester raisonnable
-    for (let i = 0; i < questionsAInserer.length; i += 50) {
-      const lot = questionsAInserer.slice(i, i + 50);
-      const { error } = await supabase.from("questions").insert(lot);
-      if (error) nbErreurs += lot.length;
-      else nbImportees += lot.length;
+    const detailsErreurs = []; // { id, message } — pour affichage et diagnostic
+
+    // Insertion ligne par ligne (pas par lot) : si une ligne a un problème de
+    // schéma (colonne NOT NULL, contrainte...), les autres s'importent quand
+    // même, et on sait précisément laquelle a échoué et pourquoi.
+    for (const q of questionsAInserer) {
+      const { error } = await supabase.from("questions").insert(q);
+      if (error) { nbErreurs++; detailsErreurs.push({ id: q.id, message: error.message }); }
+      else nbImportees++;
     }
-    for (let i = 0; i < exercicesAInserer.length; i += 50) {
-      const lot = exercicesAInserer.slice(i, i + 50);
-      const { error } = await supabase.from("exercices_application").insert(lot);
-      if (error) nbErreurs += lot.length;
-      else nbImportees += lot.length;
+    for (const ex of exercicesAInserer) {
+      const { error } = await supabase.from("exercices_application").insert(ex);
+      if (error) { nbErreurs++; detailsErreurs.push({ id: ex.id, message: error.message }); }
+      else nbImportees++;
     }
 
     setImporting(false);
-    setResultat({ nbImportees, nbErreurs });
+    setResultat({ nbImportees, nbErreurs, detailsErreurs });
     onImportTermine();
   }
 
@@ -2537,6 +2539,16 @@ function ImportQuestions({ currentUser, currentProfile, chapitres, niveauScolair
               <strong>{resultat.nbImportees}</strong> question{resultat.nbImportees !== 1 ? "s" : ""} importée{resultat.nbImportees !== 1 ? "s" : ""}
               {resultat.nbErreurs > 0 && <> · {resultat.nbErreurs} erreur{resultat.nbErreurs !== 1 ? "s" : ""}</>}
             </div>
+            {resultat.detailsErreurs?.length > 0 && (
+              <div className="import-report" style={{ marginTop: 12, textAlign: "left" }}>
+                {resultat.detailsErreurs.map((e, i) => (
+                  <div key={i} className="import-report-item">
+                    <span className="import-report-item-id">{e.id || "(sans id)"}</span>
+                    <span className="import-report-item-detail">{e.message}</span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
@@ -2681,22 +2693,23 @@ function ImportQcm({ currentUser, chapitres, onFermer, onImportTermine }) {
         chapitre_id: q._chapitreId, mode, bonne_reponse: q.bonne_reponse,
         niveau: q.niveau || 1, prof_id: currentUser.id,
       };
-      return mode === "fixe"
+      const donnees = mode === "fixe"
         ? { ...base, enonce: q.enonce, choix: q.choix, enonce_modele: null, choix_modele: null, parametres: null }
         : { ...base, enonce: null, choix: null, enonce_modele: q.enonce_modele, choix_modele: q.choix_modele, parametres: q.parametres };
+      return { ...donnees, _apercu: (q.enonce || q.enonce_modele || "").slice(0, 40) };
     });
 
     let nbImportees = 0;
     let nbErreurs = 0;
-    for (let i = 0; i < aInserer.length; i += 50) {
-      const lot = aInserer.slice(i, i + 50);
-      const { error } = await supabase.from("qcm").insert(lot);
-      if (error) nbErreurs += lot.length;
-      else nbImportees += lot.length;
+    const detailsErreurs = [];
+    for (const { _apercu, ...q } of aInserer) {
+      const { error } = await supabase.from("qcm").insert(q);
+      if (error) { nbErreurs++; detailsErreurs.push({ id: _apercu, message: error.message }); }
+      else nbImportees++;
     }
 
     setImporting(false);
-    setResultat({ nbImportees, nbErreurs });
+    setResultat({ nbImportees, nbErreurs, detailsErreurs });
     onImportTermine();
   }
 
@@ -2794,6 +2807,16 @@ function ImportQcm({ currentUser, chapitres, onFermer, onImportTermine }) {
               <strong>{resultat.nbImportees}</strong> QCM importé{resultat.nbImportees !== 1 ? "s" : ""}
               {resultat.nbErreurs > 0 && <> · {resultat.nbErreurs} erreur{resultat.nbErreurs !== 1 ? "s" : ""}</>}
             </div>
+            {resultat.detailsErreurs?.length > 0 && (
+              <div className="import-report" style={{ marginTop: 12, textAlign: "left" }}>
+                {resultat.detailsErreurs.map((e, i) => (
+                  <div key={i} className="import-report-item">
+                    <span className="import-report-item-id">{e.id || "(sans énoncé)"}</span>
+                    <span className="import-report-item-detail">{e.message}</span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
