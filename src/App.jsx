@@ -1537,143 +1537,15 @@ function genererDeriveePolynomeDegre2() {
 }
 
 // ─── Automatismes Seconde ───────────────────────────────────────────────
-
-// SEC_FG_EX01 — Résoudre ax + b = cx + d (a ≠ c pour avoir une solution unique)
-function genererEquationPremierDegre() {
-  let a, c;
-  do {
-    a = tirerEntierNonNul(-5, 5);
-    c = tirerEntierNonNul(-5, 5);
-  } while (a === c);
-  const b = tirerEntier(-10, 10);
-  const d = tirerEntier(-10, 10);
-
-  function pgcd(a, b) { a = Math.abs(a); b = Math.abs(b); while (b) { [a, b] = [b, a % b]; } return a; }
-  const num = d - b, den = a - c;
-  const g = pgcd(Math.abs(num), Math.abs(den));
-  let numR = num / g, denR = den / g;
-  if (denR < 0) { numR = -numR; denR = -denR; }
-
-  const solution = denR === 1 ? String(numR) : numR + "/" + denR;
-  const aStr = a === 1 ? "" : a === -1 ? "-" : String(a);
-  const cStr = c === 1 ? "" : c === -1 ? "-" : String(c);
-  const bStr = b === 0 ? "" : b > 0 ? " + " + b : " - " + Math.abs(b);
-  const dStr = d === 0 ? "" : d > 0 ? " + " + d : " - " + Math.abs(d);
-
-  return {
-    enonce: `Résoudre : $${aStr}x${bStr} = ${cStr}x${dStr}$`,
-    reponse: `$x = ${solution}$`,
-    valeurs: { a, b, c, d },
-  };
-}
-
-// SEC_FG_EX02 — Développer avec identités remarquables : (ax+b)², (ax-b)², (ax+b)(ax-b)
-// b est toujours > 0 pour éviter les doubles signes disgracieux
-function genererIdentiteRemarquable() {
-  const a = tirerEntierNonNul(-4, 4);
-  const b = tirerEntierNonNul(1, 5);
-  const type = Math.floor(Math.random() * 3);
-  const aStr = a === 1 ? "" : a === -1 ? "-" : String(a);
-  const A2 = a * a;
-  const A2str = A2 === 1 ? "x^2" : A2 + "x^2";
-  const B2 = b * b;
-
-  let enonce, reponse;
-
-  if (type === 0) {
-    const t2ab = 2 * a * b;
-    const t2 = t2ab > 0
-      ? " + " + (Math.abs(t2ab) === 1 ? "" : Math.abs(t2ab)) + "x"
-      : " - " + (Math.abs(t2ab) === 1 ? "" : Math.abs(t2ab)) + "x";
-    enonce = `(${aStr}x + ${b})^2`;
-    reponse = A2str + t2 + " + " + B2;
-  } else if (type === 1) {
-    const t2ab = -2 * a * b;
-    const t2 = t2ab > 0
-      ? " + " + (Math.abs(t2ab) === 1 ? "" : Math.abs(t2ab)) + "x"
-      : " - " + (Math.abs(t2ab) === 1 ? "" : Math.abs(t2ab)) + "x";
-    enonce = `(${aStr}x - ${b})^2`;
-    reponse = A2str + t2 + " + " + B2;
-  } else {
-    enonce = `(${aStr}x + ${b})(${aStr}x - ${b})`;
-    reponse = A2str + " - " + B2;
-  }
-
-  return {
-    enonce: `Développer : $${enonce}$`,
-    reponse: `$${reponse}$`,
-    valeurs: { a, b, type },
-  };
-}
-
-// SEC_FG_EX03 — Calculer f(c) pour f(x) = ax + b (fonction affine)
-function genererImageFonctionAffine() {
-  const a = tirerEntierNonNul(-5, 5);
-  const b = tirerEntier(-10, 10);
-  const c = tirerEntier(-8, 8);
-  const resultat = a * c + b;
-  const aStr = a === 1 ? "" : a === -1 ? "-" : String(a);
-  const bStr = b === 0 ? "" : b > 0 ? " + " + b : " - " + Math.abs(b);
-  return {
-    enonce: `Calculer $f(${c})$ pour $f(x) = ${aStr}x${bStr}$`,
-    reponse: `$f(${c}) = ${resultat}$`,
-    valeurs: { a, b, c },
-  };
-}
-
-// SEC_FG_EX04 — Coefficient multiplicateur ↔ taux d'évolution
-// Taux entier entre -50% et +50%, jamais 0
-function genererCoeffMultiplicateur() {
-  const taux = tirerEntierNonNul(-50, 50);
-  const coeff = (100 + taux) / 100;
-  const coeffStr = coeff % 1 === 0 ? String(coeff) : coeff.toFixed(2).replace(/0+$/, "").replace(".", ",");
-  const type = Math.random() > 0.5;
-
-  if (type) {
-    const sens = taux > 0 ? "une augmentation" : "une diminution";
-    return {
-      enonce: `Donner le coefficient multiplicateur correspondant à ${sens} de $${Math.abs(taux)}\\%$`,
-      reponse: `$\\times ${coeffStr}$`,
-      valeurs: { taux, sens: "taux→coeff" },
-    };
-  } else {
-    const evolution = taux > 0
-      ? `augmentation de $${taux}\\%$`
-      : `diminution de $${Math.abs(taux)}\\%$`;
-    return {
-      enonce: `Le coefficient multiplicateur $${coeffStr}$ correspond à quelle évolution ?`,
-      reponse: evolution,
-      valeurs: { taux, sens: "coeff→taux" },
-    };
-  }
-}
-
-// SEC_FG_EX05 — Distance entre deux points A(x1,y1) et B(x2,y2)
-function genererDistancePoints() {
-  const x1 = tirerEntier(-5, 5), y1 = tirerEntier(-5, 5);
-  const x2 = tirerEntier(-5, 5), y2 = tirerEntier(-5, 5);
-  const dx = x2 - x1, dy = y2 - y1;
-  const d2 = dx * dx + dy * dy;
-  const racine = Math.sqrt(d2);
-  const resultat = Number.isInteger(racine) ? String(racine) : `\\sqrt{${d2}}`;
-  return {
-    enonce: `Calculer la distance $AB$ avec $A(${x1};${y1})$ et $B(${x2};${y2})$`,
-    reponse: `$AB = ${resultat}$`,
-    valeurs: { x1, y1, x2, y2 },
-  };
-}
+// Les 5 exercices écrits sur mesure ici (SEC_FG_EX01 à 05) ont été migrés
+// vers la table exercices_application (voir migration_exercices_seconde.json)
+// et validés en base — ils ne sont donc plus codés en dur.
 
 // Registre des exercices codés sur mesure : id -> fonction de génération.
 // C'est ici qu'on ajoutera chaque nouvel exercice créé avec Claude.
 const BIBLIOTHEQUE_EXERCICES = {
   // ── Terminale Spé ──
   "DER_FG_EX01": { generer: genererDeriveePolynomeDegre2, chapitre: "Dérivation", niveauScolaire: "terminale_spe", niveau: 2, titre: "Dérivée d'un polynôme du second degré" },
-  // ── Seconde ──
-  "SEC_FG_EX01": { generer: genererEquationPremierDegre,   chapitre: "Équations et Inéquations",       niveauScolaire: "seconde", niveau: 1, titre: "Résoudre ax + b = cx + d" },
-  "SEC_FG_EX02": { generer: genererIdentiteRemarquable,    chapitre: "Calcul littéral 2",               niveauScolaire: "seconde", niveau: 2, titre: "Développer avec identités remarquables" },
-  "SEC_FG_EX03": { generer: genererImageFonctionAffine,    chapitre: "Généralités sur les fonctions",   niveauScolaire: "seconde", niveau: 1, titre: "Image d'un réel par une fonction affine" },
-  "SEC_FG_EX04": { generer: genererCoeffMultiplicateur,    chapitre: "Proportions et évolutions",       niveauScolaire: "seconde", niveau: 1, titre: "Coefficient multiplicateur ↔ taux d'évolution" },
-  "SEC_FG_EX05": { generer: genererDistancePoints,         chapitre: "Vecteur Partie 1",                niveauScolaire: "seconde", niveau: 1, titre: "Distance entre deux points" },
 };
 
 
@@ -3916,6 +3788,7 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
   const [brouillonEdition, setBrouillonEdition] = useState(null);    // { type, enonce, reponse, niveau }
   const [sauvegardeEnCours, setSauvegardeEnCours] = useState(false);
   const [questionASupprimer, setQuestionASupprimer] = useState(null); // question en attente de confirmation
+  const [exerciceASupprimer, setExerciceASupprimer] = useState(null); // exercice aléatoire en attente de confirmation
   const [confirmerToutRetirer, setConfirmerToutRetirer] = useState(false);
 
   // Charger la liste des chapitres et les exercices depuis la base au changement de niveau
@@ -4029,6 +3902,25 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
       [question.chapitre_id]: (prev[question.chapitre_id] || []).filter(q => q.id !== question.id),
     }));
     setSelection(prev => prev.filter(q => q.id !== question.id));
+  }
+
+  function demanderSuppressionExercice(exercice) {
+    setExerciceASupprimer(exercice);
+  }
+
+  async function confirmerSuppressionExercice() {
+    const exercice = exerciceASupprimer;
+    if (!exercice) return;
+    setExerciceASupprimer(null);
+
+    const { error } = await supabase.from("exercices_application").delete().eq("id", exercice.id);
+    if (error) {
+      alert("Erreur lors de la suppression : " + error.message);
+      return;
+    }
+
+    setExercicesEnBase(prev => prev.filter(e => e.id !== exercice.id));
+    setSelection(prev => prev.filter(q => q.id !== exercice.id));
   }
 
   function commencerEdition(question) {
@@ -4635,10 +4527,16 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
                               🎲 Retirer au sort
                             </button>
                             {ex.source === "base" && ex.data?.prof_id === currentUser.id && (
-                              <button className="gen-exercice-refresh-btn" style={{ marginLeft: 8 }}
-                                onClick={() => { setQuestionAModifier({ ...ex.data, _source: "base_aleatoire" }); setAfficherCreerQuestion(true); }}>
-                                ✏️ Modifier
-                              </button>
+                              <>
+                                <button className="gen-exercice-refresh-btn" style={{ marginLeft: 8 }}
+                                  onClick={() => { setQuestionAModifier({ ...ex.data, _source: "base_aleatoire" }); setAfficherCreerQuestion(true); }}>
+                                  ✏️ Modifier
+                                </button>
+                                <button className="gen-delete-question-btn" style={{ marginLeft: 8 }}
+                                  onClick={() => demanderSuppressionExercice(ex.data)}>
+                                  🗑️ Supprimer
+                                </button>
+                              </>
                             )}
                           </div>
                         )}
@@ -4840,6 +4738,16 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
           danger
           onConfirm={confirmerSuppressionQuestion}
           onAnnuler={() => setQuestionASupprimer(null)}
+        />
+      )}
+      {exerciceASupprimer && (
+        <ConfirmModal
+          titre="Supprimer cet exercice ?"
+          message={`"${exerciceASupprimer.enonce_modele.slice(0, 80)}${exerciceASupprimer.enonce_modele.length > 80 ? "…" : ""}"\n\nSupprimé de la banque commune, définitivement.`}
+          texteConfirmer="Supprimer"
+          danger
+          onConfirm={confirmerSuppressionExercice}
+          onAnnuler={() => setExerciceASupprimer(null)}
         />
       )}
       {confirmerToutRetirer && (
