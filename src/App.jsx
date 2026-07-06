@@ -2373,12 +2373,18 @@ function ImportQuestions({ currentUser, currentProfile, chapitres, niveauScolair
       })),
     ];
     // Aléatoire → table exercices_application (id généré à l'analyse)
-    const exercicesAInserer = analyse.valideesAleatoire.map(q => ({
-      id: q._idGenere, chapitre_id: q._chapitreId,
-      enonce_modele: q.enonce_modele, reponse_modele: q.reponse_modele,
-      parametres: q.parametres, type_calcul: q.type_calcul || null,
-      niveau: q.niveau || 2, prof_id: currentUser.id,
-    }));
+    // type_calcul est omis quand il n'est pas fourni (plutôt qu'envoyé à null) :
+    // comme CreerQuestion ne l'envoie jamais non plus pour la création manuelle,
+    // ça laisse une éventuelle valeur par défaut Supabase s'appliquer.
+    const exercicesAInserer = analyse.valideesAleatoire.map(q => {
+      const ligne = {
+        id: q._idGenere, chapitre_id: q._chapitreId,
+        enonce_modele: q.enonce_modele, reponse_modele: q.reponse_modele,
+        parametres: q.parametres, niveau: q.niveau || 2, prof_id: currentUser.id,
+      };
+      if (q.type_calcul) ligne.type_calcul = q.type_calcul;
+      return ligne;
+    });
 
     let nbImportees = 0;
     let nbErreurs = 0;
