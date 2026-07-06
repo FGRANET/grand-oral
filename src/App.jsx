@@ -2105,6 +2105,18 @@ function ImportQuestions({ currentUser, currentProfile, chapitres, niveauScolair
         },
         niveau: 2,
       },
+      {
+        chapitre: "Nom exact d'un chapitre existant",
+        mode: "aleatoire",
+        enonce_modele: "L'opération qui permet de calculer {a} % de {b} est :",
+        reponse_modele: "${a}/100 \\times {b}$",
+        parametres: {
+          a: { type: "liste", valeurs: [20, 25, 50, 75, 80] },
+          b: { type: "entier", min: 20, max: 2000 },
+        },
+        type_calcul: "pourcentage",
+        niveau: 1,
+      },
     ];
     const blob = new Blob([JSON.stringify(exemple, null, 2)], { type: "application/json;charset=utf-8" });
     const url = URL.createObjectURL(blob);
@@ -2300,9 +2312,13 @@ function ImportQuestions({ currentUser, currentProfile, chapitres, niveauScolair
               <tr><td><code>id</code>, <code>type</code></td><td>si fixe</td><td><code>id</code> auto-corrigé s'il est absent ou déjà pris ; <code>type</code> = formule/méthode/définition/théorème/exercice</td></tr>
               <tr><td><code>enonce</code>, <code>reponse</code></td><td>si fixe</td><td>textes bruts (LaTeX entre <code>$...$</code> accepté)</td></tr>
               <tr><td><code>enonce_modele</code>, <code>reponse_modele</code>, <code>parametres</code></td><td>si aléatoire</td><td>id généré automatiquement, <code>parametres</code> = objet (voir l'exemple)</td></tr>
+              <tr><td><code>type_calcul</code></td><td>non</td><td>si aléatoire uniquement, libre (métadonnée)</td></tr>
               <tr><td><code>niveau</code></td><td>non</td><td>2 par défaut</td></tr>
             </tbody>
           </table>
+          <div className="import-format-note">
+            Types de paramètre disponibles pour <code>parametres</code> : <code>entier</code>, <code>entier_non_nul</code>, <code>decimal</code>, <code>liste</code> (avec un tableau <code>valeurs</code>).
+          </div>
           <div className="import-format-note">
             <strong>Limitation actuelle :</strong> l'import en mode fixe ne fonctionne que pour les chapitres de <strong>Terminale Spé</strong> — leur préfixe officiel n'existe pas encore pour Seconde/Première. Le mode aléatoire, lui, fonctionne pour tous les niveaux (préfixe auto-dérivé du nom du chapitre).
           </div>
@@ -2616,6 +2632,9 @@ function ImportQcm({ currentUser, chapitres, onFermer, onImportTermine }) {
               <tr><td><code>niveau</code></td><td>non</td><td>1 par défaut</td></tr>
             </tbody>
           </table>
+          <div className="import-format-note">
+            Types de paramètre disponibles pour <code>parametres</code> : <code>entier</code>, <code>entier_non_nul</code>, <code>decimal</code>, <code>liste</code> (avec un tableau <code>valeurs</code>).
+          </div>
           <div className="import-format-note">
             <strong>Pièges fréquents :</strong> une constante ou variable qui doit rester groupée en LaTeX (exposant, numérateur/dénominateur) doit être doublée — <code>{"{{100}}"}</code>, pas <code>{"{100}"}</code>. Pas besoin d'échapper le <code>%</code> à la main, c'est géré automatiquement à l'export.
           </div>
