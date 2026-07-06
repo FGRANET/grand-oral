@@ -3023,7 +3023,7 @@ function melanger(tableau) {
 }
 
 // ─── Composant CreerQuestion ─────────────────────────────────────────────
-function CreerQuestion({ chapitres, currentUser, niveauScolaire, onFermer, onCree, questionAEditer }) {
+function CreerQuestion({ chapitres, currentUser, currentProfile, niveauScolaire, onFermer, onCree, questionAEditer }) {
   const estEdition = !!questionAEditer;
   // En édition, détecter le mode selon le type de la question
   const modeInitial = questionAEditer
@@ -3134,7 +3134,7 @@ function CreerQuestion({ chapitres, currentUser, niveauScolaire, onFermer, onCre
         setEnregistrement(false);
         if (error) { alert("Erreur : " + error.message); return; }
       } else {
-        const initiales = currentUser.email?.split("@")[0].split(".").map(p => p[0]?.toUpperCase()).join("") || "XX";
+        const initiales = initialesAuteur(currentProfile?.prenom, currentProfile?.nom);
         const { data: existants } = await supabase.from("exercices_application").select("id").eq("chapitre_id", chapitreId);
         const nn = String((existants?.length || 0) + 1).padStart(2, "0");
         const chapitreCourant = chapitres.find(c => c.id === chapitreId);
@@ -4329,6 +4329,17 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
     URL.revokeObjectURL(url);
   }
 
+  // Les exercices de BIBLIOTHEQUE_EXERCICES sont codés en dur (fonction generer()
+  // en JS), donc impossibles à sérialiser en JSON — ils ne peuvent structurellement
+  // pas faire partie de l'export. On prévient plutôt que de les faire disparaître
+  // silencieusement.
+  function idsCodesEnDurPourChapitres(nomsChapitres) {
+    const noms = new Set(nomsChapitres);
+    return Object.entries(BIBLIOTHEQUE_EXERCICES)
+      .filter(([, def]) => noms.has(def.chapitre) && def.niveauScolaire === niveauScolaire)
+      .map(([id]) => id);
+  }
+
   async function exporterChapitre(ch) {
     // Réutilise le cache si déjà chargé, sinon recharge depuis Supabase
     let questions = questionsParChapitre[ch.id];
@@ -4343,6 +4354,11 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
     ];
     const slug = ch.nom.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "_");
     telechargerJson(contenu, `questions_${slug}.json`);
+
+    const idsExclus = idsCodesEnDurPourChapitres([ch.nom]);
+    if (idsExclus.length > 0) {
+      alert(`⚠️ ${idsExclus.length} exercice(s) codé(s) en dur (non exportable(s), car écrits en JS et pas en base) : ${idsExclus.join(", ")}`);
+    }
   }
 
   // Exporte uniquement le niveau actif (Terminale Spé / Seconde / Première),
@@ -4363,6 +4379,11 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
     ];
     const date = new Date().toISOString().slice(0, 10);
     telechargerJson(contenu, `banque_${niveauScolaire}_${date}.json`);
+
+    const idsExclus = idsCodesEnDurPourChapitres(chapitres.map(c => c.nom));
+    if (idsExclus.length > 0) {
+      alert(`⚠️ ${idsExclus.length} exercice(s) codé(s) en dur (non exportable(s), car écrits en JS et pas en base) : ${idsExclus.join(", ")}`);
+    }
   }
 
   if (loading) {
@@ -4736,6 +4757,7 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
         <CreerQuestion
           chapitres={chapitres}
           currentUser={currentUser}
+          currentProfile={currentProfile}
           niveauScolaire={niveauScolaire}
           questionAEditer={questionAModifier}
           onFermer={() => { setAfficherCreerQuestion(false); setQuestionAModifier(null); }}
