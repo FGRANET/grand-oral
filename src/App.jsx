@@ -3480,10 +3480,11 @@ function TirageAleatoire({ chapitres, onAnnuler, onTirer, niveauScolaire }) {
     if (typesChoisis.has("exercice")) {
       const chapitresParId = {};
       chapitres.forEach(c => { chapitresParId[c.id] = c.nom; });
+      const niveau = niveauScolaire || "terminale_spe";
 
+      // Exercices codés en dur (bibliothèque)
       [...chapitresChoisis].forEach(chId => {
         const nomChap = chapitresParId[chId];
-        const niveau = niveauScolaire || "terminale_spe";
         Object.entries(BIBLIOTHEQUE_EXERCICES)
           .filter(([, def]) => def.chapitre === nomChap
             && def.niveauScolaire === niveau
@@ -3495,6 +3496,18 @@ function TirageAleatoire({ chapitres, onAnnuler, onTirer, niveauScolaire }) {
               enonce: tirage.enonce, reponse: tirage.reponse,
             });
           });
+      });
+
+      // Exercices créés via le formulaire et stockés en base (jusqu'ici absents du tirage)
+      const { data: exercicesBase } = await supabase.from("exercices_application").select("*")
+        .in("chapitre_id", [...chapitresChoisis])
+        .in("niveau", [...niveauxChoisis]);
+      (exercicesBase || []).forEach(ex => {
+        const tirage = tirerExercice(ex);
+        pool.push({
+          id: ex.id, chapitre_id: ex.chapitre_id, type: "exercice", niveau: ex.niveau,
+          enonce: tirage.enonce, reponse: tirage.reponse,
+        });
       });
     }
 
