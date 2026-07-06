@@ -4298,12 +4298,24 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
   // exactement le format attendu pour un futur réimport.
   function questionVersJson(q, nomCh) {
     return {
-      id: q.id,
       chapitre: nomCh,
+      mode: "fixe",
+      id: q.id,
       type: q.type,
       enonce: q.enonce,
       reponse: q.reponse,
       niveau: q.niveau,
+    };
+  }
+
+  function exerciceVersJson(ex, nomCh) {
+    return {
+      chapitre: nomCh,
+      mode: "aleatoire",
+      enonce_modele: ex.enonce_modele,
+      reponse_modele: ex.reponse_modele,
+      parametres: ex.parametres,
+      niveau: ex.niveau,
     };
   }
 
@@ -4324,18 +4336,33 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
       const { data } = await supabase.from("questions").select("*").eq("chapitre_id", ch.id).order("id");
       questions = data || [];
     }
-    const contenu = questions.map(q => questionVersJson(q, ch.nom));
+    const { data: exercicesDuChapitre } = await supabase.from("exercices_application").select("*").eq("chapitre_id", ch.id);
+    const contenu = [
+      ...questions.map(q => questionVersJson(q, ch.nom)),
+      ...(exercicesDuChapitre || []).map(ex => exerciceVersJson(ex, ch.nom)),
+    ];
     const slug = ch.nom.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "_");
     telechargerJson(contenu, `questions_${slug}.json`);
   }
 
+  // Exporte uniquement le niveau actif (Terminale Spé / Seconde / Première),
+  // pas toute la table — chapitres est déjà scopé par niveauScolaire.
   async function exporterToutLaBanque() {
-    const { data } = await supabase.from("questions").select("*").order("chapitre_id").order("id");
+    const idsChapitres = chapitres.map(c => c.id);
+    if (idsChapitres.length === 0) return;
     const chapitresParId = {};
     chapitres.forEach(c => { chapitresParId[c.id] = c.nom; });
-    const contenu = (data || []).map(q => questionVersJson(q, chapitresParId[q.chapitre_id] || "?"));
+
+    const [{ data: toutesQuestions }, { data: tousExercices }] = await Promise.all([
+      supabase.from("questions").select("*").in("chapitre_id", idsChapitres).order("chapitre_id").order("id"),
+      supabase.from("exercices_application").select("*").in("chapitre_id", idsChapitres).order("chapitre_id").order("id"),
+    ]);
+    const contenu = [
+      ...(toutesQuestions || []).map(q => questionVersJson(q, chapitresParId[q.chapitre_id] || "?")),
+      ...(tousExercices || []).map(ex => exerciceVersJson(ex, chapitresParId[ex.chapitre_id] || "?")),
+    ];
     const date = new Date().toISOString().slice(0, 10);
-    telechargerJson(contenu, `banque_questions_complete_${date}.json`);
+    telechargerJson(contenu, `banque_${niveauScolaire}_${date}.json`);
   }
 
   if (loading) {
