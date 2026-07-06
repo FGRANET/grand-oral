@@ -1411,6 +1411,21 @@ function substituerPlaceholders(texteModele, valeurs) {
       }
     }
 
+    // Cas spécial : {sqrt(expr)} — racine carrée exacte, simplifiée en entier
+    // si c'est un carré parfait, sinon renvoyée sous forme \sqrt{d} en LaTeX.
+    // Ex: {sqrt(dx*dx+dy*dy)} avec dx=3, dy=4 → 5 (carré parfait, 25)
+    //     {sqrt(dx*dx+dy*dy)} avec dx=1, dy=2 → \sqrt{5} (pas un carré parfait)
+    const matchSqrt = exprPropre.match(/^sqrt\((.+)\)$/);
+    if (matchSqrt) {
+      const valeur = evaluerExpressionSimple(matchSqrt[1].trim(), valeurs);
+      if (typeof valeur === "number" && valeur >= 0) {
+        const arrondi = Math.round(valeur);
+        const racine = Math.sqrt(arrondi);
+        if (Number.isInteger(racine)) return String(racine);
+        return `\\sqrt{${arrondi}}`;
+      }
+    }
+
     if (valeurs.hasOwnProperty(exprPropre)) {
       const v = valeurs[exprPropre];
       return formatNombre(v); // virgule décimale française
@@ -3192,7 +3207,7 @@ function CreerQuestion({ chapitres, currentUser, currentProfile, niveauScolaire,
                 : "Ex : Donner la définition d'une suite arithmétique."} />
             {mode === "aleatoire" && (
               <div className="creer-hint">
-                Variable : <code>{"{a}"}</code> · Calcul : <code>{"{2a}"}</code> · Polynôme : <code>{"{poly(a:2, b:1, c:0)}"}</code> · Fraction exacte : <code>{"{frac(-b, a)}"}</code>
+                Variable : <code>{"{a}"}</code> · Calcul : <code>{"{2a}"}</code> · Polynôme : <code>{"{poly(a:2, b:1, c:0)}"}</code> · Fraction exacte : <code>{"{frac(-b, a)}"}</code> · Racine exacte : <code>{"{sqrt(a*a+b*b)}"}</code>
               </div>
             )}
             {mode === "aleatoire" && (
@@ -3415,7 +3430,7 @@ function CreerQcm({ chapitres, currentUser, niveauScolaire, onFermer, onCree, qc
                 : "Ex : Quelle est la limite de cette suite ?"} />
             {mode === "aleatoire" && (
               <div className="creer-hint">
-                Variable : <code>{"{a}"}</code> · Calcul : <code>{"{2a}"}</code> · Polynôme : <code>{"{poly(a:2, b:1, c:0)}"}</code> · Fraction exacte : <code>{"{frac(-b, a)}"}</code>
+                Variable : <code>{"{a}"}</code> · Calcul : <code>{"{2a}"}</code> · Polynôme : <code>{"{poly(a:2, b:1, c:0)}"}</code> · Fraction exacte : <code>{"{frac(-b, a)}"}</code> · Racine exacte : <code>{"{sqrt(a*a+b*b)}"}</code>
               </div>
             )}
             {mode === "aleatoire" && (
