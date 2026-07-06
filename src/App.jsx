@@ -1123,31 +1123,56 @@ function formatDate(ts) {
 }
 
 // ─── Convention de numérotation des questions : PREFIXE_AUTEUR_NN ──────
-// Préfixe officiel par nom de chapitre (clé en minuscules)
+// Préfixe officiel par nom de chapitre (clé en minuscules), imbriqué par niveau.
+// Nécessaire car deux chapitres de niveaux différents peuvent porter exactement
+// le même nom (ex. "Probabilités conditionnelles" existe en Terminale Spé ET en
+// Seconde) — un objet plat avec le nom seul comme clé écraserait silencieusement
+// l'un des deux préfixes.
 const PREFIXES_CHAPITRES = {
-  "rappels sur les suites": "SUI",
-  "dérivation": "DER",
-  "géométrie dans l'espace 1": "GEO1",
-  "équations différentielles": "EQD1",
-  "fonction ln": "LN",
-  "probabilités conditionnelles": "PCOND",
-  "raisonnement par récurrence": "REC",
-  "combinatoire et dénombrement": "COMB",
-  "loi binomiale": "BINOM",
-  "limite d'une suite": "LIMS",
-  "convexité": "CONV",
-  "géométrie dans l'espace 2": "GEO2",
-  "fonctions sinus et cosinus": "TRIGO",
-  "limites de fonctions": "LIMF",
-  "continuité": "CONT",
-  "primitives et équations différentielles y'=f": "EQD2",
-  "calcul intégral": "INT",
-  "compléments sur les variables aléatoires": "VA",
-  "concentration et loi des grands nombres": "LGN",
+  terminale_spe: {
+    "rappels sur les suites": "SUI",
+    "dérivation": "DER",
+    "géométrie dans l'espace 1": "GEO1",
+    "équations différentielles": "EQD1",
+    "fonction ln": "LN",
+    "probabilités conditionnelles": "PCOND",
+    "raisonnement par récurrence": "REC",
+    "combinatoire et dénombrement": "COMB",
+    "loi binomiale": "BINOM",
+    "limite d'une suite": "LIMS",
+    "convexité": "CONV",
+    "géométrie dans l'espace 2": "GEO2",
+    "fonctions sinus et cosinus": "TRIGO",
+    "limites de fonctions": "LIMF",
+    "continuité": "CONT",
+    "primitives et équations différentielles y'=f": "EQD2",
+    "calcul intégral": "INT",
+    "compléments sur les variables aléatoires": "VA",
+    "concentration et loi des grands nombres": "LGN",
+  },
+  seconde: {
+    "nombres réels et intervalles": "NRI",
+    "calcul littéral 1": "CALC1",
+    "vecteur partie 1": "VEC1",
+    "généralités sur les fonctions": "FONC",
+    "proportions et évolutions": "PROP",
+    "variations de fonctions": "VARF",
+    "équations et inéquations": "EQIN",
+    "vecteurs partie 2": "VEC2",
+    "tableau de signe": "SIGN",
+    "calcul littéral 2": "CALC2",
+    "probabilités": "PROBA",
+    "droites du plan": "DROI",
+    "probabilités conditionnelles": "PCONDS",
+    "statistiques": "STAT",
+    "fonctions usuelles": "FUS",
+    "arithmétique": "ARITH",
+  },
 };
 
-function prefixeChapitre(nomChapitre) {
-  return PREFIXES_CHAPITRES[(nomChapitre || "").trim().toLowerCase()] || null;
+function prefixeChapitre(nomChapitre, niveauScolaire) {
+  const table = PREFIXES_CHAPITRES[niveauScolaire || "terminale_spe"] || {};
+  return table[(nomChapitre || "").trim().toLowerCase()] || null;
 }
 
 function initialesAuteur(prenom, nom) {
@@ -2162,7 +2187,7 @@ function DiapoViewerQcm({ questions, mode, delai, nomChapitre, onFermer }) {
   );
 }
 
-function ImportQuestions({ currentUser, currentProfile, chapitres, onFermer, onImportTermine }) {
+function ImportQuestions({ currentUser, currentProfile, chapitres, niveauScolaire, onFermer, onImportTermine }) {
   const [fichier, setFichier] = useState(null);
   const [analyse, setAnalyse] = useState(null); // { valides, conflits, chapitresInconnus }
   const [analysing, setAnalysing] = useState(false);
@@ -2276,7 +2301,7 @@ function ImportQuestions({ currentUser, currentProfile, chapitres, onFermer, onI
 
         // Mode fixe : nécessite un préfixe officiel (table PREFIXES_CHAPITRES),
         // aujourd'hui limitée aux 19 chapitres de Terminale Spé.
-        const prefixe = prefixeChapitre(q.chapitre);
+        const prefixe = prefixeChapitre(q.chapitre, niveauScolaire);
         if (!prefixe) {
           prefixesManquants.push({ ...q, _ligne: idx + 1 });
           return;
@@ -4649,6 +4674,7 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
           currentUser={currentUser}
           currentProfile={currentProfile}
           chapitres={chapitres}
+          niveauScolaire={niveauScolaire}
           onFermer={() => setAfficherImport(false)}
           onImportTermine={() => {
             // Force le rechargement des chapitres actuellement ouverts pour voir les nouvelles questions
