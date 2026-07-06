@@ -855,10 +855,10 @@ const CSS = `
   .import-report-header.warn { background: rgba(248,113,113,0.08); color: var(--red); }
   .import-report-item {
     font-size: 12px; padding: 8px 12px; background: var(--surface2); border-radius: 8px;
-    margin-bottom: 4px; display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    margin-bottom: 4px; display: flex; align-items: flex-start; justify-content: space-between; gap: 10px;
   }
   .import-report-item-id { font-family: var(--mono); color: var(--text-muted); flex-shrink: 0; }
-  .import-report-item-detail { flex: 1; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .import-report-item-detail { flex: 1; color: var(--text); white-space: normal; word-break: break-word; }
   .import-report-suggestion { font-family: var(--mono); color: var(--accent-light); font-size: 11px; flex-shrink: 0; }
   .import-format-guide {
     background: var(--surface2); border: 1px solid var(--border); border-radius: 10px;
@@ -2406,7 +2406,7 @@ function ImportQuestions({ currentUser, currentProfile, chapitres, niveauScolair
   const totalAImporter = analyse ? analyse.valides.length + analyse.corrections.length + analyse.valideesAleatoire.length : 0;
 
   return (
-    <div className="import-overlay" onClick={e => e.target === e.currentTarget && onFermer()}>
+    <div className="import-overlay">
       <div className="import-card">
         <div className="import-title">Importer des questions</div>
 
@@ -2719,7 +2719,7 @@ function ImportQcm({ currentUser, chapitres, onFermer, onImportTermine }) {
   const totalAImporter = analyse ? analyse.valides.length : 0;
 
   return (
-    <div className="import-overlay" onClick={e => e.target === e.currentTarget && onFermer()}>
+    <div className="import-overlay">
       <div className="import-card">
         <div className="import-title">Importer des QCM</div>
 
