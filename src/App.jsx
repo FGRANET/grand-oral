@@ -859,6 +859,23 @@ const CSS = `
   .import-report-item-id { font-family: var(--mono); color: var(--text-muted); flex-shrink: 0; }
   .import-report-item-detail { flex: 1; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .import-report-suggestion { font-family: var(--mono); color: var(--accent-light); font-size: 11px; flex-shrink: 0; }
+  .import-format-guide {
+    background: var(--surface2); border: 1px solid var(--border); border-radius: 10px;
+    padding: 14px 16px; margin-bottom: 16px; font-size: 12px;
+  }
+  .import-format-table { width: 100%; border-collapse: collapse; margin: 8px 0; }
+  .import-format-table th { text-align: left; color: var(--text-muted); font-weight: 600; padding: 4px 8px 4px 0; border-bottom: 1px solid var(--border); }
+  .import-format-table td { padding: 5px 8px 5px 0; border-bottom: 1px solid var(--border); vertical-align: top; }
+  .import-format-table code { background: var(--surface); padding: 1px 5px; border-radius: 4px; font-family: var(--mono); }
+  .import-format-note { color: var(--text-muted); margin-top: 8px; line-height: 1.5; }
+  .import-format-note strong { color: var(--text); }
+  .import-format-actions { margin-top: 10px; }
+  .import-format-example-btn {
+    background: none; border: 1px solid var(--accent); color: var(--accent-light);
+    border-radius: 8px; padding: 6px 12px; font-family: var(--font); font-size: 12px;
+    font-weight: 600; cursor: pointer; transition: all .15s;
+  }
+  .import-format-example-btn:hover { background: rgba(var(--accent-rgb), .12); }
   .import-actions { display: flex; gap: 10px; flex-shrink: 0; }
   .import-result {
     text-align: center; padding: 30px 0; display: flex; flex-direction: column; align-items: center; gap: 12px;
@@ -2153,6 +2170,38 @@ function ImportQuestions({ currentUser, currentProfile, chapitres, onFermer, onI
   const [resultat, setResultat] = useState(null); // { nbImportees, nbErreurs }
   const fileRef = useRef(null);
 
+  function telechargerExempleQuestions() {
+    const exemple = [
+      {
+        chapitre: "Nom exact d'un chapitre existant",
+        mode: "fixe",
+        id: "PREFIXE_XX_01",
+        type: "méthode",
+        enonce: "Comment calcule-t-on la dérivée d'une fonction ?",
+        reponse: "On applique les formules de dérivation usuelles.",
+        niveau: 2,
+      },
+      {
+        chapitre: "Nom exact d'un chapitre existant",
+        mode: "aleatoire",
+        enonce_modele: "Résoudre l'équation ${a}x + {b} = 0$",
+        reponse_modele: "$x = {frac(-b, a)}$",
+        parametres: {
+          a: { type: "entier_non_nul", min: -9, max: 9 },
+          b: { type: "entier", min: -9, max: 9 },
+        },
+        niveau: 2,
+      },
+    ];
+    const blob = new Blob([JSON.stringify(exemple, null, 2)], { type: "application/json;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "exemple_import_questions.json";
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   // Calcule le prochain numéro libre pour un préfixe+auteur donné, en tenant compte
   // à la fois des ids déjà en base ET de ceux déjà attribués plus tôt dans ce même import
   function prochainNumeroLibre(prefixeComplet, idsExistants, idsDejaAttribuesDansCetImport) {
@@ -2173,17 +2222,24 @@ function ImportQuestions({ currentUser, currentProfile, chapitres, onFermer, onI
       const data = JSON.parse(texte);
       const liste = Array.isArray(data) ? data : (data.questions || []);
 
-      const { data: existantes } = await supabase.from("questions").select("id");
-      const idsExistants = new Set((existantes || []).map(q => q.id));
-      const idsAttribues = new Set(); // suivi au fil de CET import, pour éviter 2 suggestions identiques
+      const [{ data: existantesFixe }, { data: existantesAleatoire }] = await Promise.all([
+        supabase.from("questions").select("id"),
+        supabase.from("exercices_application").select("id"),
+      ]);
+      const idsExistantsFixe = new Set((existantesFixe || []).map(q => q.id));
+      const idsExistantsAleatoire = new Set((existantesAleatoire || []).map(q => q.id));
+      const idsAttribuesFixe = new Set();       // suivi au fil de CET import
+      const idsAttribuesAleatoire = new Set();
 
       const chapitresParNom = {};
       chapitres.forEach(c => { chapitresParNom[c.nom.trim().toLowerCase()] = c.id; });
 
       const initiales = initialesAuteur(currentProfile?.prenom, currentProfile?.nom);
 
-      const valides = [];        // id déjà conforme à la convention, pas de conflit
-      const corrections = [];    // id non conforme et/ou en conflit → id recalculé proposé
+      const valides = [];          // fixe : id déjà conforme, pas de conflit
+      const corrections = [];      // fixe : id non conforme et/ou en conflit → id recalculé
+      const valideesAleatoire = [];// aléatoire : id généré automatiquement (pas de convention à vérifier, comme dans CreerQuestion)
+      const invalidesAleatoire = [];
       const chapitresInconnus = [];
       const prefixesManquants = [];
 
@@ -2196,24 +2252,46 @@ function ImportQuestions({ currentUser, currentProfile, chapitres, onFermer, onI
           return;
         }
 
+        const mode = q.mode === "aleatoire" ? "aleatoire" : "fixe";
+
+        if (mode === "aleatoire") {
+          if (!q.enonce_modele || !q.reponse_modele || !q.parametres || typeof q.parametres !== "object" || Array.isArray(q.parametres)) {
+            invalidesAleatoire.push({ ...q, _ligne: idx + 1, _erreur: "enonce_modele, reponse_modele et parametres (objet) requis" });
+            return;
+          }
+          // Même méthode que CreerQuestion pour les exercices aléatoires : préfixe
+          // auto-dérivé des initiales du nom du chapitre (pas la table PREFIXES_CHAPITRES,
+          // qui ne couvre que Terminale Spé — donc ça fonctionne pour tous les niveaux).
+          const prefixeAuto = ((q.chapitre || "").split(" ").map(w => w[0]).filter(Boolean).join("") || "AUT").toUpperCase().slice(0, 4);
+          const prefixeComplet = `${prefixeAuto}_${initiales}_EX`;
+          let n = 1, idCandidat;
+          do {
+            idCandidat = `${prefixeComplet}${String(n).padStart(2, "0")}`;
+            n++;
+          } while (idsExistantsAleatoire.has(idCandidat) || idsAttribuesAleatoire.has(idCandidat));
+          idsAttribuesAleatoire.add(idCandidat);
+          valideesAleatoire.push({ ...q, _chapitreId: chapitreId, _idGenere: idCandidat });
+          return;
+        }
+
+        // Mode fixe : nécessite un préfixe officiel (table PREFIXES_CHAPITRES),
+        // aujourd'hui limitée aux 19 chapitres de Terminale Spé.
         const prefixe = prefixeChapitre(q.chapitre);
         if (!prefixe) {
-          // Chapitre reconnu mais sans préfixe officiel défini (cas normalement impossible
-          // si la table PREFIXES_CHAPITRES est à jour avec les 19 chapitres)
           prefixesManquants.push({ ...q, _ligne: idx + 1 });
           return;
         }
 
         const prefixeComplet = `${prefixe}_${initiales}`;
         const conforme = idRespecteConvention(q.id, prefixe, initiales);
-        const enConflit = idsExistants.has(q.id) || idsAttribues.has(q.id);
+        const enConflit = idsExistantsFixe.has(q.id) || idsAttribuesFixe.has(q.id);
 
         if (conforme && !enConflit) {
-          idsAttribues.add(q.id);
+          idsAttribuesFixe.add(q.id);
           valides.push({ ...q, _chapitreId: chapitreId });
         } else {
-          const idCorrige = prochainNumeroLibre(prefixeComplet, idsExistants, idsAttribues);
-          idsAttribues.add(idCorrige);
+          const idCorrige = prochainNumeroLibre(prefixeComplet, idsExistantsFixe, idsAttribuesFixe);
+          idsAttribuesFixe.add(idCorrige);
           corrections.push({
             ...q,
             _chapitreId: chapitreId,
@@ -2224,7 +2302,7 @@ function ImportQuestions({ currentUser, currentProfile, chapitres, onFermer, onI
         }
       });
 
-      setAnalyse({ valides, corrections, chapitresInconnus, prefixesManquants });
+      setAnalyse({ valides, corrections, valideesAleatoire, invalidesAleatoire, chapitresInconnus, prefixesManquants });
     } catch (e) {
       setAnalyse({ erreurParsing: e.message });
     }
@@ -2240,8 +2318,8 @@ function ImportQuestions({ currentUser, currentProfile, chapitres, onFermer, onI
     if (!analyse) return;
     setImporting(true);
 
-    // On importe : toutes les valides (id déjà conforme) + les corrections (id recalculé)
-    const aInserer = [
+    // Fixe → table questions (id déjà conforme + corrections)
+    const questionsAInserer = [
       ...analyse.valides.map(q => ({
         id: q.id, chapitre_id: q._chapitreId, type: q.type,
         enonce: q.enonce, reponse: q.reponse, niveau: q.niveau || 2,
@@ -2253,13 +2331,26 @@ function ImportQuestions({ currentUser, currentProfile, chapitres, onFermer, onI
         prof_id: currentUser.id,
       })),
     ];
+    // Aléatoire → table exercices_application (id généré à l'analyse)
+    const exercicesAInserer = analyse.valideesAleatoire.map(q => ({
+      id: q._idGenere, chapitre_id: q._chapitreId,
+      enonce_modele: q.enonce_modele, reponse_modele: q.reponse_modele,
+      parametres: q.parametres, type_calcul: q.type_calcul || null,
+      niveau: q.niveau || 2, prof_id: currentUser.id,
+    }));
 
     let nbImportees = 0;
     let nbErreurs = 0;
     // Insertion par lots de 50 pour rester raisonnable
-    for (let i = 0; i < aInserer.length; i += 50) {
-      const lot = aInserer.slice(i, i + 50);
+    for (let i = 0; i < questionsAInserer.length; i += 50) {
+      const lot = questionsAInserer.slice(i, i + 50);
       const { error } = await supabase.from("questions").insert(lot);
+      if (error) nbErreurs += lot.length;
+      else nbImportees += lot.length;
+    }
+    for (let i = 0; i < exercicesAInserer.length; i += 50) {
+      const lot = exercicesAInserer.slice(i, i + 50);
+      const { error } = await supabase.from("exercices_application").insert(lot);
       if (error) nbErreurs += lot.length;
       else nbImportees += lot.length;
     }
@@ -2269,13 +2360,34 @@ function ImportQuestions({ currentUser, currentProfile, chapitres, onFermer, onI
     onImportTermine();
   }
 
-  const totalAImporter = analyse ? analyse.valides.length + analyse.corrections.length : 0;
+  const totalAImporter = analyse ? analyse.valides.length + analyse.corrections.length + analyse.valideesAleatoire.length : 0;
 
   return (
     <div className="import-overlay" onClick={e => e.target === e.currentTarget && onFermer()}>
       <div className="import-card">
         <div className="import-title">Importer des questions</div>
-        <div className="import-sub">Fichier JSON au format habituel (id, chapitre, type, enonce, reponse, niveau)</div>
+
+        <div className="import-format-guide">
+          <table className="import-format-table">
+            <thead>
+              <tr><th>Champ</th><th>Obligatoire</th><th>Détail</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><code>chapitre</code></td><td>toujours</td><td>Nom exact d'un chapitre déjà créé (insensible à la casse)</td></tr>
+              <tr><td><code>mode</code></td><td>non</td><td><code>"fixe"</code> (défaut) ou <code>"aleatoire"</code></td></tr>
+              <tr><td><code>id</code>, <code>type</code></td><td>si fixe</td><td><code>id</code> auto-corrigé s'il est absent ou déjà pris ; <code>type</code> = formule/méthode/définition/théorème/exercice</td></tr>
+              <tr><td><code>enonce</code>, <code>reponse</code></td><td>si fixe</td><td>textes bruts (LaTeX entre <code>$...$</code> accepté)</td></tr>
+              <tr><td><code>enonce_modele</code>, <code>reponse_modele</code>, <code>parametres</code></td><td>si aléatoire</td><td>id généré automatiquement, <code>parametres</code> = objet (voir l'exemple)</td></tr>
+              <tr><td><code>niveau</code></td><td>non</td><td>2 par défaut</td></tr>
+            </tbody>
+          </table>
+          <div className="import-format-note">
+            <strong>Limitation actuelle :</strong> l'import en mode fixe ne fonctionne que pour les chapitres de <strong>Terminale Spé</strong> — leur préfixe officiel n'existe pas encore pour Seconde/Première. Le mode aléatoire, lui, fonctionne pour tous les niveaux (préfixe auto-dérivé du nom du chapitre).
+          </div>
+          <div className="import-format-actions">
+            <button className="import-format-example-btn" onClick={telechargerExempleQuestions}>📥 Télécharger un exemple</button>
+          </div>
+        </div>
 
         {!resultat && (
           <div className="import-dropzone" onClick={() => fileRef.current?.click()}>
@@ -2301,9 +2413,37 @@ function ImportQuestions({ currentUser, currentProfile, chapitres, onFermer, onI
           <div className="import-report">
             <div className="import-report-section">
               <div className="import-report-header ok">
-                ✅ {analyse.valides.length} question{analyse.valides.length !== 1 ? "s" : ""} prête{analyse.valides.length !== 1 ? "s" : ""} à importer
+                ✅ {analyse.valides.length} question{analyse.valides.length !== 1 ? "s" : ""} fixe{analyse.valides.length !== 1 ? "s" : ""} prête{analyse.valides.length !== 1 ? "s" : ""} à importer
               </div>
             </div>
+
+            {analyse.valideesAleatoire.length > 0 && (
+              <div className="import-report-section">
+                <div className="import-report-header ok">
+                  ✅ {analyse.valideesAleatoire.length} exercice{analyse.valideesAleatoire.length !== 1 ? "s" : ""} aléatoire{analyse.valideesAleatoire.length !== 1 ? "s" : ""} prêt{analyse.valideesAleatoire.length !== 1 ? "s" : ""} à importer
+                </div>
+                {analyse.valideesAleatoire.map((q, i) => (
+                  <div key={i} className="import-report-item">
+                    <span className="import-report-item-id">{q._idGenere}</span>
+                    <span className="import-report-item-detail">{q.enonce_modele}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {analyse.invalidesAleatoire.length > 0 && (
+              <div className="import-report-section">
+                <div className="import-report-header warn">
+                  ❌ {analyse.invalidesAleatoire.length} exercice{analyse.invalidesAleatoire.length !== 1 ? "s" : ""} aléatoire{analyse.invalidesAleatoire.length !== 1 ? "s" : ""} avec des champs invalides (non importé{analyse.invalidesAleatoire.length !== 1 ? "s" : ""})
+                </div>
+                {analyse.invalidesAleatoire.map((q, i) => (
+                  <div key={i} className="import-report-item">
+                    <span className="import-report-item-id">ligne {q._ligne}</span>
+                    <span className="import-report-item-detail">{q._erreur}</span>
+                  </div>
+                ))}
+              </div>
+            )}
 
             {analyse.corrections.length > 0 && (
               <div className="import-report-section">
@@ -2392,6 +2532,43 @@ function ImportQcm({ currentUser, chapitres, onFermer, onImportTermine }) {
   const fileRef = useRef(null);
 
   // Vérifie les champs requis selon le mode ; retourne null si valide, ou un message d'erreur
+  function telechargerExempleQcm() {
+    const exemple = [
+      {
+        chapitre: "Nom exact d'un chapitre existant",
+        mode: "fixe",
+        enonce: "25 % de 480 est égal à :",
+        choix: ["120", "12", "1200", "1,2"],
+        bonne_reponse: 0,
+        niveau: 1,
+      },
+      {
+        chapitre: "Nom exact d'un chapitre existant",
+        mode: "aleatoire",
+        enonce_modele: "L'opération qui permet de calculer {a} % de {b} est :",
+        choix_modele: [
+          "$\\dfrac{{b}}{{a}\\times 100}$",
+          "${a}\\times {b}\\times 0,1$",
+          "$\\dfrac{{b}\\times 100}{{a}}$",
+          "$\\dfrac{{a}}{{100}}\\times {b}$",
+        ],
+        bonne_reponse: 3,
+        parametres: {
+          a: { type: "liste", valeurs: [20, 25, 50, 75, 80] },
+          b: { type: "entier", min: 20, max: 2000 },
+        },
+        niveau: 1,
+      },
+    ];
+    const blob = new Blob([JSON.stringify(exemple, null, 2)], { type: "application/json;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "exemple_import_qcm.json";
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   function validerQcm(q) {
     const mode = q.mode === "aleatoire" ? "aleatoire" : "fixe";
     if (typeof q.bonne_reponse !== "number" || q.bonne_reponse < 0 || q.bonne_reponse > 3) {
@@ -2489,10 +2666,27 @@ function ImportQcm({ currentUser, chapitres, onFermer, onImportTermine }) {
     <div className="import-overlay" onClick={e => e.target === e.currentTarget && onFermer()}>
       <div className="import-card">
         <div className="import-title">Importer des QCM</div>
-        <div className="import-sub">
-          Fichier JSON : tableau d'objets avec <code>chapitre</code>, <code>mode</code> ("fixe" ou "aleatoire"),
-          puis selon le mode <code>enonce</code>/<code>choix</code> (4 textes) ou <code>enonce_modele</code>/<code>choix_modele</code>/<code>parametres</code>,
-          plus <code>bonne_reponse</code> (0 à 3) et <code>niveau</code> (optionnel, 1 par défaut).
+
+        <div className="import-format-guide">
+          <table className="import-format-table">
+            <thead>
+              <tr><th>Champ</th><th>Obligatoire</th><th>Détail</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><code>chapitre</code></td><td>toujours</td><td>Nom exact d'un chapitre déjà créé (insensible à la casse)</td></tr>
+              <tr><td><code>mode</code></td><td>non</td><td><code>"fixe"</code> (défaut) ou <code>"aleatoire"</code></td></tr>
+              <tr><td><code>enonce</code>, <code>choix</code></td><td>si fixe</td><td><code>choix</code> = tableau de 4 textes</td></tr>
+              <tr><td><code>enonce_modele</code>, <code>choix_modele</code>, <code>parametres</code></td><td>si aléatoire</td><td><code>parametres</code> = objet (voir l'exemple)</td></tr>
+              <tr><td><code>bonne_reponse</code></td><td>toujours</td><td>index 0 à 3</td></tr>
+              <tr><td><code>niveau</code></td><td>non</td><td>1 par défaut</td></tr>
+            </tbody>
+          </table>
+          <div className="import-format-note">
+            <strong>Pièges fréquents :</strong> une constante ou variable qui doit rester groupée en LaTeX (exposant, numérateur/dénominateur) doit être doublée — <code>{"{{100}}"}</code>, pas <code>{"{100}"}</code>. Pas besoin d'échapper le <code>%</code> à la main, c'est géré automatiquement à l'export.
+          </div>
+          <div className="import-format-actions">
+            <button className="import-format-example-btn" onClick={telechargerExempleQcm}>📥 Télécharger un exemple</button>
+          </div>
         </div>
 
         {!resultat && (
