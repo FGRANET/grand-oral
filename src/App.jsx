@@ -5235,12 +5235,16 @@ function QcmZone({ currentUser, currentProfile, qcmSessionARecharger, onSessionC
                               {q.mode === "aleatoire" && (
                                 <button className="gen-exercice-refresh-btn" onClick={() => retirerAuSort(q)}>🎲 Retirer</button>
                               )}
-                              <button className="gen-edit-question-btn" onClick={() => { setQcmAModifier(q); setAfficherCreerQcm(true); }}>
-                                ✏️ Modifier
-                              </button>
-                              <button className="gen-delete-question-btn" onClick={() => demanderSuppressionQcm(q)}>
-                                🗑️ Supprimer
-                              </button>
+                              {q.prof_id === currentUser.id && (
+                                <>
+                                  <button className="gen-edit-question-btn" onClick={() => { setQcmAModifier(q); setAfficherCreerQcm(true); }}>
+                                    ✏️ Modifier
+                                  </button>
+                                  <button className="gen-delete-question-btn" onClick={() => demanderSuppressionQcm(q)}>
+                                    🗑️ Supprimer
+                                  </button>
+                                </>
+                              )}
                             </div>
                           </div>
                         )}
