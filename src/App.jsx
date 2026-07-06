@@ -2378,6 +2378,209 @@ function ImportQuestions({ currentUser, currentProfile, chapitres, onFermer, onI
   );
 }
 
+// ─── Composant ImportQcm ────────────────────────────────────────────────
+// Import en masse de QCM depuis un fichier JSON. Contrairement aux questions
+// classiques, l'id du QCM est un uuid généré par Supabase — pas de convention
+// de nommage à vérifier, donc l'analyse est plus simple : on matche juste le
+// chapitre par son nom et on valide les champs requis selon le mode.
+function ImportQcm({ currentUser, chapitres, onFermer, onImportTermine }) {
+  const [fichier, setFichier] = useState(null);
+  const [analyse, setAnalyse] = useState(null); // { valides, invalides, chapitresInconnus }
+  const [analysing, setAnalysing] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [resultat, setResultat] = useState(null);
+  const fileRef = useRef(null);
+
+  // Vérifie les champs requis selon le mode ; retourne null si valide, ou un message d'erreur
+  function validerQcm(q) {
+    const mode = q.mode === "aleatoire" ? "aleatoire" : "fixe";
+    if (typeof q.bonne_reponse !== "number" || q.bonne_reponse < 0 || q.bonne_reponse > 3) {
+      return "bonne_reponse doit être 0, 1, 2 ou 3";
+    }
+    if (mode === "fixe") {
+      if (!q.enonce || !Array.isArray(q.choix) || q.choix.length !== 4 || q.choix.some(c => !c || typeof c !== "string")) {
+        return "mode fixe : enonce et choix (tableau de 4 textes) requis";
+      }
+    } else {
+      if (!q.enonce_modele || !Array.isArray(q.choix_modele) || q.choix_modele.length !== 4 || q.choix_modele.some(c => !c || typeof c !== "string")) {
+        return "mode aléatoire : enonce_modele et choix_modele (tableau de 4 textes) requis";
+      }
+      if (!q.parametres || typeof q.parametres !== "object" || Array.isArray(q.parametres)) {
+        return "mode aléatoire : parametres (objet) requis";
+      }
+    }
+    return null;
+  }
+
+  async function analyserFichier(file) {
+    setAnalysing(true);
+    setResultat(null);
+    try {
+      const texte = await file.text();
+      const data = JSON.parse(texte);
+      const liste = Array.isArray(data) ? data : (data.qcm || []);
+
+      const chapitresParNom = {};
+      chapitres.forEach(c => { chapitresParNom[c.nom.trim().toLowerCase()] = c.id; });
+
+      const valides = [];
+      const invalides = [];
+      const chapitresInconnus = [];
+
+      liste.forEach((q, idx) => {
+        const nomChap = (q.chapitre || "").trim().toLowerCase();
+        const chapitreId = chapitresParNom[nomChap];
+        if (!chapitreId) {
+          chapitresInconnus.push({ ...q, _ligne: idx + 1 });
+          return;
+        }
+        const erreur = validerQcm(q);
+        if (erreur) {
+          invalides.push({ ...q, _ligne: idx + 1, _erreur: erreur });
+          return;
+        }
+        valides.push({ ...q, _chapitreId: chapitreId });
+      });
+
+      setAnalyse({ valides, invalides, chapitresInconnus });
+    } catch (e) {
+      setAnalyse({ erreurParsing: e.message });
+    }
+    setAnalysing(false);
+  }
+
+  function handleFile(file) {
+    setFichier(file);
+    analyserFichier(file);
+  }
+
+  async function lancerImport() {
+    if (!analyse) return;
+    setImporting(true);
+
+    const aInserer = analyse.valides.map(q => {
+      const mode = q.mode === "aleatoire" ? "aleatoire" : "fixe";
+      const base = {
+        chapitre_id: q._chapitreId, mode, bonne_reponse: q.bonne_reponse,
+        niveau: q.niveau || 1, prof_id: currentUser.id,
+      };
+      return mode === "fixe"
+        ? { ...base, enonce: q.enonce, choix: q.choix, enonce_modele: null, choix_modele: null, parametres: null }
+        : { ...base, enonce: null, choix: null, enonce_modele: q.enonce_modele, choix_modele: q.choix_modele, parametres: q.parametres };
+    });
+
+    let nbImportees = 0;
+    let nbErreurs = 0;
+    for (let i = 0; i < aInserer.length; i += 50) {
+      const lot = aInserer.slice(i, i + 50);
+      const { error } = await supabase.from("qcm").insert(lot);
+      if (error) nbErreurs += lot.length;
+      else nbImportees += lot.length;
+    }
+
+    setImporting(false);
+    setResultat({ nbImportees, nbErreurs });
+    onImportTermine();
+  }
+
+  const totalAImporter = analyse ? analyse.valides.length : 0;
+
+  return (
+    <div className="import-overlay" onClick={e => e.target === e.currentTarget && onFermer()}>
+      <div className="import-card">
+        <div className="import-title">Importer des QCM</div>
+        <div className="import-sub">
+          Fichier JSON : tableau d'objets avec <code>chapitre</code>, <code>mode</code> ("fixe" ou "aleatoire"),
+          puis selon le mode <code>enonce</code>/<code>choix</code> (4 textes) ou <code>enonce_modele</code>/<code>choix_modele</code>/<code>parametres</code>,
+          plus <code>bonne_reponse</code> (0 à 3) et <code>niveau</code> (optionnel, 1 par défaut).
+        </div>
+
+        {!resultat && (
+          <div className="import-dropzone" onClick={() => fileRef.current?.click()}>
+            <div className="import-dropzone-icon">📂</div>
+            <div className="import-dropzone-text">
+              {fichier ? "Cliquer pour changer de fichier" : "Cliquer pour choisir un fichier .json"}
+            </div>
+            {fichier && <div className="import-filename">{fichier.name}</div>}
+            <input ref={fileRef} type="file" accept=".json,application/json" style={{ display: "none" }}
+              onChange={e => e.target.files[0] && handleFile(e.target.files[0])} />
+          </div>
+        )}
+
+        {analysing && <div className="import-sub">Analyse du fichier…</div>}
+
+        {analyse?.erreurParsing && (
+          <div className="import-report-item" style={{ color: "var(--red)" }}>
+            Fichier JSON invalide : {analyse.erreurParsing}
+          </div>
+        )}
+
+        {analyse && !analyse.erreurParsing && !resultat && (
+          <div className="import-report">
+            <div className="import-report-section">
+              <div className="import-report-header ok">
+                ✅ {analyse.valides.length} QCM prêt{analyse.valides.length !== 1 ? "s" : ""} à importer
+              </div>
+            </div>
+
+            {analyse.invalides.length > 0 && (
+              <div className="import-report-section">
+                <div className="import-report-header warn">
+                  ❌ {analyse.invalides.length} QCM avec des champs invalides (non importé{analyse.invalides.length !== 1 ? "s" : ""})
+                </div>
+                {analyse.invalides.map((q, i) => (
+                  <div key={i} className="import-report-item">
+                    <span className="import-report-item-id">ligne {q._ligne}</span>
+                    <span className="import-report-item-detail">{q._erreur}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {analyse.chapitresInconnus.length > 0 && (
+              <div className="import-report-section">
+                <div className="import-report-header warn">
+                  ❌ {analyse.chapitresInconnus.length} QCM avec un chapitre introuvable (non importé{analyse.chapitresInconnus.length !== 1 ? "s" : ""})
+                </div>
+                {analyse.chapitresInconnus.map((q, i) => (
+                  <div key={i} className="import-report-item">
+                    <span className="import-report-item-id">ligne {q._ligne}</span>
+                    <span className="import-report-item-detail">Chapitre indiqué : "{q.chapitre}"</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {resultat && (
+          <div className="import-result">
+            <div className="import-result-icon">{resultat.nbErreurs === 0 ? "🎉" : "⚠️"}</div>
+            <div>
+              <strong>{resultat.nbImportees}</strong> QCM importé{resultat.nbImportees !== 1 ? "s" : ""}
+              {resultat.nbErreurs > 0 && <> · {resultat.nbErreurs} erreur{resultat.nbErreurs !== 1 ? "s" : ""}</>}
+            </div>
+          </div>
+        )}
+
+        <div className="import-actions">
+          {!resultat ? (
+            <>
+              <button className="diapo-cancel-btn" onClick={onFermer}>Annuler</button>
+              <button className="diapo-launch-btn" onClick={lancerImport}
+                disabled={!analyse || analyse.erreurParsing || importing || totalAImporter === 0}>
+                {importing ? "Import en cours…" : `Importer ${totalAImporter} QCM`}
+              </button>
+            </>
+          ) : (
+            <button className="diapo-launch-btn" onClick={onFermer}>Fermer</button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Composant GenerateurZone ──────────────────────────────────────────
 // ─── Composant UsageIndicator ───────────────────────────────────────────
 // Affiche l'usage actuel de la base de données et du stockage de fichiers
@@ -4346,6 +4549,7 @@ function QcmZone({ currentUser, currentProfile, qcmSessionARecharger, onSessionC
   const [diapoActive, setDiapoActive] = useState(null);
   const [afficherTirage, setAfficherTirage] = useState(false);
   const [afficherCreerQcm, setAfficherCreerQcm] = useState(false);
+  const [afficherImportQcm, setAfficherImportQcm] = useState(false);
   const [qcmAModifier, setQcmAModifier] = useState(null);
   const [dragIndex, setDragIndex] = useState(null);
   const [overIndex, setOverIndex] = useState(null);
@@ -4609,6 +4813,41 @@ function QcmZone({ currentUser, currentProfile, qcmSessionARecharger, onSessionC
     sauvegarderDansHistorique(avecCorrige ? "tex_corrige" : "tex_eleve");
   }
 
+  // Exporte toute la banque de QCM du niveau actif dans le même format
+  // que celui attendu par ImportQcm (chapitre nommé, mode fixe/aléatoire,
+  // parametres inclus) — utile pour sauvegarder, migrer, ou repartir d'un
+  // exemple concret pour écrire de nouveaux QCM en JSON.
+  async function exporterJsonQcm() {
+    const idsChapitres = chapitres.map(c => c.id);
+    if (idsChapitres.length === 0) return;
+    const nomParChapitreId = {};
+    chapitres.forEach(c => { nomParChapitreId[c.id] = c.nom; });
+
+    const { data, error } = await supabase.from("qcm").select("*").in("chapitre_id", idsChapitres);
+    if (error) { alert("Erreur lors de l'export : " + error.message); return; }
+
+    const liste = (data || []).map(q => {
+      const base = {
+        chapitre: nomParChapitreId[q.chapitre_id] || "",
+        mode: q.mode,
+        bonne_reponse: q.bonne_reponse,
+        niveau: q.niveau,
+      };
+      return q.mode === "aleatoire"
+        ? { ...base, enonce_modele: q.enonce_modele, choix_modele: q.choix_modele, parametres: q.parametres }
+        : { ...base, enonce: q.enonce, choix: q.choix };
+    });
+
+    const blob = new Blob([JSON.stringify(liste, null, 2)], { type: "application/json;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    const date = new Date().toISOString().slice(0, 10);
+    a.href = url;
+    a.download = `qcm_banque_${niveauScolaire}_${date}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   if (loading) {
     return <div className="generateur-area"><div className="gen-selection-empty"><div className="spinner"></div>Chargement des chapitres…</div></div>;
   }
@@ -4622,6 +4861,12 @@ function QcmZone({ currentUser, currentProfile, qcmSessionARecharger, onSessionC
           </button>
           <button className="creer-btn" onClick={() => setAfficherCreerQcm(true)}>
             ➕ Créer un QCM
+          </button>
+          <button className="gen-import-btn" onClick={() => setAfficherImportQcm(true)}>
+            📂 Importer JSON
+          </button>
+          <button className="gen-import-btn" onClick={exporterJsonQcm}>
+            💾 Exporter JSON
           </button>
         </div>
 
@@ -4846,6 +5091,18 @@ function QcmZone({ currentUser, currentProfile, qcmSessionARecharger, onSessionC
           onCree={() => {
             setAfficherCreerQcm(false);
             setQcmAModifier(null);
+            setQcmParChapitre({});
+            setChapitresOuverts({});
+          }}
+        />
+      )}
+
+      {afficherImportQcm && (
+        <ImportQcm
+          currentUser={currentUser}
+          chapitres={chapitres}
+          onFermer={() => setAfficherImportQcm(false)}
+          onImportTermine={() => {
             setQcmParChapitre({});
             setChapitresOuverts({});
           }}
