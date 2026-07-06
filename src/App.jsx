@@ -833,6 +833,7 @@ const CSS = `
     padding: 32px; width: 640px; max-height: 85vh; display: flex; flex-direction: column;
     box-shadow: 0 24px 64px #00000088;
   }
+  .import-scroll-body { flex: 1; overflow-y: auto; min-height: 0; }
   .import-title { font-size: 18px; font-weight: 600; margin-bottom: 4px; }
   .import-sub { font-size: 13px; color: var(--text-muted); margin-bottom: 20px; }
   .import-dropzone {
@@ -2409,6 +2410,7 @@ function ImportQuestions({ currentUser, currentProfile, chapitres, niveauScolair
       <div className="import-card">
         <div className="import-title">Importer des questions</div>
 
+        <div className="import-scroll-body">
         <div className="import-format-guide">
           <table className="import-format-table">
             <thead>
@@ -2551,6 +2553,7 @@ function ImportQuestions({ currentUser, currentProfile, chapitres, niveauScolair
             )}
           </div>
         )}
+        </div>
 
         <div className="import-actions">
           {!resultat ? (
@@ -2720,6 +2723,7 @@ function ImportQcm({ currentUser, chapitres, onFermer, onImportTermine }) {
       <div className="import-card">
         <div className="import-title">Importer des QCM</div>
 
+        <div className="import-scroll-body">
         <div className="import-format-guide">
           <table className="import-format-table">
             <thead>
@@ -2819,6 +2823,7 @@ function ImportQcm({ currentUser, chapitres, onFermer, onImportTermine }) {
             )}
           </div>
         )}
+        </div>
 
         <div className="import-actions">
           {!resultat ? (
