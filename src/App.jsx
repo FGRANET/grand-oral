@@ -4786,6 +4786,14 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
                 setQuestionsParChapitre(prev => ({ ...prev, [id]: data || [] }));
               });
             });
+            // Recharge aussi les exercices aléatoires (oublié jusqu'ici : un import
+            // d'exercices aléatoires n'apparaissait pas sans rechargement manuel de la page)
+            if (chapitres.length > 0) {
+              supabase.from("exercices_application")
+                .select("*")
+                .in("chapitre_id", chapitres.map(c => c.id))
+                .then(({ data }) => setExercicesEnBase(data || []));
+            }
           }}
         />
       )}
