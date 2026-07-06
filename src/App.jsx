@@ -1124,56 +1124,17 @@ function formatDate(ts) {
 }
 
 // ─── Convention de numérotation des questions : PREFIXE_AUTEUR_NN ──────
-// Préfixe officiel par nom de chapitre (clé en minuscules), imbriqué par niveau.
-// Nécessaire car deux chapitres de niveaux différents peuvent porter exactement
-// le même nom (ex. "Probabilités conditionnelles" existe en Terminale Spé ET en
-// Seconde) — un objet plat avec le nom seul comme clé écraserait silencieusement
-// l'un des deux préfixes.
-const PREFIXES_CHAPITRES = {
-  terminale_spe: {
-    "rappels sur les suites": "SUI",
-    "dérivation": "DER",
-    "géométrie dans l'espace 1": "GEO1",
-    "équations différentielles": "EQD1",
-    "fonction ln": "LN",
-    "probabilités conditionnelles": "PCOND",
-    "raisonnement par récurrence": "REC",
-    "combinatoire et dénombrement": "COMB",
-    "loi binomiale": "BINOM",
-    "limite d'une suite": "LIMS",
-    "convexité": "CONV",
-    "géométrie dans l'espace 2": "GEO2",
-    "fonctions sinus et cosinus": "TRIGO",
-    "limites de fonctions": "LIMF",
-    "continuité": "CONT",
-    "primitives et équations différentielles y'=f": "EQD2",
-    "calcul intégral": "INT",
-    "compléments sur les variables aléatoires": "VA",
-    "concentration et loi des grands nombres": "LGN",
-  },
-  seconde: {
-    "nombres réels et intervalles": "NRI",
-    "calcul littéral 1": "CALC1",
-    "vecteur partie 1": "VEC1",
-    "généralités sur les fonctions": "FONC",
-    "proportions et évolutions": "PROP",
-    "variations de fonctions": "VARF",
-    "équations et inéquations": "EQIN",
-    "vecteurs partie 2": "VEC2",
-    "tableau de signe": "SIGN",
-    "calcul littéral 2": "CALC2",
-    "probabilités": "PROBA",
-    "droites du plan": "DROI",
-    "probabilités conditionnelles": "PCONDS",
-    "statistiques": "STAT",
-    "fonctions usuelles": "FUS",
-    "arithmétique": "ARITH",
-  },
-};
-
-function prefixeChapitre(nomChapitre, niveauScolaire) {
-  const table = PREFIXES_CHAPITRES[niveauScolaire || "terminale_spe"] || {};
-  return table[(nomChapitre || "").trim().toLowerCase()] || null;
+// Le sigle officiel de chaque chapitre vit désormais dans la table Supabase
+// prefixes_chapitres (chapitre_id -> prefixe), plus dans un objet codé en dur.
+// Indexé par chapitre_id (pas par nom) : aucun risque de collision entre deux
+// chapitres homonymes de niveaux différents (ex. "Probabilités conditionnelles"
+// en Terminale Spé et en Seconde ont chacun leur propre ligne).
+async function prefixesParChapitreId(idsChapitres) {
+  if (!idsChapitres || idsChapitres.length === 0) return {};
+  const { data } = await supabase.from("prefixes_chapitres").select("*").in("chapitre_id", idsChapitres);
+  const table = {};
+  (data || []).forEach(row => { table[row.chapitre_id] = row.prefixe; });
+  return table;
 }
 
 function initialesAuteur(prenom, nom) {
@@ -2159,14 +2120,17 @@ function ImportQuestions({ currentUser, currentProfile, chapitres, niveauScolair
       const chapitresParNom = {};
       chapitres.forEach(c => { chapitresParNom[c.nom.trim().toLowerCase()] = c.id; });
 
+      // Sigles officiels (table prefixes_chapitres), indexés par chapitre_id —
+      // un seul sigle par chapitre, partagé par le mode fixe ET aléatoire.
+      const prefixesTable = await prefixesParChapitreId(chapitres.map(c => c.id));
+
       const initiales = initialesAuteur(currentProfile?.prenom, currentProfile?.nom);
 
       const valides = [];          // fixe : id déjà conforme, pas de conflit
       const corrections = [];      // fixe : id non conforme et/ou en conflit → id recalculé
-      const valideesAleatoire = [];// aléatoire : id généré automatiquement (pas de convention à vérifier, comme dans CreerQuestion)
+      const valideesAleatoire = [];// aléatoire : id généré automatiquement
       const invalidesAleatoire = [];
       const chapitresInconnus = [];
-      const prefixesManquants = [];
 
       liste.forEach((q, idx) => {
         const nomChap = (q.chapitre || "").trim().toLowerCase();
@@ -2177,6 +2141,11 @@ function ImportQuestions({ currentUser, currentProfile, chapitres, niveauScolair
           return;
         }
 
+        // Sigle officiel si ce chapitre en a un ; sinon repli auto-dérivé du nom
+        // (ex. chapitres de Première, pas encore renseignés dans la table).
+        const prefixeAuto = ((q.chapitre || "").split(" ").map(w => w[0]).filter(Boolean).join("") || "AUT").toUpperCase().slice(0, 4);
+        const prefixe = prefixesTable[chapitreId] || prefixeAuto;
+
         const mode = q.mode === "aleatoire" ? "aleatoire" : "fixe";
 
         if (mode === "aleatoire") {
@@ -2184,11 +2153,7 @@ function ImportQuestions({ currentUser, currentProfile, chapitres, niveauScolair
             invalidesAleatoire.push({ ...q, _ligne: idx + 1, _erreur: "enonce_modele, reponse_modele et parametres (objet) requis" });
             return;
           }
-          // Même méthode que CreerQuestion pour les exercices aléatoires : préfixe
-          // auto-dérivé des initiales du nom du chapitre (pas la table PREFIXES_CHAPITRES,
-          // qui ne couvre que Terminale Spé — donc ça fonctionne pour tous les niveaux).
-          const prefixeAuto = ((q.chapitre || "").split(" ").map(w => w[0]).filter(Boolean).join("") || "AUT").toUpperCase().slice(0, 4);
-          const prefixeComplet = `${prefixeAuto}_${initiales}_EX`;
+          const prefixeComplet = `${prefixe}_${initiales}_EX`;
           let n = 1, idCandidat;
           do {
             idCandidat = `${prefixeComplet}${String(n).padStart(2, "0")}`;
@@ -2199,14 +2164,8 @@ function ImportQuestions({ currentUser, currentProfile, chapitres, niveauScolair
           return;
         }
 
-        // Mode fixe : nécessite un préfixe officiel (table PREFIXES_CHAPITRES),
-        // aujourd'hui limitée aux 19 chapitres de Terminale Spé.
-        const prefixe = prefixeChapitre(q.chapitre, niveauScolaire);
-        if (!prefixe) {
-          prefixesManquants.push({ ...q, _ligne: idx + 1 });
-          return;
-        }
-
+        // Mode fixe : sigle officiel ou repli auto-dérivé (tous les niveaux
+        // sont donc désormais couverts, plus de limitation à Terminale Spé)
         const prefixeComplet = `${prefixe}_${initiales}`;
         const conforme = idRespecteConvention(q.id, prefixe, initiales);
         const enConflit = idsExistantsFixe.has(q.id) || idsAttribuesFixe.has(q.id);
@@ -2227,7 +2186,7 @@ function ImportQuestions({ currentUser, currentProfile, chapitres, niveauScolair
         }
       });
 
-      setAnalyse({ valides, corrections, valideesAleatoire, invalidesAleatoire, chapitresInconnus, prefixesManquants });
+      setAnalyse({ valides, corrections, valideesAleatoire, invalidesAleatoire, chapitresInconnus });
     } catch (e) {
       setAnalyse({ erreurParsing: e.message });
     }
@@ -2320,7 +2279,7 @@ function ImportQuestions({ currentUser, currentProfile, chapitres, niveauScolair
             Types de paramètre disponibles pour <code>parametres</code> : <code>entier</code>, <code>entier_non_nul</code>, <code>decimal</code>, <code>liste</code> (avec un tableau <code>valeurs</code>).
           </div>
           <div className="import-format-note">
-            <strong>Limitation actuelle :</strong> l'import en mode fixe ne fonctionne que pour les chapitres de <strong>Terminale Spé</strong> — leur préfixe officiel n'existe pas encore pour Seconde/Première. Le mode aléatoire, lui, fonctionne pour tous les niveaux (préfixe auto-dérivé du nom du chapitre).
+            Le sigle de chaque chapitre vient de la table <code>prefixes_chapitres</code> (même sigle pour le fixe et l'aléatoire) — si un chapitre n'y figure pas encore, un sigle est auto-dérivé de son nom à la place.
           </div>
           <div className="import-format-actions">
             <button className="import-format-example-btn" onClick={telechargerExempleQuestions}>📥 Télécharger un exemple</button>
@@ -2407,20 +2366,6 @@ function ImportQuestions({ currentUser, currentProfile, chapitres, niveauScolair
                   <div key={i} className="import-report-item">
                     <span className="import-report-item-id">{q.id || `ligne ${q._ligne}`}</span>
                     <span className="import-report-item-detail">Chapitre indiqué : "{q.chapitre}"</span>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {analyse.prefixesManquants?.length > 0 && (
-              <div className="import-report-section">
-                <div className="import-report-header warn">
-                  ❌ {analyse.prefixesManquants.length} question{analyse.prefixesManquants.length !== 1 ? "s" : ""} sans préfixe officiel défini pour ce chapitre (non importée{analyse.prefixesManquants.length !== 1 ? "s" : ""})
-                </div>
-                {analyse.prefixesManquants.map((q, i) => (
-                  <div key={i} className="import-report-item">
-                    <span className="import-report-item-id">{q.id || `ligne ${q._ligne}`}</span>
-                    <span className="import-report-item-detail">Chapitre : "{q.chapitre}" — contacter F. Granet pour ajouter ce préfixe</span>
                   </div>
                 ))}
               </div>
@@ -3059,9 +3004,21 @@ function CreerQuestion({ chapitres, currentUser, currentProfile, niveauScolaire,
         chapitre_id: chapitreId, type, enonce: enonce.trim(),
         reponse: reponse.trim(), niveau,
       };
-      const { error } = estEdition && questionAEditer._source === "base_fixe"
-        ? await supabase.from("questions").update(donnees).eq("id", questionAEditer.id)
-        : await supabase.from("questions").insert({ ...donnees, prof_id: currentUser.id });
+      let error;
+      if (estEdition && questionAEditer._source === "base_fixe") {
+        ({ error } = await supabase.from("questions").update(donnees).eq("id", questionAEditer.id));
+      } else {
+        const initiales = initialesAuteur(currentProfile?.prenom, currentProfile?.nom);
+        const chapitreCourant = chapitres.find(c => c.id === chapitreId);
+        const prefixesTable = await prefixesParChapitreId([chapitreId]);
+        const prefixeAuto = (chapitreCourant?.nom.split(" ").map(w => w[0]).filter(Boolean).join("") || "AUT").toUpperCase().slice(0, 4);
+        const prefixe = prefixesTable[chapitreId] || prefixeAuto;
+        const { data: existantes } = await supabase.from("questions").select("id").eq("chapitre_id", chapitreId);
+        const idsExistants = new Set((existantes || []).map(q => q.id));
+        let n = 1, id;
+        do { id = `${prefixe}_${initiales}_${String(n).padStart(2, "0")}`; n++; } while (idsExistants.has(id));
+        ({ error } = await supabase.from("questions").insert({ ...donnees, id, prof_id: currentUser.id }));
+      }
       setEnregistrement(false);
       if (error) { alert("Erreur : " + error.message); return; }
     } else {
@@ -3078,7 +3035,9 @@ function CreerQuestion({ chapitres, currentUser, currentProfile, niveauScolaire,
         const { data: existants } = await supabase.from("exercices_application").select("id").eq("chapitre_id", chapitreId);
         const nn = String((existants?.length || 0) + 1).padStart(2, "0");
         const chapitreCourant = chapitres.find(c => c.id === chapitreId);
-        const prefixe = (chapitreCourant?.nom.split(" ").map(w => w[0]).join("") || "AUT").toUpperCase().slice(0, 4);
+        const prefixesTable = await prefixesParChapitreId([chapitreId]);
+        const prefixeAuto = (chapitreCourant?.nom.split(" ").map(w => w[0]).filter(Boolean).join("") || "AUT").toUpperCase().slice(0, 4);
+        const prefixe = prefixesTable[chapitreId] || prefixeAuto;
         const id = `${prefixe}_${initiales}_EX${nn}`;
         const { error } = await supabase.from("exercices_application").insert({
           id, chapitre_id: chapitreId, enonce_modele: enonce.trim(),
