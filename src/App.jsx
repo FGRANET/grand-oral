@@ -511,6 +511,8 @@ const CSS = `
   .gen-selected-enonce { font-size: 13px; line-height: 1.5; }
   .gen-selected-remove { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 14px; padding: 2px; flex-shrink: 0; }
   .gen-selected-remove:hover { color: var(--red); }
+  .gen-selected-duplicate { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 13px; padding: 2px 4px; flex-shrink: 0; border-radius: 6px; }
+  .gen-selected-duplicate:hover { color: var(--accent-light); background: var(--surface2); }
 
   .gen-footer {
     border-top: 1px solid var(--border); padding: 16px 24px; flex-shrink: 0;
@@ -4202,13 +4204,13 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
     setSelection(prev =>
       prev.some(q => q.id === question.id)
         ? prev.filter(q => q.id !== question.id)
-        : [...prev, question]
+        : [...prev, { ...question, _cle: question.id }]
     );
   }
 
-  function retirerSelection(questionId) {
-    setSelection(prev => prev.filter(q => q.id !== questionId));
-    setElementsCoches(prev => { const c = new Set(prev); c.delete(questionId); return c; });
+  function retirerSelection(cle) {
+    setSelection(prev => prev.filter(q => q._cle !== cle));
+    setElementsCoches(prev => { const c = new Set(prev); c.delete(cle); return c; });
   }
 
   function toutRetirer() {
@@ -4231,7 +4233,7 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
   }
 
   function retirerElementsCoches() {
-    setSelection(prev => prev.filter(q => !elementsCoches.has(q.id)));
+    setSelection(prev => prev.filter(q => !elementsCoches.has(q._cle)));
     setElementsCoches(new Set());
   }
 
@@ -4319,6 +4321,48 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
     return selection.some(q => q.id === idExercice);
   }
 
+  // Ajoute une nouvelle instance du même exercice aléatoire, avec un tirage
+  // garanti différent de toutes les copies déjà présentes dans la sélection.
+  function dupliquerSelection(item) {
+    if (!item._aleatoire) return;
+
+    const def = BIBLIOTHEQUE_EXERCICES[item.id];
+    const exoBase = !def ? exercicesEnBase.find(e => e.id === item.id) : null;
+    if (!def && !exoBase) return; // source introuvable (exercice supprimé entre-temps)
+
+    const instancesExistantes = selection.filter(s => s.id === item.id);
+    let tirage, tentative = 0;
+    do {
+      if (def) {
+        tirage = def.generer();
+      } else {
+        const valeurs = {};
+        Object.entries(exoBase.parametres).forEach(([nom, d]) => { valeurs[nom] = tirerValeurParametre(d); });
+        tirage = {
+          enonce: substituerPlaceholders(exoBase.enonce_modele, valeurs),
+          reponse: substituerPlaceholders(exoBase.reponse_modele, valeurs),
+        };
+      }
+      tentative++;
+      // Sécurité : au-delà de 25 tentatives, la plage de tirage est trop
+      // restreinte pour garantir l'unicité — on prend le dernier tirage tel quel.
+    } while (instancesExistantes.some(inst => inst.enonce === tirage.enonce) && tentative < 25);
+
+    const nouvelleInstance = {
+      ...item,
+      enonce: tirage.enonce,
+      reponse: tirage.reponse,
+      _cle: `${item.id}__${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`,
+    };
+
+    setSelection(prev => {
+      const idx = prev.findIndex(s => s._cle === item._cle);
+      const copie = [...prev];
+      copie.splice(idx + 1, 0, nouvelleInstance);
+      return copie;
+    });
+  }
+
   function toggleSelectionExercice(idExercice, chapitreId, niveau) {
     if (estExerciceSelectionne(idExercice)) {
       setSelection(prev => prev.filter(q => q.id !== idExercice));
@@ -4330,7 +4374,7 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
     if (def) {
       const tirage = tiragesExercices[idExercice] || def.generer();
       if (!tiragesExercices[idExercice]) setTiragesExercices(prev => ({ ...prev, [idExercice]: tirage }));
-      setSelection(prev => [...prev, { id: idExercice, chapitre_id: chapitreId, type: "exercice", enonce: tirage.enonce, reponse: tirage.reponse, niveau }]);
+      setSelection(prev => [...prev, { id: idExercice, chapitre_id: chapitreId, type: "exercice", enonce: tirage.enonce, reponse: tirage.reponse, niveau, _cle: idExercice, _aleatoire: true }]);
       return;
     }
 
@@ -4348,7 +4392,7 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
         };
         setTiragesExercices(prev => ({ ...prev, [idExercice]: tirage }));
       }
-      setSelection(prev => [...prev, { id: idExercice, chapitre_id: chapitreId, type: "exercice", enonce: tirage.enonce, reponse: tirage.reponse, niveau }]);
+      setSelection(prev => [...prev, { id: idExercice, chapitre_id: chapitreId, type: "exercice", enonce: tirage.enonce, reponse: tirage.reponse, niveau, _cle: idExercice, _aleatoire: true }]);
     }
   }
 
@@ -4806,7 +4850,7 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
           <div className="gen-selection-list">
             {selection.map((q, idx) => (
               <div
-                key={q.id}
+                key={q._cle}
                 className={`gen-selected-item${dragIndex === idx ? " dragging" : ""}${overIndex === idx && dragIndex !== null && dragIndex !== idx ? ` drag-over-${overZone}` : ""}`}
                 draggable
                 onDragStart={() => setDragIndex(idx)}
@@ -4838,14 +4882,17 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
                 }}
               >
                 <span className="gen-drag-handle" title="Glisser pour réordonner">⠿</span>
-                <input type="checkbox" className="gen-selected-checkbox" checked={elementsCoches.has(q.id)}
-                  onChange={() => toggleCocheElement(q.id)} onClick={e => e.stopPropagation()} />
+                <input type="checkbox" className="gen-selected-checkbox" checked={elementsCoches.has(q._cle)}
+                  onChange={() => toggleCocheElement(q._cle)} onClick={e => e.stopPropagation()} />
                 <div className="gen-selected-num">{idx + 1}</div>
                 <div className="gen-selected-content">
                   <div className="gen-selected-chapitre">{nomChapitre(q.chapitre_id)}</div>
                   <div className="gen-selected-enonce"><MathText>{q.enonce}</MathText></div>
                 </div>
-                <button className="gen-selected-remove" onClick={() => retirerSelection(q.id)} title="Retirer">✕</button>
+                {q._aleatoire && (
+                  <button className="gen-selected-duplicate" onClick={() => dupliquerSelection(q)} title="Dupliquer avec un nouveau tirage">🎲+</button>
+                )}
+                <button className="gen-selected-remove" onClick={() => retirerSelection(q._cle)} title="Retirer">✕</button>
               </div>
             ))}
           </div>
@@ -5127,12 +5174,42 @@ function QcmZone({ currentUser, currentProfile, qcmSessionARecharger, onSessionC
     setSelection(prev => [...prev, {
       id: q.id, chapitre_id: q.chapitre_id, niveau: q.niveau, mode: q.mode,
       enonce: tirage.enonce, choix: tirage.choix, bonne_reponse: q.bonne_reponse,
+      _cle: q.id,
     }]);
   }
 
-  function retirerSelection(qcmId) {
-    setSelection(prev => prev.filter(s => s.id !== qcmId));
-    setElementsCoches(prev => { const c = new Set(prev); c.delete(qcmId); return c; });
+  function retirerSelection(cle) {
+    setSelection(prev => prev.filter(s => s._cle !== cle));
+    setElementsCoches(prev => { const c = new Set(prev); c.delete(cle); return c; });
+  }
+
+  // Ajoute une nouvelle instance du même QCM aléatoire, avec un tirage garanti
+  // différent de toutes les copies déjà présentes dans la sélection.
+  function dupliquerSelection(item) {
+    if (item.mode !== "aleatoire") return;
+    const source = Object.values(qcmParChapitre).flat().find(q => q.id === item.id);
+    if (!source) return; // source introuvable (QCM supprimé entre-temps)
+
+    const instancesExistantes = selection.filter(s => s.id === item.id);
+    let tirage, tentative = 0;
+    do {
+      tirage = tirerQcm(source);
+      tentative++;
+    } while (instancesExistantes.some(inst => inst.enonce === tirage.enonce) && tentative < 25);
+
+    const nouvelleInstance = {
+      ...item,
+      enonce: tirage.enonce,
+      choix: tirage.choix,
+      _cle: `${item.id}__${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`,
+    };
+
+    setSelection(prev => {
+      const idx = prev.findIndex(s => s._cle === item._cle);
+      const copie = [...prev];
+      copie.splice(idx + 1, 0, nouvelleInstance);
+      return copie;
+    });
   }
 
   function toggleCocheElement(id) {
@@ -5140,7 +5217,7 @@ function QcmZone({ currentUser, currentProfile, qcmSessionARecharger, onSessionC
   }
 
   function retirerElementsCoches() {
-    setSelection(prev => prev.filter(s => !elementsCoches.has(s.id)));
+    setSelection(prev => prev.filter(s => !elementsCoches.has(s._cle)));
     setElementsCoches(new Set());
   }
 
@@ -5495,7 +5572,7 @@ function QcmZone({ currentUser, currentProfile, qcmSessionARecharger, onSessionC
           <div className="gen-selection-list">
             {selection.map((q, idx) => (
               <div
-                key={q.id}
+                key={q._cle}
                 className={`gen-selected-item${dragIndex === idx ? " dragging" : ""}${overIndex === idx && dragIndex !== null && dragIndex !== idx ? ` drag-over-${overZone}` : ""}`}
                 draggable
                 onDragStart={() => setDragIndex(idx)}
@@ -5518,14 +5595,17 @@ function QcmZone({ currentUser, currentProfile, qcmSessionARecharger, onSessionC
                 }}
               >
                 <span className="gen-drag-handle" title="Glisser pour réordonner">⠿</span>
-                <input type="checkbox" className="gen-selected-checkbox" checked={elementsCoches.has(q.id)}
-                  onChange={() => toggleCocheElement(q.id)} onClick={e => e.stopPropagation()} />
+                <input type="checkbox" className="gen-selected-checkbox" checked={elementsCoches.has(q._cle)}
+                  onChange={() => toggleCocheElement(q._cle)} onClick={e => e.stopPropagation()} />
                 <div className="gen-selected-num">{idx + 1}</div>
                 <div className="gen-selected-content">
                   <div className="gen-selected-chapitre">{nomChapitre(q.chapitre_id)}</div>
                   <div className="gen-selected-enonce"><MathText>{q.enonce}</MathText></div>
                 </div>
-                <button className="gen-selected-remove" onClick={() => retirerSelection(q.id)} title="Retirer">✕</button>
+                {q.mode === "aleatoire" && (
+                  <button className="gen-selected-duplicate" onClick={() => dupliquerSelection(q)} title="Dupliquer avec un nouveau tirage">🎲+</button>
+                )}
+                <button className="gen-selected-remove" onClick={() => retirerSelection(q._cle)} title="Retirer">✕</button>
               </div>
             ))}
           </div>
