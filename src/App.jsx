@@ -3676,6 +3676,7 @@ function TirageAleatoire({ chapitres, onAnnuler, onTirer, niveauScolaire }) {
             pool.push({
               id, chapitre_id: chId, type: "exercice", niveau: def.niveau,
               enonce: tirage.enonce, reponse: tirage.reponse,
+              _cle: id, _aleatoire: true,
             });
           });
       });
@@ -3689,6 +3690,7 @@ function TirageAleatoire({ chapitres, onAnnuler, onTirer, niveauScolaire }) {
         pool.push({
           id: ex.id, chapitre_id: ex.chapitre_id, type: "exercice", niveau: ex.niveau,
           enonce: tirage.enonce, reponse: tirage.reponse,
+          _cle: ex.id, _aleatoire: true,
         });
       });
     }
@@ -3716,6 +3718,11 @@ function TirageAleatoire({ chapitres, onAnnuler, onTirer, niveauScolaire }) {
     if (resultat.length < nombre) {
       setAvertissement(`Seulement ${resultat.length} question${resultat.length !== 1 ? "s" : ""} trouvée${resultat.length !== 1 ? "s" : ""} sur ${nombre} demandée${nombre !== 1 ? "s" : ""} selon ces critères.`);
     }
+
+    // Filet de sécurité : garantit une _cle sur chaque élément (les questions
+    // fixes venant de "candidates" n'en ont pas nativement), sans écraser
+    // celles déjà posées sur les exercices aléatoires ci-dessus.
+    resultat = resultat.map(q => ({ ...q, _cle: q._cle || q.id }));
 
     setTirageEnCours(false);
     onTirer(resultat);
@@ -3871,7 +3878,7 @@ function TirageAleatoireQcm({ chapitres, onAnnuler, onTirer }) {
     const tires = resultat.map(q => {
       const tirage = tirerQcm(q);
       return { id: q.id, chapitre_id: q.chapitre_id, niveau: q.niveau, mode: q.mode,
-        enonce: tirage.enonce, choix: tirage.choix, bonne_reponse: q.bonne_reponse };
+        enonce: tirage.enonce, choix: tirage.choix, bonne_reponse: q.bonne_reponse, _cle: q.id };
     });
 
     if (tires.length < nombre) {
