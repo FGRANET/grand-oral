@@ -870,7 +870,7 @@ const CSS = `
   .import-format-table code { background: var(--surface); padding: 1px 5px; border-radius: 4px; font-family: var(--mono); }
   .import-format-note { color: var(--text-muted); margin-top: 8px; line-height: 1.5; }
   .import-format-note strong { color: var(--text); }
-  .import-format-actions { margin-top: 10px; }
+  .import-format-actions { margin-top: 10px; display: flex; gap: 8px; flex-wrap: wrap; }
   .import-format-example-btn {
     background: none; border: 1px solid var(--accent); color: var(--accent-light);
     border-radius: 8px; padding: 6px 12px; font-family: var(--font); font-size: 12px;
@@ -1285,6 +1285,109 @@ function tirerValeurParametre(def) {
 // sans être visibles à l'écran (KaTeX/l'affichage web ne s'en soucient pas).
 // Pour l'instant : le "%" qui démarre un commentaire LaTeX et tronque la ligne.
 // N'échappe pas un "\%" déjà présent (évite le double-échappement).
+// Génère la documentation complète (au format markdown) pour l'import JSON,
+// avec la vraie liste des chapitres actuellement chargés (jamais une liste
+// recopiée à la main, qui pourrait devenir fausse si les chapitres changent).
+function genererDocumentationImport(contexte, chapitres, niveauScolaire) {
+  const chapitresTries = [...chapitres].sort((a, b) => a.ordre - b.ordre);
+  const nomNiveau = { terminale_spe: "Terminale Spé", seconde: "Seconde", premiere: "Première" }[niveauScolaire] || niveauScolaire;
+  const lignes = [];
+
+  lignes.push(`# Documentation import JSON — ${contexte === "qcm" ? "QCM" : "Questions / Exercices"} (${nomNiveau})`);
+  lignes.push("");
+  lignes.push(`Générée le ${new Date().toLocaleDateString("fr-FR")} depuis les chapitres actuellement en base pour ce niveau.`);
+  lignes.push("");
+  lignes.push("## Liste des chapitres disponibles pour ce niveau");
+  lignes.push("");
+  lignes.push("Le champ `chapitre` du JSON doit correspondre **exactement** (insensible à la casse) à l'un de ces noms :");
+  lignes.push("");
+  chapitresTries.forEach(ch => lignes.push(`- ${ch.nom}`));
+  lignes.push("");
+
+  if (contexte === "qcm") {
+    lignes.push("## Format attendu — mode fixe");
+    lignes.push("");
+    lignes.push("| Champ | Obligatoire | Détail |");
+    lignes.push("|---|---|---|");
+    lignes.push("| `chapitre` | toujours | Nom exact (voir liste ci-dessus) |");
+    lignes.push("| `mode` | non | `\"fixe\"` (défaut) ou `\"aleatoire\"` |");
+    lignes.push("| `enonce` | si fixe | Texte, LaTeX entre `$...$` accepté |");
+    lignes.push("| `choix` | si fixe | Tableau de **4** textes exactement |");
+    lignes.push("| `bonne_reponse` | toujours | Index de 0 à 3 |");
+    lignes.push("| `niveau` | non | 1 par défaut (niveau de difficulté, pas le niveau scolaire) |");
+    lignes.push("");
+    lignes.push("## Format attendu — mode aléatoire");
+    lignes.push("");
+    lignes.push("| Champ | Obligatoire | Détail |");
+    lignes.push("|---|---|---|");
+    lignes.push("| `enonce_modele` | oui | Avec placeholders (voir plus bas) |");
+    lignes.push("| `choix_modele` | oui | Tableau de 4 textes avec placeholders |");
+    lignes.push("| `parametres` | oui | Objet, une entrée par variable |");
+    lignes.push("| `bonne_reponse` | oui | Index fixe — l'ordre des 4 choix n'est jamais mélangé |");
+    lignes.push("");
+  } else {
+    lignes.push("## Format attendu — mode fixe (table `questions`)");
+    lignes.push("");
+    lignes.push("| Champ | Obligatoire | Détail |");
+    lignes.push("|---|---|---|");
+    lignes.push("| `chapitre` | toujours | Nom exact (voir liste ci-dessus) |");
+    lignes.push("| `mode` | non | `\"fixe\"` (défaut) ou `\"aleatoire\"` |");
+    lignes.push("| `id` | non | Auto-généré (ou auto-corrigé) si absent ou déjà pris |");
+    lignes.push("| `type` | oui en pratique | Valeurs possibles : `formule`, `méthode`, `définition`, `théorème`, `exercice` |");
+    lignes.push("| `enonce` | oui | Texte, LaTeX entre `$...$` accepté |");
+    lignes.push("| `reponse` | oui | Texte, LaTeX entre `$...$` accepté |");
+    lignes.push("| `niveau` | non | 2 par défaut (niveau de difficulté, 1 à 3) |");
+    lignes.push("");
+    lignes.push("## Format attendu — mode aléatoire (table `exercices_application`)");
+    lignes.push("");
+    lignes.push("| Champ | Obligatoire | Détail |");
+    lignes.push("|---|---|---|");
+    lignes.push("| `enonce_modele` | oui | Avec placeholders (voir plus bas) |");
+    lignes.push("| `reponse_modele` | oui | Idem |");
+    lignes.push("| `parametres` | oui | Objet, une entrée par variable |");
+    lignes.push("| `type_calcul` | non | Métadonnée libre |");
+    lignes.push("| `niveau` | non | 2 par défaut |");
+    lignes.push("");
+  }
+
+  lignes.push("## Types de paramètre disponibles (`parametres`)");
+  lignes.push("");
+  lignes.push("| Type | Effet | Champs requis |");
+  lignes.push("|---|---|---|");
+  lignes.push("| `entier` | Tire un entier entre `min` et `max` | `min`, `max` |");
+  lignes.push("| `entier_non_nul` | Idem, en excluant 0 | `min`, `max` |");
+  lignes.push("| `decimal` | Tire un décimal, arrondi au dixième | `min`, `max` |");
+  lignes.push("| `liste` | Tire au hasard dans un tableau fourni | `valeurs` (tableau de nombres) |");
+  lignes.push("");
+  lignes.push("## Placeholders disponibles dans les textes");
+  lignes.push("");
+  lignes.push("| Écriture | Effet |");
+  lignes.push("|---|---|");
+  lignes.push("| `{a}` | Valeur brute de la variable `a` |");
+  lignes.push("| `{2a}` | Calcul simple (implicite : 2 fois `a`) |");
+  lignes.push("| `{a*d+c*e*b}` | N'importe quelle expression arithmétique (`+ - * / ()`) |");
+  lignes.push("| `{poly(a:2, b:1, c:0)}` | Polynôme formaté proprement (signes, coefficients 1/-1, termes nuls gérés) |");
+  lignes.push("| `{frac(-b, a)}` | Fraction exacte simplifiée, en LaTeX |");
+  lignes.push("| `{sqrt(a*a+b*b)}` | Racine carrée exacte : simplifie en entier si carré parfait, sinon `\\sqrt{d}` |");
+  lignes.push("");
+  lignes.push("## Pièges à connaître");
+  lignes.push("");
+  lignes.push("1. **Accolades LaTeX à doubler.** Le moteur repère n'importe quel `{...}` pour le substituer, y compris un exposant ou un dénominateur LaTeX pur. Si une valeur substituée doit rester groupée en LaTeX, doublez les accolades : `{{100}}`, `{{n}}` — sinon elles disparaissent et LaTeX ne prend que le caractère suivant comme groupe.");
+  lignes.push("   - `\\dfrac{{a}}{{100}}` fonctionne, `\\dfrac{{a}}{100}` casse.");
+  lignes.push("2. **Formule illustrative avec des lettres ressemblant à des variables** (ex. `R=U^2/P` à but pédagogique, pas calculée) : n'utilisez aucune accolade LaTeX autour de `U`/`P`, sinon le moteur les détecte comme de fausses variables.");
+  lignes.push("3. **Le `%`** : écrivez-le tel quel (`{a} % de {b}`), jamais `\\%` — l'export `.tex` échappe automatiquement le caractère.");
+  lignes.push("");
+  lignes.push("## Convention de nommage des ids");
+  lignes.push("");
+  lignes.push("Un seul sigle par chapitre (table Supabase `prefixes_chapitres`, avec repli auto-dérivé du nom si absent) :");
+  lignes.push("- Fixe : `SIGLE_INITIALES_NN` (ex. `PCOND_FG_01`)");
+  lignes.push("- Aléatoire : `SIGLE_INITIALES_EXNN` (ex. `EQIN_FG_EX01`)");
+  lignes.push("");
+  lignes.push("Les initiales viennent du prénom/nom du profil connecté — chaque collègue a naturellement les siennes.");
+
+  return lignes.join("\n");
+}
+
 function echapperLatex(texte) {
   return (texte || "").replace(/(?<!\\)%/g, "\\%");
 }
@@ -2044,6 +2147,17 @@ function ImportQuestions({ currentUser, currentProfile, chapitres, niveauScolair
   const [resultat, setResultat] = useState(null); // { nbImportees, nbErreurs }
   const fileRef = useRef(null);
 
+  function telechargerDocumentation() {
+    const contenu = genererDocumentationImport("questions", chapitres, niveauScolaire);
+    const blob = new Blob([contenu], { type: "text/markdown;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `documentation_import_questions_${niveauScolaire}.md`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   function telechargerExempleQuestions() {
     const exemple = [
       {
@@ -2271,17 +2385,11 @@ function ImportQuestions({ currentUser, currentProfile, chapitres, niveauScolair
               <tr><td><code>id</code>, <code>type</code></td><td>si fixe</td><td><code>id</code> auto-corrigé s'il est absent ou déjà pris ; <code>type</code> = formule/méthode/définition/théorème/exercice</td></tr>
               <tr><td><code>enonce</code>, <code>reponse</code></td><td>si fixe</td><td>textes bruts (LaTeX entre <code>$...$</code> accepté)</td></tr>
               <tr><td><code>enonce_modele</code>, <code>reponse_modele</code>, <code>parametres</code></td><td>si aléatoire</td><td>id généré automatiquement, <code>parametres</code> = objet (voir l'exemple)</td></tr>
-              <tr><td><code>type_calcul</code></td><td>non</td><td>si aléatoire uniquement, libre (métadonnée)</td></tr>
               <tr><td><code>niveau</code></td><td>non</td><td>2 par défaut</td></tr>
             </tbody>
           </table>
-          <div className="import-format-note">
-            Types de paramètre disponibles pour <code>parametres</code> : <code>entier</code>, <code>entier_non_nul</code>, <code>decimal</code>, <code>liste</code> (avec un tableau <code>valeurs</code>).
-          </div>
-          <div className="import-format-note">
-            Le sigle de chaque chapitre vient de la table <code>prefixes_chapitres</code> (même sigle pour le fixe et l'aléatoire) — si un chapitre n'y figure pas encore, un sigle est auto-dérivé de son nom à la place.
-          </div>
           <div className="import-format-actions">
+            <button className="import-format-example-btn" onClick={telechargerDocumentation}>📖 Documentation complète</button>
             <button className="import-format-example-btn" onClick={telechargerExempleQuestions}>📥 Télécharger un exemple</button>
           </div>
         </div>
@@ -2417,7 +2525,7 @@ function ImportQuestions({ currentUser, currentProfile, chapitres, niveauScolair
 // classiques, l'id du QCM est un uuid généré par Supabase — pas de convention
 // de nommage à vérifier, donc l'analyse est plus simple : on matche juste le
 // chapitre par son nom et on valide les champs requis selon le mode.
-function ImportQcm({ currentUser, chapitres, onFermer, onImportTermine }) {
+function ImportQcm({ currentUser, chapitres, niveauScolaire, onFermer, onImportTermine }) {
   const [fichier, setFichier] = useState(null);
   const [analyse, setAnalyse] = useState(null); // { valides, invalides, chapitresInconnus }
   const [analysing, setAnalysing] = useState(false);
@@ -2426,6 +2534,17 @@ function ImportQcm({ currentUser, chapitres, onFermer, onImportTermine }) {
   const fileRef = useRef(null);
 
   // Vérifie les champs requis selon le mode ; retourne null si valide, ou un message d'erreur
+  function telechargerDocumentation() {
+    const contenu = genererDocumentationImport("qcm", chapitres, niveauScolaire);
+    const blob = new Blob([contenu], { type: "text/markdown;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `documentation_import_qcm_${niveauScolaire}.md`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   function telechargerExempleQcm() {
     const exemple = [
       {
@@ -2577,13 +2696,8 @@ function ImportQcm({ currentUser, chapitres, onFermer, onImportTermine }) {
               <tr><td><code>niveau</code></td><td>non</td><td>1 par défaut</td></tr>
             </tbody>
           </table>
-          <div className="import-format-note">
-            Types de paramètre disponibles pour <code>parametres</code> : <code>entier</code>, <code>entier_non_nul</code>, <code>decimal</code>, <code>liste</code> (avec un tableau <code>valeurs</code>).
-          </div>
-          <div className="import-format-note">
-            <strong>Pièges fréquents :</strong> une constante ou variable qui doit rester groupée en LaTeX (exposant, numérateur/dénominateur) doit être doublée — <code>{"{{100}}"}</code>, pas <code>{"{100}"}</code>. Pas besoin d'échapper le <code>%</code> à la main, c'est géré automatiquement à l'export.
-          </div>
           <div className="import-format-actions">
+            <button className="import-format-example-btn" onClick={telechargerDocumentation}>📖 Documentation complète</button>
             <button className="import-format-example-btn" onClick={telechargerExempleQcm}>📥 Télécharger un exemple</button>
           </div>
         </div>
@@ -5330,6 +5444,7 @@ function QcmZone({ currentUser, currentProfile, qcmSessionARecharger, onSessionC
         <ImportQcm
           currentUser={currentUser}
           chapitres={chapitres}
+          niveauScolaire={niveauScolaire}
           onFermer={() => setAfficherImportQcm(false)}
           onImportTermine={() => {
             setQcmParChapitre({});
