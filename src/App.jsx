@@ -6261,6 +6261,15 @@ export default function App() {
                 ))}
               </div>
 
+              {/* Automatismes QCM : indépendant du niveau (regroupe Seconde + Première),
+                  placé à côté des pills plutôt que dans les sous-onglets. Absent pour Terminale Spé. */}
+              {!estTerminaleSpe && (
+                <button className="sidebar-tab-top" onClick={() => setActiveTab("qcm")}
+                  style={{ color: activeTab === "qcm" ? "#f59e0b" : "", borderBottom: activeTab === "qcm" ? "2px solid #f59e0b" : "2px solid transparent" }}>
+                  Automatismes QCM
+                </button>
+              )}
+
               {/* Séparateur vertical */}
               <div className="niveau-separateur"></div>
 
@@ -6295,15 +6304,6 @@ export default function App() {
                     Historique
                   </button>
                 </>
-              )}
-
-              {/* Automatismes QCM : indépendant du niveau (regroupe Seconde + Première),
-                  donc hors de la logique par niveau ci-dessus. Absent pour Terminale Spé. */}
-              {!estTerminaleSpe && (
-                <button className="sidebar-tab-top" onClick={() => setActiveTab("qcm")}
-                  style={{ color: activeTab === "qcm" ? "#f59e0b" : "", borderBottom: activeTab === "qcm" ? "2px solid #f59e0b" : "2px solid transparent" }}>
-                  Automatismes QCM
-                </button>
               )}
 
               {/* Actions globales — toujours visibles */}
