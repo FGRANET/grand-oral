@@ -1311,13 +1311,24 @@ function genererDocumentationImport(contexte, chapitres, niveauScolaire) {
   chapitresTries.forEach(nom => L.push(`//   - ${nom}`));
   L.push("");
 
+  const estTerminale = niveauScolaire === "terminale_spe";
+  const chapitreDerivation = chapitresTries.find(n => n.toLowerCase() === "dérivation") || premierChapitre;
+  const chapitreProba = chapitresTries.find(n => n.toLowerCase() === "probabilités conditionnelles") || premierChapitre;
+
   if (contexte === "qcm") {
     L.push("// Aucune convention de nommage : l'id du QCM est un uuid auto-généré");
     L.push("// par Supabase, jamais lu depuis le JSON.");
     L.push("");
     L.push('// ── Exemple : QCM fixe ──');
     L.push('// mode "fixe" : enonce + choix (tableau de 4 textes) + bonne_reponse (0 à 3) + niveau (optionnel, 1 par défaut)');
-    L.push(JSON.stringify({
+    L.push(JSON.stringify(estTerminale ? {
+      chapitre: chapitreProba,
+      mode: "fixe",
+      enonce: "La probabilité conditionnelle $P_A(B)$ se calcule par :",
+      choix: ["$\\dfrac{P(A\\cap B)}{P(A)}$", "$\\dfrac{P(A\\cap B)}{P(B)}$", "$P(A)\\times P(B)$", "$P(A)+P(B)-P(A\\cap B)$"],
+      bonne_reponse: 0,
+      niveau: 2,
+    } : {
       chapitre: premierChapitre,
       mode: "fixe",
       enonce: "25 % de 480 est égal à :",
@@ -1329,7 +1340,23 @@ function genererDocumentationImport(contexte, chapitres, niveauScolaire) {
     L.push('// ── Exemple : QCM aléatoire ──');
     L.push('// mode "aleatoire" : enonce_modele + choix_modele (4 textes avec placeholders) + parametres + bonne_reponse');
     L.push('// bonne_reponse reste un index fixe : l\'ordre des 4 choix n\'est jamais mélangé.');
-    L.push(JSON.stringify({
+    L.push(JSON.stringify(estTerminale ? {
+      chapitre: chapitreDerivation,
+      mode: "aleatoire",
+      enonce_modele: "La dérivée de $f(x) = {a}x^2 + {b}x$ est :",
+      choix_modele: [
+        "$f'(x) = {poly(2*a:1, b:0)}$",
+        "$f'(x) = {poly(a:1, b:0)}$",
+        "$f'(x) = {poly(2*a:2, b:1)}$",
+        "$f'(x) = {poly(2*a:1, 0:0)}$",
+      ],
+      bonne_reponse: 0,
+      parametres: {
+        a: { type: "entier_non_nul", min: -10, max: 10 },
+        b: { type: "entier", min: -10, max: 10 },
+      },
+      niveau: 2,
+    } : {
       chapitre: premierChapitre,
       mode: "aleatoire",
       enonce_modele: "L'opération qui permet de calculer {a} % de {b} est :",
@@ -1360,7 +1387,14 @@ function genererDocumentationImport(contexte, chapitres, niveauScolaire) {
     L.push("");
     L.push('// ── Exemple : question fixe (table questions) ──');
     L.push('// champs : chapitre, mode (optionnel), type, enonce, reponse, niveau (optionnel, 2 par défaut)');
-    L.push(JSON.stringify({
+    L.push(JSON.stringify(estTerminale ? {
+      chapitre: chapitreProba,
+      mode: "fixe",
+      type: "méthode",
+      enonce: "Comment calcule-t-on $P_A(B)$ ?",
+      reponse: "$P_A(B) = \\dfrac{P(A \\cap B)}{P(A)}$",
+      niveau: 2,
+    } : {
       chapitre: premierChapitre,
       mode: "fixe",
       type: "méthode",
@@ -1371,7 +1405,18 @@ function genererDocumentationImport(contexte, chapitres, niveauScolaire) {
     L.push("");
     L.push('// ── Exemple : exercice aléatoire (table exercices_application) ──');
     L.push('// champs : chapitre, mode, enonce_modele, reponse_modele, parametres, niveau (optionnel), type_calcul (optionnel, libre)');
-    L.push(JSON.stringify({
+    L.push(JSON.stringify(estTerminale ? {
+      chapitre: chapitreDerivation,
+      mode: "aleatoire",
+      enonce_modele: "Calculer $f'(x)$ pour $f(x) = {poly(a:2, b:1, c:0)}$",
+      reponse_modele: "$f'(x) = {poly(2*a:1, b:0)}$",
+      parametres: {
+        a: { type: "entier_non_nul", min: -10, max: 10 },
+        b: { type: "entier", min: -10, max: 10 },
+        c: { type: "entier", min: -20, max: 20 },
+      },
+      niveau: 2,
+    } : {
       chapitre: premierChapitre,
       mode: "aleatoire",
       enonce_modele: "Résoudre l'équation ${a}x + {b} = 0$",
@@ -1384,7 +1429,18 @@ function genererDocumentationImport(contexte, chapitres, niveauScolaire) {
     }, null, 2));
     L.push("");
     L.push('// ── Exemple : exercice aléatoire avec un paramètre de type "liste" ──');
-    L.push(JSON.stringify({
+    L.push(JSON.stringify(estTerminale ? {
+      chapitre: chapitreDerivation,
+      mode: "aleatoire",
+      enonce_modele: "Calculer $f'(x)$ pour $f(x) = {a}x^2 + {b}x$",
+      reponse_modele: "$f'(x) = {poly(2*a:1, b:0)}$",
+      parametres: {
+        a: { type: "liste", valeurs: [-4, -2, -1, 1, 2, 4] },
+        b: { type: "entier", min: -10, max: 10 },
+      },
+      type_calcul: "derivee",
+      niveau: 2,
+    } : {
       chapitre: premierChapitre,
       mode: "aleatoire",
       enonce_modele: "L'opération qui permet de calculer {a} % de {b} est :",
@@ -1622,34 +1678,13 @@ function tirerEntier(min, max) {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
-// DER_FG_EX01 — Dérivée d'un polynôme du second degré
-// f(x) = ax² + bx + c, avec a ∈ [-10,10]\{0}, b ∈ [-10,10], c ∈ [-20,20]
-function genererDeriveePolynomeDegre2() {
-  const a = tirerEntierNonNul(-10, 10);
-  const b = tirerEntier(-10, 10);
-  const c = tirerEntier(-20, 20);
-
-  const fx = formaterPolynome([{ valeur: a, degre: 2 }, { valeur: b, degre: 1 }, { valeur: c, degre: 0 }]);
-  const fpx = formaterPolynome([{ valeur: 2 * a, degre: 1 }, { valeur: b, degre: 0 }]);
-
-  return {
-    enonce: `Calculer $f'(x)$ pour $f(x) = ${fx}$.`,
-    reponse: `$f'(x) = ${fpx}$`,
-    valeurs: { a, b, c },
-  };
-}
-
-// ─── Automatismes Seconde ───────────────────────────────────────────────
-// Les 5 exercices écrits sur mesure ici (SEC_FG_EX01 à 05) ont été migrés
-// vers la table exercices_application (voir migration_exercices_seconde.json)
-// et validés en base — ils ne sont donc plus codés en dur.
-
-// Registre des exercices codés sur mesure : id -> fonction de génération.
-// C'est ici qu'on ajoutera chaque nouvel exercice créé avec Claude.
-const BIBLIOTHEQUE_EXERCICES = {
-  // ── Terminale Spé ──
-  "DER_FG_EX01": { generer: genererDeriveePolynomeDegre2, chapitre: "Dérivation", niveauScolaire: "terminale_spe", niveau: 2, titre: "Dérivée d'un polynôme du second degré" },
-};
+// ─── Automatismes ───────────────────────────────────────────────────────
+// Tous les exercices écrits sur mesure ici ont été migrés vers la table
+// exercices_application (voir migration_exercices_seconde.json et
+// migration_exercice_terminale.json) et validés en base — ils ne sont donc
+// plus codés en dur. Le registre reste vide, prêt pour de futurs ajouts
+// ponctuels si un besoin très spécifique l'exigeait.
+const BIBLIOTHEQUE_EXERCICES = {};
 
 
 function Login({ onLogin }) {
