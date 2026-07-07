@@ -1285,108 +1285,147 @@ function tirerValeurParametre(def) {
 // sans être visibles à l'écran (KaTeX/l'affichage web ne s'en soucient pas).
 // Pour l'instant : le "%" qui démarre un commentaire LaTeX et tronque la ligne.
 // N'échappe pas un "\%" déjà présent (évite le double-échappement).
-// Génère la documentation complète (au format markdown) pour l'import JSON,
-// avec la vraie liste des chapitres actuellement chargés (jamais une liste
-// recopiée à la main, qui pourrait devenir fausse si les chapitres changent).
+// Génère la documentation complète sous forme de JSON structuré (pas du markdown) :
+// le prof voit directement un objet à copier/adapter, avec les listes de valeurs
+// valides en tableaux plutôt qu'en prose. Toujours construite à partir des vrais
+// chapitres chargés à l'écran, jamais d'une liste recopiée à la main.
+// Génère la documentation sous forme de fichier commenté (JSONC) : les
+// exemples ne contiennent QUE les champs réellement importables (rien d'autre,
+// pas de clé "documentation" mélangée), et toutes les explications vivent en
+// commentaires // autour. Toujours construite à partir des vrais chapitres
+// chargés à l'écran, jamais d'une liste recopiée à la main.
 function genererDocumentationImport(contexte, chapitres, niveauScolaire) {
-  const chapitresTries = [...chapitres].sort((a, b) => a.ordre - b.ordre);
+  const chapitresTries = [...chapitres].sort((a, b) => a.ordre - b.ordre).map(c => c.nom);
   const nomNiveau = { terminale_spe: "Terminale Spé", seconde: "Seconde", premiere: "Première" }[niveauScolaire] || niveauScolaire;
-  const lignes = [];
+  const premierChapitre = chapitresTries[0] || "Nom exact d'un chapitre existant";
+  const L = [];
 
-  lignes.push(`# Documentation import JSON — ${contexte === "qcm" ? "QCM" : "Questions / Exercices"} (${nomNiveau})`);
-  lignes.push("");
-  lignes.push(`Générée le ${new Date().toLocaleDateString("fr-FR")} depuis les chapitres actuellement en base pour ce niveau.`);
-  lignes.push("");
-  lignes.push("## Liste des chapitres disponibles pour ce niveau");
-  lignes.push("");
-  lignes.push("Le champ `chapitre` du JSON doit correspondre **exactement** (insensible à la casse) à l'un de ces noms :");
-  lignes.push("");
-  chapitresTries.forEach(ch => lignes.push(`- ${ch.nom}`));
-  lignes.push("");
+  const titre = contexte === "qcm" ? "Documentation import QCM" : "Documentation import Questions / Exercices";
+  L.push("// ".padEnd(60, "="));
+  L.push(`// ${titre} — ${nomNiveau}`);
+  L.push(`// Générée le ${new Date().toLocaleDateString("fr-FR")} depuis les chapitres réellement en base pour ce niveau.`);
+  L.push("// ".padEnd(60, "="));
+  L.push("");
+  L.push('// Chapitres disponibles pour ce niveau (le champ "chapitre" doit');
+  L.push("// correspondre EXACTEMENT, insensible à la casse, à l'un de ces noms) :");
+  chapitresTries.forEach(nom => L.push(`//   - ${nom}`));
+  L.push("");
 
   if (contexte === "qcm") {
-    lignes.push("## Format attendu — mode fixe");
-    lignes.push("");
-    lignes.push("| Champ | Obligatoire | Détail |");
-    lignes.push("|---|---|---|");
-    lignes.push("| `chapitre` | toujours | Nom exact (voir liste ci-dessus) |");
-    lignes.push("| `mode` | non | `\"fixe\"` (défaut) ou `\"aleatoire\"` |");
-    lignes.push("| `enonce` | si fixe | Texte, LaTeX entre `$...$` accepté |");
-    lignes.push("| `choix` | si fixe | Tableau de **4** textes exactement |");
-    lignes.push("| `bonne_reponse` | toujours | Index de 0 à 3 |");
-    lignes.push("| `niveau` | non | 1 par défaut (niveau de difficulté, pas le niveau scolaire) |");
-    lignes.push("");
-    lignes.push("## Format attendu — mode aléatoire");
-    lignes.push("");
-    lignes.push("| Champ | Obligatoire | Détail |");
-    lignes.push("|---|---|---|");
-    lignes.push("| `enonce_modele` | oui | Avec placeholders (voir plus bas) |");
-    lignes.push("| `choix_modele` | oui | Tableau de 4 textes avec placeholders |");
-    lignes.push("| `parametres` | oui | Objet, une entrée par variable |");
-    lignes.push("| `bonne_reponse` | oui | Index fixe — l'ordre des 4 choix n'est jamais mélangé |");
-    lignes.push("");
+    L.push("// Aucune convention de nommage : l'id du QCM est un uuid auto-généré");
+    L.push("// par Supabase, jamais lu depuis le JSON.");
+    L.push("");
+    L.push('// ── Exemple : QCM fixe ──');
+    L.push('// mode "fixe" : enonce + choix (tableau de 4 textes) + bonne_reponse (0 à 3) + niveau (optionnel, 1 par défaut)');
+    L.push(JSON.stringify({
+      chapitre: premierChapitre,
+      mode: "fixe",
+      enonce: "25 % de 480 est égal à :",
+      choix: ["120", "12", "1200", "1,2"],
+      bonne_reponse: 0,
+      niveau: 1,
+    }, null, 2));
+    L.push("");
+    L.push('// ── Exemple : QCM aléatoire ──');
+    L.push('// mode "aleatoire" : enonce_modele + choix_modele (4 textes avec placeholders) + parametres + bonne_reponse');
+    L.push('// bonne_reponse reste un index fixe : l\'ordre des 4 choix n\'est jamais mélangé.');
+    L.push(JSON.stringify({
+      chapitre: premierChapitre,
+      mode: "aleatoire",
+      enonce_modele: "L'opération qui permet de calculer {a} % de {b} est :",
+      choix_modele: [
+        "$\\dfrac{{b}}{{a}\\times 100}$",
+        "${a}\\times {b}\\times 0,1$",
+        "$\\dfrac{{b}\\times 100}{{a}}$",
+        "$\\dfrac{{a}}{{100}}\\times {b}$",
+      ],
+      bonne_reponse: 3,
+      parametres: {
+        a: { type: "liste", valeurs: [20, 25, 50, 75, 80] },
+        b: { type: "entier", min: 20, max: 2000 },
+      },
+      niveau: 1,
+    }, null, 2));
   } else {
-    lignes.push("## Format attendu — mode fixe (table `questions`)");
-    lignes.push("");
-    lignes.push("| Champ | Obligatoire | Détail |");
-    lignes.push("|---|---|---|");
-    lignes.push("| `chapitre` | toujours | Nom exact (voir liste ci-dessus) |");
-    lignes.push("| `mode` | non | `\"fixe\"` (défaut) ou `\"aleatoire\"` |");
-    lignes.push("| `id` | non | Auto-généré (ou auto-corrigé) si absent ou déjà pris |");
-    lignes.push("| `type` | oui en pratique | Valeurs possibles : `formule`, `méthode`, `définition`, `théorème`, `exercice` |");
-    lignes.push("| `enonce` | oui | Texte, LaTeX entre `$...$` accepté |");
-    lignes.push("| `reponse` | oui | Texte, LaTeX entre `$...$` accepté |");
-    lignes.push("| `niveau` | non | 2 par défaut (niveau de difficulté, 1 à 3) |");
-    lignes.push("");
-    lignes.push("## Format attendu — mode aléatoire (table `exercices_application`)");
-    lignes.push("");
-    lignes.push("| Champ | Obligatoire | Détail |");
-    lignes.push("|---|---|---|");
-    lignes.push("| `enonce_modele` | oui | Avec placeholders (voir plus bas) |");
-    lignes.push("| `reponse_modele` | oui | Idem |");
-    lignes.push("| `parametres` | oui | Objet, une entrée par variable |");
-    lignes.push("| `type_calcul` | non | Métadonnée libre |");
-    lignes.push("| `niveau` | non | 2 par défaut |");
-    lignes.push("");
+    L.push("// Types de question disponibles (champ \"type\", mode fixe uniquement) :");
+    L.push("//   formule | méthode | définition | théorème | exercice");
+    L.push("");
+    L.push("// Convention de nommage des ids (un seul sigle par chapitre, table Supabase");
+    L.push("// prefixes_chapitres, repli auto-dérivé du nom si absent) :");
+    L.push("//   Fixe      : SIGLE_INITIALES_NN     (ex. PCOND_FG_01)");
+    L.push("//   Aléatoire : SIGLE_INITIALES_EXNN   (ex. EQIN_FG_EX01)");
+    L.push("//   Les initiales viennent du prénom/nom du profil connecté, pas de l'e-mail.");
+    L.push("//   \"id\" est optionnel en mode fixe (auto-généré/corrigé si absent ou déjà pris),");
+    L.push("//   et TOUJOURS auto-généré en mode aléatoire (jamais lu depuis le JSON).");
+    L.push("");
+    L.push('// ── Exemple : question fixe (table questions) ──');
+    L.push('// champs : chapitre, mode (optionnel), type, enonce, reponse, niveau (optionnel, 2 par défaut)');
+    L.push(JSON.stringify({
+      chapitre: premierChapitre,
+      mode: "fixe",
+      type: "méthode",
+      enonce: "Comment calcule-t-on la dérivée d'une fonction ?",
+      reponse: "On applique les formules de dérivation usuelles.",
+      niveau: 2,
+    }, null, 2));
+    L.push("");
+    L.push('// ── Exemple : exercice aléatoire (table exercices_application) ──');
+    L.push('// champs : chapitre, mode, enonce_modele, reponse_modele, parametres, niveau (optionnel), type_calcul (optionnel, libre)');
+    L.push(JSON.stringify({
+      chapitre: premierChapitre,
+      mode: "aleatoire",
+      enonce_modele: "Résoudre l'équation ${a}x + {b} = 0$",
+      reponse_modele: "$x = {frac(-b, a)}$",
+      parametres: {
+        a: { type: "entier_non_nul", min: -9, max: 9 },
+        b: { type: "entier", min: -9, max: 9 },
+      },
+      niveau: 2,
+    }, null, 2));
+    L.push("");
+    L.push('// ── Exemple : exercice aléatoire avec un paramètre de type "liste" ──');
+    L.push(JSON.stringify({
+      chapitre: premierChapitre,
+      mode: "aleatoire",
+      enonce_modele: "L'opération qui permet de calculer {a} % de {b} est :",
+      reponse_modele: "${a}/100 \\times {b}$",
+      parametres: {
+        a: { type: "liste", valeurs: [20, 25, 50, 75, 80] },
+        b: { type: "entier", min: 20, max: 2000 },
+      },
+      type_calcul: "pourcentage",
+      niveau: 1,
+    }, null, 2));
   }
 
-  lignes.push("## Types de paramètre disponibles (`parametres`)");
-  lignes.push("");
-  lignes.push("| Type | Effet | Champs requis |");
-  lignes.push("|---|---|---|");
-  lignes.push("| `entier` | Tire un entier entre `min` et `max` | `min`, `max` |");
-  lignes.push("| `entier_non_nul` | Idem, en excluant 0 | `min`, `max` |");
-  lignes.push("| `decimal` | Tire un décimal, arrondi au dixième | `min`, `max` |");
-  lignes.push("| `liste` | Tire au hasard dans un tableau fourni | `valeurs` (tableau de nombres) |");
-  lignes.push("");
-  lignes.push("## Placeholders disponibles dans les textes");
-  lignes.push("");
-  lignes.push("| Écriture | Effet |");
-  lignes.push("|---|---|");
-  lignes.push("| `{a}` | Valeur brute de la variable `a` |");
-  lignes.push("| `{2a}` | Calcul simple (implicite : 2 fois `a`) |");
-  lignes.push("| `{a*d+c*e*b}` | N'importe quelle expression arithmétique (`+ - * / ()`) |");
-  lignes.push("| `{poly(a:2, b:1, c:0)}` | Polynôme formaté proprement (signes, coefficients 1/-1, termes nuls gérés) |");
-  lignes.push("| `{frac(-b, a)}` | Fraction exacte simplifiée, en LaTeX |");
-  lignes.push("| `{sqrt(a*a+b*b)}` | Racine carrée exacte : simplifie en entier si carré parfait, sinon `\\sqrt{d}` |");
-  lignes.push("");
-  lignes.push("## Pièges à connaître");
-  lignes.push("");
-  lignes.push("1. **Accolades LaTeX à doubler.** Le moteur repère n'importe quel `{...}` pour le substituer, y compris un exposant ou un dénominateur LaTeX pur. Si une valeur substituée doit rester groupée en LaTeX, doublez les accolades : `{{100}}`, `{{n}}` — sinon elles disparaissent et LaTeX ne prend que le caractère suivant comme groupe.");
-  lignes.push("   - `\\dfrac{{a}}{{100}}` fonctionne, `\\dfrac{{a}}{100}` casse.");
-  lignes.push("2. **Formule illustrative avec des lettres ressemblant à des variables** (ex. `R=U^2/P` à but pédagogique, pas calculée) : n'utilisez aucune accolade LaTeX autour de `U`/`P`, sinon le moteur les détecte comme de fausses variables.");
-  lignes.push("3. **Le `%`** : écrivez-le tel quel (`{a} % de {b}`), jamais `\\%` — l'export `.tex` échappe automatiquement le caractère.");
-  lignes.push("");
-  lignes.push("## Convention de nommage des ids");
-  lignes.push("");
-  lignes.push("Un seul sigle par chapitre (table Supabase `prefixes_chapitres`, avec repli auto-dérivé du nom si absent) :");
-  lignes.push("- Fixe : `SIGLE_INITIALES_NN` (ex. `PCOND_FG_01`)");
-  lignes.push("- Aléatoire : `SIGLE_INITIALES_EXNN` (ex. `EQIN_FG_EX01`)");
-  lignes.push("");
-  lignes.push("Les initiales viennent du prénom/nom du profil connecté — chaque collègue a naturellement les siennes.");
+  L.push("");
+  L.push("// Types de paramètre disponibles (dans \"parametres\") :");
+  L.push("//   entier          -> tire un entier entre min et max");
+  L.push("//   entier_non_nul  -> idem, en excluant 0");
+  L.push("//   decimal         -> tire un décimal, arrondi au dixième");
+  L.push("//   liste           -> tire au hasard dans un tableau \"valeurs\" (pas de min/max)");
+  L.push("");
+  L.push("// Placeholders disponibles dans les textes :");
+  L.push("//   {a}                    -> valeur brute de la variable a");
+  L.push("//   {2a}                   -> calcul simple implicite (2 fois a)");
+  L.push("//   {a*d+c*e*b}            -> expression arithmétique quelconque (+ - * / ())");
+  L.push("//   {poly(a:2, b:1, c:0)}  -> polynôme formaté proprement (signes, coefficients 1/-1, termes nuls gérés)");
+  L.push("//   {frac(-b, a)}          -> fraction exacte simplifiée, rendue en LaTeX");
+  L.push("//   {sqrt(a*a+b*b)}        -> racine carrée exacte (simplifiée en entier si carré parfait, sinon \\sqrt{d})");
+  L.push("");
+  L.push("// Pièges à connaître :");
+  L.push("//   1. Accolades LaTeX à DOUBLER quand une valeur substituée doit rester groupée");
+  L.push("//      en LaTeX (exposant, dénominateur) : \\dfrac{{a}}{{100}} et non \\dfrac{{a}}{100}");
+  L.push("//      (sinon les accolades disparaissent, LaTeX ne prend que le caractère suivant).");
+  L.push("//   2. Formule illustrative avec des lettres ressemblant à des variables");
+  L.push("//      (ex. R=U^2/P, non calculée) : n'utiliser AUCUNE accolade LaTeX autour de U/P.");
+  L.push("//   3. Le signe % s'écrit tel quel ({a} % de {b}), jamais \\%  — l'export .tex");
+  L.push("//      échappe automatiquement le caractère.");
 
-  return lignes.join("\n");
+  return L.join("\n");
 }
+
+
 
 function echapperLatex(texte) {
   return (texte || "").replace(/(?<!\\)%/g, "\\%");
@@ -2149,11 +2188,11 @@ function ImportQuestions({ currentUser, currentProfile, chapitres, niveauScolair
 
   function telechargerDocumentation() {
     const contenu = genererDocumentationImport("questions", chapitres, niveauScolaire);
-    const blob = new Blob([contenu], { type: "text/markdown;charset=utf-8" });
+    const blob = new Blob([contenu], { type: "text/plain;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `documentation_import_questions_${niveauScolaire}.md`;
+    a.download = `documentation_import_questions_${niveauScolaire}.jsonc`;
     a.click();
     URL.revokeObjectURL(url);
   }
@@ -2536,11 +2575,11 @@ function ImportQcm({ currentUser, chapitres, niveauScolaire, onFermer, onImportT
   // Vérifie les champs requis selon le mode ; retourne null si valide, ou un message d'erreur
   function telechargerDocumentation() {
     const contenu = genererDocumentationImport("qcm", chapitres, niveauScolaire);
-    const blob = new Blob([contenu], { type: "text/markdown;charset=utf-8" });
+    const blob = new Blob([contenu], { type: "text/plain;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `documentation_import_qcm_${niveauScolaire}.md`;
+    a.download = `documentation_import_qcm_${niveauScolaire}.jsonc`;
     a.click();
     URL.revokeObjectURL(url);
   }
