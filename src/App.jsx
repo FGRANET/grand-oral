@@ -3822,6 +3822,23 @@ function TirageAleatoireQcm({ chapitres, onAnnuler, onTirer }) {
   }
   function toutSelectionner() { setChapitresChoisis(new Set(chapitres.map(c => c.id))); }
   function toutDeselectionner() { setChapitresChoisis(new Set()); }
+  function toutSelectionnerOrigine(niveauScolaireCh) {
+    setChapitresChoisis(prev => {
+      const copie = new Set(prev);
+      chapitres.filter(c => c.niveau_scolaire === niveauScolaireCh).forEach(c => copie.add(c.id));
+      return copie;
+    });
+  }
+  function toutDeselectionnerOrigine(niveauScolaireCh) {
+    setChapitresChoisis(prev => {
+      const copie = new Set(prev);
+      chapitres.filter(c => c.niveau_scolaire === niveauScolaireCh).forEach(c => copie.delete(c.id));
+      return copie;
+    });
+  }
+  function couleurOrigine(niveauScolaireCh) {
+    return niveauScolaireCh === "seconde" ? "#059669" : "#7c3aed";
+  }
 
   async function lancerTirage() {
     if (chapitresChoisis.size === 0 || niveauxChoisis.size === 0) return;
@@ -3881,14 +3898,29 @@ function TirageAleatoireQcm({ chapitres, onAnnuler, onTirer }) {
                 <a href="#" onClick={e => { e.preventDefault(); toutDeselectionner(); }} style={{ color: "var(--accent-light)" }}>Tout décocher</a>
               </span>
             </div>
-            <div className="random-chapitres-grid">
-              {chapitresTries.map(ch => (
-                <label key={ch.id} className="random-chapitre-item">
-                  <input type="checkbox" checked={chapitresChoisis.has(ch.id)} onChange={() => toggleChapitre(ch.id)} />
-                  {ch.nom}
-                </label>
-              ))}
-            </div>
+            {["seconde", "premiere_automatismes"].map(origine => {
+              const chapitresOrigine = chapitresTries.filter(ch => ch.niveau_scolaire === origine);
+              if (chapitresOrigine.length === 0) return null;
+              return (
+                <div key={origine} style={{ marginBottom: 12 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "var(--text-muted)", marginBottom: 6 }}>
+                    <span aria-hidden="true" style={{ display: "inline-block", width: 8, height: 8, borderRadius: "50%", background: couleurOrigine(origine) }} />
+                    {origine === "seconde" ? "Seconde" : "Première"}
+                    <a href="#" onClick={e => { e.preventDefault(); toutSelectionnerOrigine(origine); }} style={{ color: "var(--accent-light)" }}>tout cocher</a>
+                    ·
+                    <a href="#" onClick={e => { e.preventDefault(); toutDeselectionnerOrigine(origine); }} style={{ color: "var(--accent-light)" }}>tout décocher</a>
+                  </div>
+                  <div className="random-chapitres-grid">
+                    {chapitresOrigine.map(ch => (
+                      <label key={ch.id} className="random-chapitre-item">
+                        <input type="checkbox" checked={chapitresChoisis.has(ch.id)} onChange={() => toggleChapitre(ch.id)} />
+                        {ch.nom}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
           </div>
 
           <div>
@@ -4972,6 +5004,23 @@ function QcmZone({ currentUser, currentProfile, qcmSessionARecharger, onSessionC
   const [elementsCoches, setElementsCoches] = useState(new Set());
   const NIVEAUX_DISPONIBLES = [1, 2, 3];
   const [niveauxActifs, setNiveauxActifs] = useState(new Set(NIVEAUX_DISPONIBLES));
+  // Filtre par origine (Seconde / nouveautés Première) — exclure/inclure vite,
+  // sans avoir à décocher chapitre par chapitre.
+  const ORIGINES_QCM = [
+    { id: "seconde", label: "Seconde", couleur: "#059669" },
+    { id: "premiere_automatismes", label: "Première", couleur: "#7c3aed" },
+  ];
+  const [originesActives, setOriginesActives] = useState(new Set(ORIGINES_QCM.map(o => o.id)));
+  function toggleOrigine(id) {
+    setOriginesActives(prev => {
+      const copie = new Set(prev);
+      copie.has(id) ? copie.delete(id) : copie.add(id);
+      return copie;
+    });
+  }
+  function couleurOrigine(niveauScolaireChapitre) {
+    return ORIGINES_QCM.find(o => o.id === niveauScolaireChapitre)?.couleur || "#7b82a8";
+  }
   const [afficherReglagesDiapo, setAfficherReglagesDiapo] = useState(false);
   const [diapoActive, setDiapoActive] = useState(null);
   const [afficherTirage, setAfficherTirage] = useState(false);
@@ -4985,6 +5034,11 @@ function QcmZone({ currentUser, currentProfile, qcmSessionARecharger, onSessionC
   const [qcmASupprimer, setQcmASupprimer] = useState(null);
   const [confirmerToutRetirer, setConfirmerToutRetirer] = useState(false);
 
+  // Automatismes QCM regroupe Seconde et les nouveautés de Première (probas
+  // conditionnelles, second degré) — indépendant du niveau sélectionné dans
+  // les pills, donc pas de dépendance à la prop niveauScolaire ici.
+  const NIVEAUX_QCM = ["seconde", "premiere_automatismes"];
+
   function toggleNiveauFiltre(niveau) {
     setNiveauxActifs(prev => {
       const copie = new Set(prev);
@@ -4994,22 +5048,21 @@ function QcmZone({ currentUser, currentProfile, qcmSessionARecharger, onSessionC
   }
   function qcmVisible(q) { return niveauxActifs.has(q.niveau); }
 
-  // Charger la liste des chapitres au changement de niveau
+  // Charge une seule fois les chapitres des deux niveaux (Seconde + nouveautés Première)
   useEffect(() => {
     setLoading(true);
     setChapitres([]);
     setChapitresOuverts({});
     setQcmParChapitre({});
     setSelection([]);
-    const niveau = niveauScolaire || "terminale_spe";
     supabase.from("chapitres").select("*")
-      .eq("niveau_scolaire", niveau)
+      .in("niveau_scolaire", NIVEAUX_QCM)
       .order("ordre")
       .then(({ data }) => {
         setChapitres(data || []);
         setLoading(false);
       });
-  }, [niveauScolaire]);
+  }, []);
 
   // Recharger une sélection depuis l'historique (clic sur "Rejouer")
   useEffect(() => {
@@ -5270,7 +5323,7 @@ function QcmZone({ currentUser, currentProfile, qcmSessionARecharger, onSessionC
     const a = document.createElement("a");
     const date = new Date().toISOString().slice(0, 10);
     a.href = url;
-    a.download = `qcm_banque_${niveauScolaire}_${date}.json`;
+    a.download = `qcm_banque_automatismes_${date}.json`;
     a.click();
     URL.revokeObjectURL(url);
   }
@@ -5312,9 +5365,19 @@ function QcmZone({ currentUser, currentProfile, qcmSessionARecharger, onSessionC
               </button>
             )}
           </div>
+          <div className="gen-filters-row">
+            <span className="gen-filters-label">Origine</span>
+            {ORIGINES_QCM.map(o => (
+              <button key={o.id} className={`gen-filter-chip${originesActives.has(o.id) ? " active" : ""}`}
+                style={originesActives.has(o.id) ? { background: o.couleur, borderColor: o.couleur } : {}}
+                onClick={() => toggleOrigine(o.id)}>
+                {o.label}
+              </button>
+            ))}
+          </div>
         </div>
 
-        {chapitres.map(ch => {
+        {chapitres.filter(ch => originesActives.has(ch.niveau_scolaire)).map(ch => {
           const ouvert = chapitresOuverts[ch.id];
           const qcmDuChapitre = qcmParChapitre[ch.id] || [];
           const qcmFiltres = qcmDuChapitre.filter(qcmVisible);
@@ -5324,6 +5387,8 @@ function QcmZone({ currentUser, currentProfile, qcmSessionARecharger, onSessionC
             <div key={ch.id} className="gen-chapitre-block">
               <div className="gen-chapitre-row" onClick={() => toggleChapitre(ch.id)}>
                 <span className={`gen-chevron${ouvert ? " open" : ""}`}>▶</span>
+                <span aria-hidden="true" title={ch.niveau_scolaire === "seconde" ? "Seconde" : "Première"}
+                  style={{ display: "inline-block", width: 8, height: 8, borderRadius: "50%", background: couleurOrigine(ch.niveau_scolaire), marginRight: 8, flexShrink: 0 }} />
                 <span className="gen-chapitre-nom">{ch.nom}</span>
                 {nbSelectionnes > 0 && <span className="gen-chapitre-count">{nbSelectionnes} sélectionné{nbSelectionnes > 1 ? "s" : ""}</span>}
                 {ouvert && nbMasques > 0 && (
@@ -6204,7 +6269,7 @@ export default function App() {
                 <>
                   <button className="sidebar-tab-top" onClick={() => setActiveTab("chat")}
                     style={{ color: activeTab === "chat" ? couleurActive : "", borderBottom: activeTab === "chat" ? `2px solid ${couleurActive}` : "2px solid transparent" }}>
-                    Élèves{totalUnread > 0 && <span className="badge-count" style={{ marginLeft: 6, fontSize: 10, padding: "1px 6px" }}>{totalUnread}</span>}
+                    Grand Oral{totalUnread > 0 && <span className="badge-count" style={{ marginLeft: 6, fontSize: 10, padding: "1px 6px" }}>{totalUnread}</span>}
                   </button>
                   <button className="sidebar-tab-top" onClick={() => setActiveTab("ressources")}
                     style={{ color: activeTab === "ressources" ? couleurActive : "", borderBottom: activeTab === "ressources" ? `2px solid ${couleurActive}` : "2px solid transparent" }}>
@@ -6212,7 +6277,7 @@ export default function App() {
                   </button>
                   <button className="sidebar-tab-top" onClick={() => setActiveTab("generateur")}
                     style={{ color: activeTab === "generateur" ? couleurActive : "", borderBottom: activeTab === "generateur" ? `2px solid ${couleurActive}` : "2px solid transparent" }}>
-                    Générateur
+                    Automatismes
                   </button>
                   <button className="sidebar-tab-top" onClick={() => setActiveTab("historique")}
                     style={{ color: activeTab === "historique" ? couleurActive : "", borderBottom: activeTab === "historique" ? `2px solid ${couleurActive}` : "2px solid transparent" }}>
@@ -6225,15 +6290,20 @@ export default function App() {
                     style={{ color: activeTab === "automatismes" ? couleurActive : "", borderBottom: activeTab === "automatismes" ? `2px solid ${couleurActive}` : "2px solid transparent" }}>
                     Automatismes
                   </button>
-                  <button className="sidebar-tab-top" onClick={() => setActiveTab("qcm")}
-                    style={{ color: activeTab === "qcm" ? couleurActive : "", borderBottom: activeTab === "qcm" ? `2px solid ${couleurActive}` : "2px solid transparent" }}>
-                    QCM
-                  </button>
                   <button className="sidebar-tab-top" onClick={() => setActiveTab("historique")}
                     style={{ color: activeTab === "historique" ? couleurActive : "", borderBottom: activeTab === "historique" ? `2px solid ${couleurActive}` : "2px solid transparent" }}>
                     Historique
                   </button>
                 </>
+              )}
+
+              {/* Automatismes QCM : indépendant du niveau (regroupe Seconde + Première),
+                  donc hors de la logique par niveau ci-dessus. Absent pour Terminale Spé. */}
+              {!estTerminaleSpe && (
+                <button className="sidebar-tab-top" onClick={() => setActiveTab("qcm")}
+                  style={{ color: activeTab === "qcm" ? "#f59e0b" : "", borderBottom: activeTab === "qcm" ? "2px solid #f59e0b" : "2px solid transparent" }}>
+                  Automatismes QCM
+                </button>
               )}
 
               {/* Actions globales — toujours visibles */}
@@ -6285,7 +6355,7 @@ export default function App() {
               </>
             )}
 
-            {/* GenerateurZone — commun à tous les niveaux (Terminale: onglet Générateur, Seconde/Première: onglet Automatismes) */}
+            {/* GenerateurZone — commun à tous les niveaux, tous affichés sous l'onglet "Automatismes" */}
             <div style={{ display: activeTab === "generateur" || activeTab === "automatismes" ? "flex" : "none", flex: 1, minHeight: 0 }}>
               <GenerateurZone currentUser={user} currentProfile={profile}
                 sessionARecharger={sessionARecharger} onSessionChargee={() => setSessionARecharger(null)}
