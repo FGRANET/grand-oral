@@ -1296,7 +1296,7 @@ function tirerValeurParametre(def) {
 // chargés à l'écran, jamais d'une liste recopiée à la main.
 function genererDocumentationImport(contexte, chapitres, niveauScolaire) {
   const chapitresTries = [...chapitres].sort((a, b) => a.ordre - b.ordre).map(c => c.nom);
-  const nomNiveau = { terminale_spe: "Terminale Spé", seconde: "Seconde", premiere: "Première" }[niveauScolaire] || niveauScolaire;
+  const nomNiveau = { terminale_spe: "Terminale Spé", seconde: "Seconde", premiere_specifique: "Première spécifique", premiere_spe: "Première spécialité", premiere_techno: "Première technologique" }[niveauScolaire] || niveauScolaire;
   const premierChapitre = chapitresTries[0] || "Nom exact d'un chapitre existant";
   const L = [];
 
@@ -6104,19 +6104,25 @@ export default function App() {
 
   const COULEURS_NIVEAU = {
     terminale_spe: "#2563eb",
-    premiere:      "#7c3aed",
+    premiere_specifique: "#7c3aed",
+    premiere_spe:        "#9333ea",
+    premiere_techno:     "#c026d3",
     seconde:       "#059669",
   };
   // Variante claire (hover, textes accentués) et triplet RGB (badges semi-transparents)
   // pour chaque couleur de niveau — mêmes usages que --accent-light / --accent-rgb.
   const COULEURS_NIVEAU_LIGHT = {
     terminale_spe: "#60a5fa",
-    premiere:      "#a78bfa",
+    premiere_specifique: "#a78bfa",
+    premiere_spe:        "#c084fc",
+    premiere_techno:     "#e879f9",
     seconde:       "#34d399",
   };
   const COULEURS_NIVEAU_RGB = {
     terminale_spe: "37,99,235",
-    premiere:      "124,58,237",
+    premiere_specifique: "124,58,237",
+    premiere_spe:        "147,51,234",
+    premiere_techno:     "192,38,211",
     seconde:       "5,150,105",
   };
   const couleurActive = COULEURS_NIVEAU[niveauScolaire] || "#2563eb";
@@ -6250,7 +6256,9 @@ export default function App() {
               <div className="niveau-pills">
                 {[
                   { id: "terminale_spe", label: "Terminale spé", icone: "🔷" },
-                  { id: "premiere", label: "Première", icone: "🔶" },
+                  { id: "premiere_specifique", label: "1re spécifique", icone: "🔶" },
+                  { id: "premiere_spe", label: "1re spécialité", icone: "🔸" },
+                  { id: "premiere_techno", label: "1re techno", icone: "🔻" },
                   { id: "seconde", label: "Seconde", icone: "🔺" },
                 ].map(n => (
                   <button key={n.id} className={`niveau-pill${niveauScolaire === n.id ? " active" : ""}`}
