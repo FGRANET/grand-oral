@@ -6271,6 +6271,7 @@ export default function App() {
   };
   const couleurActive = COULEURS_NIVEAU[niveauScolaire] || "#2563eb";
   const estTerminaleSpe = niveauScolaire === "terminale_spe";
+  const estContexteQcm = activeTab === "qcm" || activeTab === "historique_qcm";
   // Injectées en CSS custom properties sur le conteneur de contenu : tout ce qui
   // utilise déjà var(--accent) / var(--accent-light) / var(--accent-rgb) (filtres,
   // badges, boutons, checkboxes, tirage, barre de progression…) se reteinte
@@ -6400,6 +6401,23 @@ export default function App() {
 
             {/* Barre unifiée : pills de niveau + séparateur + sous-onglets */}
             <div className="niveau-top-bar">
+              {/* Automatismes QCM : indépendant du niveau (regroupe Seconde + Première),
+                  point d'entrée unique placé en premier, avant les pills de niveau.
+                  Absent pour Terminale Spé, où le QCM n'existe pas. */}
+              {!estTerminaleSpe && (
+                <>
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
+                    <button className={`niveau-pill${estContexteQcm ? " active" : ""}`}
+                      style={estContexteQcm ? { background: "#f59e0b", color: "#1c1300" } : {}}
+                      onClick={() => setActiveTab("qcm")}>
+                      <span aria-hidden="true" style={{ marginRight: 6 }}>🎲</span>Automatismes QCM
+                    </button>
+                    <span style={{ fontSize: 9, color: "#f59e0b", letterSpacing: ".03em" }}>SECONDE + 1RE</span>
+                  </div>
+                  <div className="niveau-separateur"></div>
+                </>
+              )}
+
               {/* Pills de niveau */}
               <div className="niveau-pills">
                 {[
@@ -6417,26 +6435,23 @@ export default function App() {
                 ))}
               </div>
 
-              {/* Automatismes QCM : indépendant du niveau (regroupe Seconde + Première),
-                  placé à côté des pills plutôt que dans les sous-onglets. Absent pour Terminale Spé. */}
-              {!estTerminaleSpe && (
-                <>
-                  <button className="sidebar-tab-top" onClick={() => setActiveTab("qcm")}
-                    style={{ color: activeTab === "qcm" ? "#f59e0b" : "", borderBottom: activeTab === "qcm" ? "2px solid #f59e0b" : "2px solid transparent" }}>
-                    Automatismes QCM
-                  </button>
-                  <button className="sidebar-tab-top" onClick={() => setActiveTab("historique_qcm")}
-                    style={{ color: activeTab === "historique_qcm" ? "#f59e0b" : "", borderBottom: activeTab === "historique_qcm" ? "2px solid #f59e0b" : "2px solid transparent" }}>
-                    Historique QCM
-                  </button>
-                </>
-              )}
-
               {/* Séparateur vertical */}
               <div className="niveau-separateur"></div>
 
-              {/* Sous-onglets selon le niveau */}
-              {estTerminaleSpe ? (
+              {/* Sous-onglets contextuels : QCM (si actif) prime sur le niveau,
+                  sinon Terminale Spé ou Seconde/Première selon la pill sélectionnée */}
+              {estContexteQcm ? (
+                <>
+                  <button className="sidebar-tab-top" onClick={() => setActiveTab("qcm")}
+                    style={{ color: activeTab === "qcm" ? "#f59e0b" : "", borderBottom: activeTab === "qcm" ? "2px solid #f59e0b" : "2px solid transparent" }}>
+                    QCM
+                  </button>
+                  <button className="sidebar-tab-top" onClick={() => setActiveTab("historique_qcm")}
+                    style={{ color: activeTab === "historique_qcm" ? "#f59e0b" : "", borderBottom: activeTab === "historique_qcm" ? "2px solid #f59e0b" : "2px solid transparent" }}>
+                    Historique
+                  </button>
+                </>
+              ) : estTerminaleSpe ? (
                 <>
                   <button className="sidebar-tab-top" onClick={() => setActiveTab("chat")}
                     style={{ color: activeTab === "chat" ? couleurActive : "", borderBottom: activeTab === "chat" ? `2px solid ${couleurActive}` : "2px solid transparent" }}>
