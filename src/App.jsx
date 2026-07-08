@@ -157,21 +157,19 @@ const CSS = `
   .sidebar-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
 
   /* ── Indicateur d'usage Supabase ── */
-  .usage-indicator { flex-shrink: 0; padding: 0; background: transparent; display: flex; align-items: center; }
-  .usage-indicator-toggle {
-    width: 100%; background: none; border: none; color: var(--text-muted);
-    font-family: var(--font); font-size: 11px; padding: 8px 8px; cursor: pointer;
-    display: flex; align-items: center; gap: 7px; border-radius: 8px; transition: background .15s;
+  .usage-indicator { flex-shrink: 0; display: flex; align-items: center; gap: 6px; }
+  .usage-badge {
+    font-size: 11px; color: var(--text-muted); display: flex; align-items: center; gap: 4px;
+    font-family: var(--mono); cursor: default;
   }
-  .usage-indicator-toggle:hover { background: var(--surface2); }
-  .usage-chevron { margin-left: auto; font-size: 9px; }
-  .usage-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); flex-shrink: 0; }
-  .usage-dot.alerte { background: var(--red); }
-  .usage-detail { padding: 4px 10px 8px; display: flex; flex-direction: column; gap: 10px; }
-  .usage-row-label { font-size: 11px; color: var(--text-muted); display: flex; justify-content: space-between; margin-bottom: 5px; }
-  .usage-row-label span { font-family: var(--mono); }
-  .usage-bar { height: 4px; background: var(--surface2); border-radius: 3px; overflow: hidden; }
-  .usage-bar-fill { height: 100%; border-radius: 3px; transition: width .3s; }
+  .usage-badge.alerte { color: var(--red); }
+
+  .site-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 20px; background: var(--surface); border-bottom: 1px solid var(--border); flex-shrink: 0;
+  }
+  .site-header-titre { font-size: 15px; font-weight: 600; }
+  .site-header-actions { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
 
   .eleve-item {
     display: flex; align-items: center; gap: 12px; padding: 10px 12px;
@@ -2907,7 +2905,6 @@ function formatTaille(octets) {
 
 function UsageIndicator() {
   const [stats, setStats] = useState(null);
-  const [ouvert, setOuvert] = useState(false);
 
   useEffect(() => {
     supabase.rpc("get_usage_stats").then(({ data, error }) => {
@@ -2920,29 +2917,19 @@ function UsageIndicator() {
   const LIMITE_DB = 500 * 1024 * 1024;       // 500 Mo
   const LIMITE_STORAGE = 1024 * 1024 * 1024; // 1 Go
 
-  const pctDb = Math.min(100, (stats.database_bytes / LIMITE_DB) * 100);
-  const pctStorage = Math.min(100, (stats.storage_bytes / LIMITE_STORAGE) * 100);
-  const alerte = pctDb > 80 || pctStorage > 80;
+  const pctDb = Math.min(100, Math.round((stats.database_bytes / LIMITE_DB) * 100));
+  const pctStorage = Math.min(100, Math.round((stats.storage_bytes / LIMITE_STORAGE) * 100));
 
   return (
     <div className="usage-indicator">
-      <button className="usage-indicator-toggle" onClick={() => setOuvert(o => !o)}>
-        <span className={`usage-dot${alerte ? " alerte" : ""}`} />
-        Stockage Supabase
-        <span className="usage-chevron">{ouvert ? "▾" : "▸"}</span>
-      </button>
-      {ouvert && (
-        <div className="usage-detail">
-          <div className="usage-row">
-            <div className="usage-row-label">Base de données <span>{formatTaille(stats.database_bytes)} / 500 Mo</span></div>
-            <div className="usage-bar"><div className="usage-bar-fill" style={{ width: `${pctDb}%`, background: pctDb > 80 ? "var(--red)" : "var(--accent)" }} /></div>
-          </div>
-          <div className="usage-row">
-            <div className="usage-row-label">Fichiers (photos, PDF) <span>{formatTaille(stats.storage_bytes)} / 1 Go</span></div>
-            <div className="usage-bar"><div className="usage-bar-fill" style={{ width: `${pctStorage}%`, background: pctStorage > 80 ? "var(--red)" : "var(--accent)" }} /></div>
-          </div>
-        </div>
-      )}
+      <span className={`usage-badge${pctDb > 80 ? " alerte" : ""}`}
+        title={`Base de données : ${formatTaille(stats.database_bytes)} / 500 Mo`}>
+        🗄️ {pctDb}%
+      </span>
+      <span className={`usage-badge${pctStorage > 80 ? " alerte" : ""}`}
+        title={`Fichiers (photos, PDF) : ${formatTaille(stats.storage_bytes)} / 1 Go`}>
+        📁 {pctStorage}%
+      </span>
     </div>
   );
 }
@@ -6248,6 +6235,8 @@ export default function App() {
   const [niveauScolaire, setNiveauScolaire] = useState("terminale_spe");
   const [showPasswordModal, setShowPasswordModal] = useState(false);
 
+  useEffect(() => { document.title = "Mathématiques à Valadon"; }, []);
+
   const COULEURS_NIVEAU = {
     terminale_spe: "#2563eb",
     premiere_specifique: "#7c3aed",
@@ -6406,6 +6395,20 @@ export default function App() {
         {profile.role === "professeur" && (
           <div style={{ display: "flex", flexDirection: "column", flex: 1, minWidth: 0, minHeight: 0, ...styleNiveau }}>
 
+            {/* En-tête du site : titre + actions de compte, toujours visible et de hauteur fixe */}
+            <div className="site-header">
+              <div>
+                <div className="site-header-titre">Mathématiques à Valadon</div>
+              </div>
+              <div className="site-header-actions">
+                <UsageIndicator />
+                <button className="btn-key" onClick={() => setShowPasswordModal(true)} title="Changer mon mot de passe">
+                  🔑 Mot de passe
+                </button>
+                <button className="btn-logout" onClick={() => supabase.auth.signOut()}>Déconnexion</button>
+              </div>
+            </div>
+
             {/* Barre unifiée : rangée 1 fixe (QCM + niveaux), rangée 2 contextuelle (sous-onglets) */}
             <div className="niveau-top-bar">
               <div className="niveau-top-row1">
@@ -6456,14 +6459,6 @@ export default function App() {
                   </>
                 ) : estTerminaleSpe ? (
                   <>
-                    <button className="sidebar-tab-top" onClick={() => setActiveTab("chat")}
-                      style={{ color: activeTab === "chat" ? couleurActive : "", borderBottom: activeTab === "chat" ? `2px solid ${couleurActive}` : "2px solid transparent" }}>
-                      Grand Oral{totalUnread > 0 && <span className="badge-count" style={{ marginLeft: 6, fontSize: 10, padding: "1px 6px" }}>{totalUnread}</span>}
-                    </button>
-                    <button className="sidebar-tab-top" onClick={() => setActiveTab("ressources")}
-                      style={{ color: activeTab === "ressources" ? couleurActive : "", borderBottom: activeTab === "ressources" ? `2px solid ${couleurActive}` : "2px solid transparent" }}>
-                      Ressources
-                    </button>
                     <button className="sidebar-tab-top" onClick={() => setActiveTab("generateur")}
                       style={{ color: activeTab === "generateur" ? couleurActive : "", borderBottom: activeTab === "generateur" ? `2px solid ${couleurActive}` : "2px solid transparent" }}>
                       Automatismes
@@ -6471,6 +6466,14 @@ export default function App() {
                     <button className="sidebar-tab-top" onClick={() => setActiveTab("historique")}
                       style={{ color: activeTab === "historique" ? couleurActive : "", borderBottom: activeTab === "historique" ? `2px solid ${couleurActive}` : "2px solid transparent" }}>
                       Historique
+                    </button>
+                    <button className="sidebar-tab-top" onClick={() => setActiveTab("ressources")}
+                      style={{ color: activeTab === "ressources" ? couleurActive : "", borderBottom: activeTab === "ressources" ? `2px solid ${couleurActive}` : "2px solid transparent" }}>
+                      Ressources
+                    </button>
+                    <button className="sidebar-tab-top" onClick={() => setActiveTab("chat")}
+                      style={{ color: activeTab === "chat" ? couleurActive : "", borderBottom: activeTab === "chat" ? `2px solid ${couleurActive}` : "2px solid transparent" }}>
+                      Grand Oral{totalUnread > 0 && <span className="badge-count" style={{ marginLeft: 6, fontSize: 10, padding: "1px 6px" }}>{totalUnread}</span>}
                     </button>
                   </>
                 ) : (
@@ -6485,15 +6488,6 @@ export default function App() {
                     </button>
                   </>
                 )}
-
-                {/* Actions globales — toujours visibles */}
-                <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-                  <UsageIndicator />
-                  <button className="btn-key" onClick={() => setShowPasswordModal(true)} title="Changer mon mot de passe">
-                    🔑 Mot de passe
-                  </button>
-                  <button className="btn-logout" onClick={() => supabase.auth.signOut()}>Déconnexion</button>
-                </div>
               </div>
             </div>
 
