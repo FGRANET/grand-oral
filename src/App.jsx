@@ -4065,25 +4065,41 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
   useEffect(() => {
     if (!sessionARecharger) return;
 
-    // Sépare les ids qui appartiennent à la banque de questions classiques
-    // de ceux qui sont des exercices d'application (présents dans la
-    // bibliothèque codée, jamais dans la table "questions")
-    const idsExercices = sessionARecharger.filter(id => BIBLIOTHEQUE_EXERCICES[id]);
-    const idsQuestions = sessionARecharger.filter(id => !BIBLIOTHEQUE_EXERCICES[id]);
+    // Sépare les ids qui appartiennent encore à l'ancienne bibliothèque codée
+    // en dur (presque vide désormais) de tout le reste, qui peut venir soit
+    // de la table "questions" (fixe) soit de "exercices_application" (aléatoire).
+    const idsBibliotheque = sessionARecharger.filter(id => BIBLIOTHEQUE_EXERCICES[id]);
+    const idsAutres = sessionARecharger.filter(id => !BIBLIOTHEQUE_EXERCICES[id]);
 
-    supabase.from("questions").select("*").in("id", idsQuestions.length ? idsQuestions : ["__aucun__"]).then(({ data }) => {
+    Promise.all([
+      supabase.from("questions").select("*").in("id", idsAutres.length ? idsAutres : ["__aucun__"]),
+      supabase.from("exercices_application").select("*").in("id", idsAutres.length ? idsAutres : ["__aucun__"]),
+    ]).then(([{ data: questionsData }, { data: exercicesData }]) => {
       const parId = {};
-      (data || []).forEach(q => { parId[q.id] = q; });
+      (questionsData || []).forEach(q => { parId[q.id] = { ...q, _cle: q.id }; });
 
-      // Pour les exercices, on retire un nouveau tirage : la session ne
-      // mémorise que le modèle, pas les valeurs figées d'origine.
-      idsExercices.forEach(id => {
+      // Exercices aléatoires stockés en base : on retire un nouveau tirage,
+      // la session ne mémorise que le modèle, pas les valeurs figées d'origine.
+      (exercicesData || []).forEach(ex => {
+        const valeurs = {};
+        Object.entries(ex.parametres || {}).forEach(([nom, d]) => { valeurs[nom] = tirerValeurParametre(d); });
+        parId[ex.id] = {
+          id: ex.id, chapitre_id: ex.chapitre_id, type: "exercice", niveau: ex.niveau,
+          enonce: substituerPlaceholders(ex.enonce_modele, valeurs),
+          reponse: substituerPlaceholders(ex.reponse_modele, valeurs),
+          _cle: ex.id, _aleatoire: true,
+        };
+      });
+
+      // Anciens exercices encore codés en dur (cas résiduel, la bibliothèque est vide aujourd'hui)
+      idsBibliotheque.forEach(id => {
         const def = BIBLIOTHEQUE_EXERCICES[id];
         const chapitreCorrespondant = chapitres.find(c => c.nom === def.chapitre);
         const tirage = def.generer();
         parId[id] = {
           id, chapitre_id: chapitreCorrespondant?.id, type: "exercice", niveau: def.niveau,
           enonce: tirage.enonce, reponse: tirage.reponse,
+          _cle: id, _aleatoire: true,
         };
       });
 
