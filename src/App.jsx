@@ -5330,7 +5330,9 @@ function QcmZone({ currentUser, currentProfile, qcmSessionARecharger, onSessionC
   async function sauvegarderDansHistorique(action) {
     if (selection.length === 0) return;
     const signature = calculerSignature(selection);
-    const niveau = niveauScolaire || "terminale_spe";
+    // Niveau fixe, indépendant de la pill sélectionnée : le QCM mélange
+    // Seconde et Première, donc "le niveau au moment du clic" n'a pas de sens.
+    const niveau = "automatismes_qcm";
     const { data: existante } = await supabase.from("sessions_historique")
       .select("id").eq("prof_id", currentUser.id).eq("signature", signature).eq("type_session", "qcm").maybeSingle();
     if (existante) {
@@ -6358,7 +6360,7 @@ export default function App() {
     if (!estTerminaleSpe && (activeTab === "chat" || activeTab === "ressources")) {
       setActiveTab("automatismes");
     }
-    if (estTerminaleSpe && (activeTab === "automatismes" || activeTab === "qcm")) {
+    if (estTerminaleSpe && (activeTab === "automatismes" || activeTab === "qcm" || activeTab === "historique_qcm")) {
       setActiveTab("chat");
     }
   }, [niveauScolaire]);
@@ -6418,10 +6420,16 @@ export default function App() {
               {/* Automatismes QCM : indépendant du niveau (regroupe Seconde + Première),
                   placé à côté des pills plutôt que dans les sous-onglets. Absent pour Terminale Spé. */}
               {!estTerminaleSpe && (
-                <button className="sidebar-tab-top" onClick={() => setActiveTab("qcm")}
-                  style={{ color: activeTab === "qcm" ? "#f59e0b" : "", borderBottom: activeTab === "qcm" ? "2px solid #f59e0b" : "2px solid transparent" }}>
-                  Automatismes QCM
-                </button>
+                <>
+                  <button className="sidebar-tab-top" onClick={() => setActiveTab("qcm")}
+                    style={{ color: activeTab === "qcm" ? "#f59e0b" : "", borderBottom: activeTab === "qcm" ? "2px solid #f59e0b" : "2px solid transparent" }}>
+                    Automatismes QCM
+                  </button>
+                  <button className="sidebar-tab-top" onClick={() => setActiveTab("historique_qcm")}
+                    style={{ color: activeTab === "historique_qcm" ? "#f59e0b" : "", borderBottom: activeTab === "historique_qcm" ? "2px solid #f59e0b" : "2px solid transparent" }}>
+                    Historique QCM
+                  </button>
+                </>
               )}
 
               {/* Séparateur vertical */}
@@ -6534,6 +6542,18 @@ export default function App() {
                 qcmSessionARecharger={qcmSessionARecharger} onSessionChargee={() => setQcmSessionARecharger(null)}
                 niveauScolaire={niveauScolaire} onSessionSauvegardee={notifierNouvelleSessionHistorique} />
             </div>
+
+            {/* Historique QCM : indépendant du niveau, comme l'onglet Automatismes QCM lui-même */}
+            {!estTerminaleSpe && (
+              <div style={{ display: activeTab === "historique_qcm" ? "flex" : "none", flex: 1, minHeight: 0 }}>
+                <HistoriqueZone currentUser={user} currentProfile={profile} allProfiles={allProfiles}
+                  niveauScolaire="automatismes_qcm" actif={activeTab === "historique_qcm"} historiqueVersion={historiqueVersion}
+                  onRejouer={(session) => {
+                    setQcmSessionARecharger(session.question_ids);
+                    setActiveTab("qcm");
+                  }} />
+              </div>
+            )}
 
           </div>
         )}
