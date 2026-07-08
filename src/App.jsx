@@ -6422,7 +6422,12 @@ export default function App() {
                   ].map(n => (
                     <button key={n.id} className={`niveau-pill${niveauScolaire === n.id ? " active" : ""}`}
                       style={niveauScolaire === n.id ? { background: COULEURS_NIVEAU[n.id] } : {}}
-                      onClick={() => setNiveauScolaire(n.id)}>
+                      onClick={() => {
+                        setNiveauScolaire(n.id);
+                        if (estContexteQcm) {
+                          setActiveTab(n.id === "terminale_spe" ? "generateur" : "automatismes");
+                        }
+                      }}>
                       <span aria-hidden="true" style={{ marginRight: 6 }}>{n.icone}</span>{n.label}
                     </button>
                   ))}
