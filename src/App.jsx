@@ -6611,6 +6611,9 @@ export default function App() {
                 onClick={() => setActiveTab("chat")}>💬 Discussion</button>
               <button className={`sidebar-tab${activeTab === "ressources" ? " active" : ""}`}
                 onClick={() => setActiveTab("ressources")}>📚 Ressources</button>
+              <button className="btn-logout" style={{ marginLeft: "auto" }} onClick={() => supabase.auth.signOut()}>
+                Déconnexion
+              </button>
             </div>
             {activeTab === "chat" && (
               <ChatZone eleveId={user.id} currentUser={user} currentProfile={profile} allProfiles={allProfiles} />
