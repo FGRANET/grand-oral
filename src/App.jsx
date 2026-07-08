@@ -6361,7 +6361,7 @@ export default function App() {
     if (!estTerminaleSpe && (activeTab === "chat" || activeTab === "ressources")) {
       setActiveTab("automatismes");
     }
-    if (estTerminaleSpe && (activeTab === "automatismes" || activeTab === "qcm" || activeTab === "historique_qcm")) {
+    if (estTerminaleSpe && activeTab === "automatismes") {
       setActiveTab("chat");
     }
   }, [niveauScolaire]);
@@ -6402,21 +6402,17 @@ export default function App() {
             {/* Barre unifiée : pills de niveau + séparateur + sous-onglets */}
             <div className="niveau-top-bar">
               {/* Automatismes QCM : indépendant du niveau (regroupe Seconde + Première),
-                  point d'entrée unique placé en premier, avant les pills de niveau.
-                  Absent pour Terminale Spé, où le QCM n'existe pas. */}
-              {!estTerminaleSpe && (
-                <>
-                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
-                    <button className={`niveau-pill${estContexteQcm ? " active" : ""}`}
-                      style={estContexteQcm ? { background: "#f59e0b", color: "#1c1300" } : {}}
-                      onClick={() => setActiveTab("qcm")}>
-                      <span aria-hidden="true" style={{ marginRight: 6 }}>🎲</span>Automatismes QCM
-                    </button>
-                    <span style={{ fontSize: 9, color: "#f59e0b", letterSpacing: ".03em" }}>SECONDE + 1RE</span>
-                  </div>
-                  <div className="niveau-separateur"></div>
-                </>
-              )}
+                  point d'entrée unique fixe en première ligne, avant les pills de niveau.
+                  Reste visible même sur Terminale Spé — cette rangée ne bouge jamais. */}
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
+                <button className={`niveau-pill${estContexteQcm ? " active" : ""}`}
+                  style={estContexteQcm ? { background: "#f59e0b", color: "#1c1300" } : {}}
+                  onClick={() => setActiveTab("qcm")}>
+                  <span aria-hidden="true" style={{ marginRight: 6 }}>🎲</span>Automatismes QCM
+                </button>
+                <span style={{ fontSize: 9, color: "#f59e0b", letterSpacing: ".03em" }}>SECONDE + 1RE</span>
+              </div>
+              <div className="niveau-separateur"></div>
 
               {/* Pills de niveau */}
               <div className="niveau-pills">
@@ -6559,16 +6555,14 @@ export default function App() {
             </div>
 
             {/* Historique QCM : indépendant du niveau, comme l'onglet Automatismes QCM lui-même */}
-            {!estTerminaleSpe && (
-              <div style={{ display: activeTab === "historique_qcm" ? "flex" : "none", flex: 1, minHeight: 0 }}>
-                <HistoriqueZone currentUser={user} currentProfile={profile} allProfiles={allProfiles}
-                  niveauScolaire="automatismes_qcm" actif={activeTab === "historique_qcm"} historiqueVersion={historiqueVersion}
-                  onRejouer={(session) => {
-                    setQcmSessionARecharger(session.question_ids);
-                    setActiveTab("qcm");
-                  }} />
-              </div>
-            )}
+            <div style={{ display: activeTab === "historique_qcm" ? "flex" : "none", flex: 1, minHeight: 0 }}>
+              <HistoriqueZone currentUser={user} currentProfile={profile} allProfiles={allProfiles}
+                niveauScolaire="automatismes_qcm" actif={activeTab === "historique_qcm"} historiqueVersion={historiqueVersion}
+                onRejouer={(session) => {
+                  setQcmSessionARecharger(session.question_ids);
+                  setActiveTab("qcm");
+                }} />
+            </div>
 
           </div>
         )}
