@@ -209,10 +209,12 @@ const CSS = `
   /* ── Onglets en haut, pleine largeur (quand la sidebar verticale est masquée) ── */
   /* ── Barre multi-niveaux (pills + séparateur + sous-onglets) ── */
   .niveau-top-bar {
-    display: flex; align-items: center; background: var(--surface);
-    border-bottom: 1px solid var(--border); flex-shrink: 0; padding: 0 16px;
+    display: flex; flex-direction: column; background: var(--surface);
+    border-bottom: 1px solid var(--border); flex-shrink: 0;
   }
-  .niveau-pills { display: flex; align-items: center; gap: 6px; padding: 8px 0; flex-shrink: 0; }
+  .niveau-top-row1 { display: flex; align-items: center; padding: 8px 16px; }
+  .niveau-top-row2 { display: flex; align-items: center; padding: 0 16px; border-top: 1px solid var(--border); }
+  .niveau-pills { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
   .niveau-pill {
     padding: 5px 13px; font-size: 12px; font-weight: 500; border-radius: 20px;
     cursor: pointer; font-family: var(--font); border: 0.5px solid var(--border);
@@ -6364,6 +6366,11 @@ export default function App() {
     if (estTerminaleSpe && activeTab === "automatismes") {
       setActiveTab("chat");
     }
+    // Cliquer sur une pill de niveau fait quitter le QCM (indépendant du niveau)
+    // pour rejoindre les automatismes "classiques" du niveau qu'on vient de choisir.
+    if (activeTab === "qcm" || activeTab === "historique_qcm") {
+      setActiveTab(estTerminaleSpe ? "generateur" : "automatismes");
+    }
   }, [niveauScolaire]);
 
   function handleLogin(u, p) { setUser(u); setProfile(p); }
@@ -6399,93 +6406,94 @@ export default function App() {
         {profile.role === "professeur" && (
           <div style={{ display: "flex", flexDirection: "column", flex: 1, minWidth: 0, minHeight: 0, ...styleNiveau }}>
 
-            {/* Barre unifiée : pills de niveau + séparateur + sous-onglets */}
+            {/* Barre unifiée : rangée 1 fixe (QCM + niveaux), rangée 2 contextuelle (sous-onglets) */}
             <div className="niveau-top-bar">
-              {/* Automatismes QCM : indépendant du niveau (regroupe Seconde + Première),
-                  point d'entrée unique fixe en première ligne, avant les pills de niveau.
-                  Reste visible même sur Terminale Spé — cette rangée ne bouge jamais. */}
-              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
-                <button className={`niveau-pill${estContexteQcm ? " active" : ""}`}
-                  style={estContexteQcm ? { background: "#f59e0b", color: "#1c1300" } : {}}
-                  onClick={() => setActiveTab("qcm")}>
-                  <span aria-hidden="true" style={{ marginRight: 6 }}>🎲</span>Automatismes QCM
-                </button>
-                <span style={{ fontSize: 9, color: "#f59e0b", letterSpacing: ".03em" }}>SECONDE + 1RE</span>
+              <div className="niveau-top-row1">
+                {/* Automatismes QCM : indépendant du niveau (regroupe Seconde + Première),
+                    point d'entrée unique fixe en première ligne, avant les pills de niveau.
+                    Reste visible même sur Terminale Spé — cette rangée ne bouge jamais. */}
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
+                  <button className={`niveau-pill${estContexteQcm ? " active" : ""}`}
+                    style={estContexteQcm ? { background: "#f59e0b", color: "#1c1300" } : {}}
+                    onClick={() => setActiveTab("qcm")}>
+                    <span aria-hidden="true" style={{ marginRight: 6 }}>🎲</span>Automatismes QCM
+                  </button>
+                  <span style={{ fontSize: 9, color: "#f59e0b", letterSpacing: ".03em" }}>SECONDE + 1RE</span>
+                </div>
+                <div className="niveau-separateur"></div>
+
+                {/* Pills de niveau */}
+                <div className="niveau-pills">
+                  {[
+                    { id: "terminale_spe", label: "Terminale spé", icone: "🔷" },
+                    { id: "premiere_specifique", label: "1re spécifique", icone: "🔶" },
+                    { id: "premiere_spe", label: "1re spécialité", icone: "🔸" },
+                    { id: "premiere_techno", label: "1re techno", icone: "🔻" },
+                    { id: "seconde", label: "Seconde", icone: "🔺" },
+                  ].map(n => (
+                    <button key={n.id} className={`niveau-pill${niveauScolaire === n.id ? " active" : ""}`}
+                      style={niveauScolaire === n.id ? { background: COULEURS_NIVEAU[n.id] } : {}}
+                      onClick={() => setNiveauScolaire(n.id)}>
+                      <span aria-hidden="true" style={{ marginRight: 6 }}>{n.icone}</span>{n.label}
+                    </button>
+                  ))}
+                </div>
               </div>
-              <div className="niveau-separateur"></div>
 
-              {/* Pills de niveau */}
-              <div className="niveau-pills">
-                {[
-                  { id: "terminale_spe", label: "Terminale spé", icone: "🔷" },
-                  { id: "premiere_specifique", label: "1re spécifique", icone: "🔶" },
-                  { id: "premiere_spe", label: "1re spécialité", icone: "🔸" },
-                  { id: "premiere_techno", label: "1re techno", icone: "🔻" },
-                  { id: "seconde", label: "Seconde", icone: "🔺" },
-                ].map(n => (
-                  <button key={n.id} className={`niveau-pill${niveauScolaire === n.id ? " active" : ""}`}
-                    style={niveauScolaire === n.id ? { background: COULEURS_NIVEAU[n.id] } : {}}
-                    onClick={() => setNiveauScolaire(n.id)}>
-                    <span aria-hidden="true" style={{ marginRight: 6 }}>{n.icone}</span>{n.label}
-                  </button>
-                ))}
-              </div>
+              <div className="niveau-top-row2">
+                {/* Sous-onglets contextuels : QCM (si actif) prime sur le niveau,
+                    sinon Terminale Spé ou Seconde/Première selon la pill sélectionnée */}
+                {estContexteQcm ? (
+                  <>
+                    <button className="sidebar-tab-top" onClick={() => setActiveTab("qcm")}
+                      style={{ color: activeTab === "qcm" ? "#f59e0b" : "", borderBottom: activeTab === "qcm" ? "2px solid #f59e0b" : "2px solid transparent" }}>
+                      QCM
+                    </button>
+                    <button className="sidebar-tab-top" onClick={() => setActiveTab("historique_qcm")}
+                      style={{ color: activeTab === "historique_qcm" ? "#f59e0b" : "", borderBottom: activeTab === "historique_qcm" ? "2px solid #f59e0b" : "2px solid transparent" }}>
+                      Historique
+                    </button>
+                  </>
+                ) : estTerminaleSpe ? (
+                  <>
+                    <button className="sidebar-tab-top" onClick={() => setActiveTab("chat")}
+                      style={{ color: activeTab === "chat" ? couleurActive : "", borderBottom: activeTab === "chat" ? `2px solid ${couleurActive}` : "2px solid transparent" }}>
+                      Grand Oral{totalUnread > 0 && <span className="badge-count" style={{ marginLeft: 6, fontSize: 10, padding: "1px 6px" }}>{totalUnread}</span>}
+                    </button>
+                    <button className="sidebar-tab-top" onClick={() => setActiveTab("ressources")}
+                      style={{ color: activeTab === "ressources" ? couleurActive : "", borderBottom: activeTab === "ressources" ? `2px solid ${couleurActive}` : "2px solid transparent" }}>
+                      Ressources
+                    </button>
+                    <button className="sidebar-tab-top" onClick={() => setActiveTab("generateur")}
+                      style={{ color: activeTab === "generateur" ? couleurActive : "", borderBottom: activeTab === "generateur" ? `2px solid ${couleurActive}` : "2px solid transparent" }}>
+                      Automatismes
+                    </button>
+                    <button className="sidebar-tab-top" onClick={() => setActiveTab("historique")}
+                      style={{ color: activeTab === "historique" ? couleurActive : "", borderBottom: activeTab === "historique" ? `2px solid ${couleurActive}` : "2px solid transparent" }}>
+                      Historique
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <button className="sidebar-tab-top" onClick={() => setActiveTab("automatismes")}
+                      style={{ color: activeTab === "automatismes" ? couleurActive : "", borderBottom: activeTab === "automatismes" ? `2px solid ${couleurActive}` : "2px solid transparent" }}>
+                      Automatismes
+                    </button>
+                    <button className="sidebar-tab-top" onClick={() => setActiveTab("historique")}
+                      style={{ color: activeTab === "historique" ? couleurActive : "", borderBottom: activeTab === "historique" ? `2px solid ${couleurActive}` : "2px solid transparent" }}>
+                      Historique
+                    </button>
+                  </>
+                )}
 
-              {/* Séparateur vertical */}
-              <div className="niveau-separateur"></div>
-
-              {/* Sous-onglets contextuels : QCM (si actif) prime sur le niveau,
-                  sinon Terminale Spé ou Seconde/Première selon la pill sélectionnée */}
-              {estContexteQcm ? (
-                <>
-                  <button className="sidebar-tab-top" onClick={() => setActiveTab("qcm")}
-                    style={{ color: activeTab === "qcm" ? "#f59e0b" : "", borderBottom: activeTab === "qcm" ? "2px solid #f59e0b" : "2px solid transparent" }}>
-                    QCM
+                {/* Actions globales — toujours visibles */}
+                <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+                  <UsageIndicator />
+                  <button className="btn-key" onClick={() => setShowPasswordModal(true)} title="Changer mon mot de passe">
+                    🔑 Mot de passe
                   </button>
-                  <button className="sidebar-tab-top" onClick={() => setActiveTab("historique_qcm")}
-                    style={{ color: activeTab === "historique_qcm" ? "#f59e0b" : "", borderBottom: activeTab === "historique_qcm" ? "2px solid #f59e0b" : "2px solid transparent" }}>
-                    Historique
-                  </button>
-                </>
-              ) : estTerminaleSpe ? (
-                <>
-                  <button className="sidebar-tab-top" onClick={() => setActiveTab("chat")}
-                    style={{ color: activeTab === "chat" ? couleurActive : "", borderBottom: activeTab === "chat" ? `2px solid ${couleurActive}` : "2px solid transparent" }}>
-                    Grand Oral{totalUnread > 0 && <span className="badge-count" style={{ marginLeft: 6, fontSize: 10, padding: "1px 6px" }}>{totalUnread}</span>}
-                  </button>
-                  <button className="sidebar-tab-top" onClick={() => setActiveTab("ressources")}
-                    style={{ color: activeTab === "ressources" ? couleurActive : "", borderBottom: activeTab === "ressources" ? `2px solid ${couleurActive}` : "2px solid transparent" }}>
-                    Ressources
-                  </button>
-                  <button className="sidebar-tab-top" onClick={() => setActiveTab("generateur")}
-                    style={{ color: activeTab === "generateur" ? couleurActive : "", borderBottom: activeTab === "generateur" ? `2px solid ${couleurActive}` : "2px solid transparent" }}>
-                    Automatismes
-                  </button>
-                  <button className="sidebar-tab-top" onClick={() => setActiveTab("historique")}
-                    style={{ color: activeTab === "historique" ? couleurActive : "", borderBottom: activeTab === "historique" ? `2px solid ${couleurActive}` : "2px solid transparent" }}>
-                    Historique
-                  </button>
-                </>
-              ) : (
-                <>
-                  <button className="sidebar-tab-top" onClick={() => setActiveTab("automatismes")}
-                    style={{ color: activeTab === "automatismes" ? couleurActive : "", borderBottom: activeTab === "automatismes" ? `2px solid ${couleurActive}` : "2px solid transparent" }}>
-                    Automatismes
-                  </button>
-                  <button className="sidebar-tab-top" onClick={() => setActiveTab("historique")}
-                    style={{ color: activeTab === "historique" ? couleurActive : "", borderBottom: activeTab === "historique" ? `2px solid ${couleurActive}` : "2px solid transparent" }}>
-                    Historique
-                  </button>
-                </>
-              )}
-
-              {/* Actions globales — toujours visibles */}
-              <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-                <UsageIndicator />
-                <button className="btn-key" onClick={() => setShowPasswordModal(true)} title="Changer mon mot de passe">
-                  🔑 Mot de passe
-                </button>
-                <button className="btn-logout" onClick={() => supabase.auth.signOut()}>Déconnexion</button>
+                  <button className="btn-logout" onClick={() => supabase.auth.signOut()}>Déconnexion</button>
+                </div>
               </div>
             </div>
 
