@@ -2946,7 +2946,7 @@ function UsageIndicator() {
 }
 
 // ─── Composant HistoriqueZone ───────────────────────────────────────────
-function HistoriqueZone({ currentUser, currentProfile, allProfiles, onRejouer, niveauScolaire }) {
+function HistoriqueZone({ currentUser, currentProfile, allProfiles, onRejouer, niveauScolaire, actif, historiqueVersion }) {
   const [sessions, setSessions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filtre, setFiltre] = useState("mes_sessions"); // "mes_sessions" | "favoris" | "partagees"
@@ -2968,7 +2968,10 @@ function HistoriqueZone({ currentUser, currentProfile, allProfiles, onRejouer, n
     setLoading(false);
   }, [filtre, currentUser.id, niveauScolaire]);
 
-  useEffect(() => { fetchSessions(); }, [fetchSessions]);
+  useEffect(() => {
+    if (!actif) return;
+    fetchSessions();
+  }, [actif, fetchSessions, historiqueVersion]);
 
   function nomAuteur(profId) {
     const p = allProfiles.find(pr => pr.id === profId);
@@ -3977,7 +3980,7 @@ function TirageAleatoireQcm({ chapitres, onAnnuler, onTirer }) {
   );
 }
 
-function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSessionChargee, niveauScolaire }) {
+function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSessionChargee, niveauScolaire, onSessionSauvegardee }) {
   const [chapitres, setChapitres] = useState([]);
   const [questionsParChapitre, setQuestionsParChapitre] = useState({}); // { chapitre_id: [questions] }
   const [exercicesEnBase, setExercicesEnBase] = useState([]);           // exercices_application chargés depuis Supabase
@@ -4525,6 +4528,7 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
         type_session: "classique",
       });
     }
+    onSessionSauvegardee?.();
   }
 
   function telechargerTex(avecCorrige) {
@@ -5083,7 +5087,7 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
 // Rubrique indépendante pour les QCM (fixe + aléatoire), sur le modèle de
 // GenerateurZone mais simplifiée : un seul "type" de contenu, pas de filtre
 // par type de question, tirage/édition/export propres aux QCM.
-function QcmZone({ currentUser, currentProfile, qcmSessionARecharger, onSessionChargee, niveauScolaire }) {
+function QcmZone({ currentUser, currentProfile, qcmSessionARecharger, onSessionChargee, niveauScolaire, onSessionSauvegardee }) {
   const [chapitres, setChapitres] = useState([]);
   const [qcmParChapitre, setQcmParChapitre] = useState({});       // { chapitre_id: [qcm] }
   const [chapitresOuverts, setChapitresOuverts] = useState({});
@@ -5346,6 +5350,7 @@ function QcmZone({ currentUser, currentProfile, qcmSessionARecharger, onSessionC
         type_session: "qcm",
       });
     }
+    onSessionSauvegardee?.();
   }
 
   // ── Export .tex — feuille avec cases à cocher ──
@@ -6275,6 +6280,10 @@ export default function App() {
     background: "radial-gradient(ellipse 1200px 800px at 15% 0%, rgba(var(--accent-rgb), 0.06), transparent 60%), var(--bg)",
   };
   const [sessionARecharger, setSessionARecharger] = useState(null); // ids de questions à charger dans le générateur
+  // Incrémenté à chaque sauvegarde de session (diaporama/.tex), pour que
+  // l'Historique se rafraîchisse même s'il est déjà ouvert au moment de la sauvegarde.
+  const [historiqueVersion, setHistoriqueVersion] = useState(0);
+  const notifierNouvelleSessionHistorique = () => setHistoriqueVersion(v => v + 1);
   const [qcmSessionARecharger, setQcmSessionARecharger] = useState(null); // ids de qcm à charger dans la rubrique QCM
 
   // Charger le CSS de KaTeX une seule fois (nécessaire pour un rendu correct des formules)
@@ -6491,7 +6500,7 @@ export default function App() {
                 </div>
                 <div style={{ display: activeTab === "historique" ? "flex" : "none", flex: 1, minHeight: 0 }}>
                   <HistoriqueZone currentUser={user} currentProfile={profile} allProfiles={allProfiles}
-                    niveauScolaire={niveauScolaire}
+                    niveauScolaire={niveauScolaire} actif={activeTab === "historique"} historiqueVersion={historiqueVersion}
                     onRejouer={(session) => {
                       if (session.type_session === "qcm") { setQcmSessionARecharger(session.question_ids); setActiveTab("qcm"); }
                       else { setSessionARecharger(session.question_ids); setActiveTab("generateur"); }
@@ -6504,14 +6513,14 @@ export default function App() {
             <div style={{ display: activeTab === "generateur" || activeTab === "automatismes" ? "flex" : "none", flex: 1, minHeight: 0 }}>
               <GenerateurZone currentUser={user} currentProfile={profile}
                 sessionARecharger={sessionARecharger} onSessionChargee={() => setSessionARecharger(null)}
-                niveauScolaire={niveauScolaire} />
+                niveauScolaire={niveauScolaire} onSessionSauvegardee={notifierNouvelleSessionHistorique} />
             </div>
 
             {/* Historique Seconde/Première */}
             {!estTerminaleSpe && (
               <div style={{ display: activeTab === "historique" ? "flex" : "none", flex: 1, minHeight: 0 }}>
                 <HistoriqueZone currentUser={user} currentProfile={profile} allProfiles={allProfiles}
-                  niveauScolaire={niveauScolaire}
+                  niveauScolaire={niveauScolaire} actif={activeTab === "historique"} historiqueVersion={historiqueVersion}
                   onRejouer={(session) => {
                     if (session.type_session === "qcm") { setQcmSessionARecharger(session.question_ids); setActiveTab("qcm"); }
                     else { setSessionARecharger(session.question_ids); setActiveTab("automatismes"); }
@@ -6523,7 +6532,7 @@ export default function App() {
             <div style={{ display: activeTab === "qcm" ? "flex" : "none", flex: 1, minHeight: 0 }}>
               <QcmZone currentUser={user} currentProfile={profile}
                 qcmSessionARecharger={qcmSessionARecharger} onSessionChargee={() => setQcmSessionARecharger(null)}
-                niveauScolaire={niveauScolaire} />
+                niveauScolaire={niveauScolaire} onSessionSauvegardee={notifierNouvelleSessionHistorique} />
             </div>
 
           </div>
