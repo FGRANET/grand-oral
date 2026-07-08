@@ -164,12 +164,7 @@ const CSS = `
   }
   .usage-badge.alerte { color: var(--red); }
 
-  .site-header {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 10px 20px; background: var(--surface); border-bottom: 1px solid var(--border); flex-shrink: 0;
-  }
-  .site-header-titre { font-size: 15px; font-weight: 600; }
-  .site-header-actions { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+  .site-titre { font-size: 19px; font-weight: 600; color: var(--accent-light); flex-shrink: 0; white-space: nowrap; }
 
   .eleve-item {
     display: flex; align-items: center; gap: 12px; padding: 10px 12px;
@@ -6231,7 +6226,7 @@ export default function App() {
   const [selectedEleve, setSelectedEleve] = useState(null);
   const [unreadCounts, setUnreadCounts] = useState({});
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState("chat");
+  const [activeTab, setActiveTab] = useState("generateur");
   const [niveauScolaire, setNiveauScolaire] = useState("terminale_spe");
   const [showPasswordModal, setShowPasswordModal] = useState(false);
 
@@ -6347,18 +6342,20 @@ export default function App() {
     return () => supabase.removeChannel(ch);
   }, [profile]);
 
-  // Basculer vers le bon sous-onglet au changement de niveau
+  // Basculer vers le bon sous-onglet au changement de niveau — le défaut est
+  // toujours le premier sous-onglet de la liste (Automatismes, quel que soit le niveau).
   useEffect(() => {
-    if (!estTerminaleSpe && (activeTab === "chat" || activeTab === "ressources")) {
-      setActiveTab("automatismes");
-    }
-    if (estTerminaleSpe && activeTab === "automatismes") {
-      setActiveTab("chat");
-    }
-    // Cliquer sur une pill de niveau fait quitter le QCM (indépendant du niveau)
-    // pour rejoindre les automatismes "classiques" du niveau qu'on vient de choisir.
     if (activeTab === "qcm" || activeTab === "historique_qcm") {
       setActiveTab(estTerminaleSpe ? "generateur" : "automatismes");
+      return;
+    }
+    const ongletsTerminale = ["generateur", "historique", "ressources", "chat"];
+    const ongletsAutres = ["automatismes", "historique"];
+    if (estTerminaleSpe && !ongletsTerminale.includes(activeTab)) {
+      setActiveTab("generateur");
+    }
+    if (!estTerminaleSpe && !ongletsAutres.includes(activeTab)) {
+      setActiveTab("automatismes");
     }
   }, [niveauScolaire]);
 
@@ -6395,23 +6392,12 @@ export default function App() {
         {profile.role === "professeur" && (
           <div style={{ display: "flex", flexDirection: "column", flex: 1, minWidth: 0, minHeight: 0, ...styleNiveau }}>
 
-            {/* En-tête du site : titre + actions de compte, toujours visible et de hauteur fixe */}
-            <div className="site-header">
-              <div>
-                <div className="site-header-titre">Mathématiques à Valadon</div>
-              </div>
-              <div className="site-header-actions">
-                <UsageIndicator />
-                <button className="btn-key" onClick={() => setShowPasswordModal(true)} title="Changer mon mot de passe">
-                  🔑 Mot de passe
-                </button>
-                <button className="btn-logout" onClick={() => supabase.auth.signOut()}>Déconnexion</button>
-              </div>
-            </div>
-
-            {/* Barre unifiée : rangée 1 fixe (QCM + niveaux), rangée 2 contextuelle (sous-onglets) */}
+            {/* Barre unifiée : rangée 1 fixe (titre + QCM + niveaux + compte), rangée 2 contextuelle (sous-onglets) */}
             <div className="niveau-top-bar">
               <div className="niveau-top-row1">
+                <div className="site-titre">Mathématiques à Valadon</div>
+                <div className="niveau-separateur"></div>
+
                 {/* Automatismes QCM : indépendant du niveau (regroupe Seconde + Première),
                     point d'entrée unique fixe en première ligne, avant les pills de niveau.
                     Reste visible même sur Terminale Spé — cette rangée ne bouge jamais. */}
@@ -6440,6 +6426,15 @@ export default function App() {
                       <span aria-hidden="true" style={{ marginRight: 6 }}>{n.icone}</span>{n.label}
                     </button>
                   ))}
+                </div>
+
+                {/* Actions de compte — à droite de la même rangée */}
+                <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
+                  <UsageIndicator />
+                  <button className="btn-key" onClick={() => setShowPasswordModal(true)} title="Changer mon mot de passe">
+                    🔑 Mot de passe
+                  </button>
+                  <button className="btn-logout" onClick={() => supabase.auth.signOut()}>Déconnexion</button>
                 </div>
               </div>
 
