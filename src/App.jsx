@@ -513,6 +513,11 @@ const CSS = `
   .gen-selected-remove:hover { color: var(--red); }
   .gen-selected-duplicate { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 13px; padding: 2px 4px; flex-shrink: 0; border-radius: 6px; }
   .gen-selected-duplicate:hover { color: var(--accent-light); background: var(--surface2); }
+  .gen-selected-nbcopies {
+    width: 34px; background: var(--surface2); border: 1px solid var(--border); border-radius: 6px;
+    color: var(--text); font-family: var(--font); font-size: 12px; text-align: center; padding: 2px 0; flex-shrink: 0;
+  }
+  .gen-selected-nbcopies:focus { border-color: var(--accent); outline: none; }
 
   .gen-footer {
     border-top: 1px solid var(--border); padding: 16px 24px; flex-shrink: 0;
@@ -3982,6 +3987,7 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
   const [reponsesVisibles, setReponsesVisibles] = useState({});        // { question_id: bool } réponse révélée (masquée par défaut)
   const [selection, setSelection] = useState([]);                       // [question objects, dans l'ordre de sélection]
   const [elementsCoches, setElementsCoches] = useState(new Set());      // ids cochés dans la colonne de droite pour suppression groupée
+  const [nbCopiesParItem, setNbCopiesParItem] = useState({});           // _cle -> nombre de copies à dupliquer
   const [tiragesExercices, setTiragesExercices] = useState({});         // { id_exercice: {enonce, reponse, valeurs} } - dernier tirage affiché
   const [detailExerciceOuvert, setDetailExerciceOuvert] = useState({}); // { id_exercice: bool }
   const TYPES_DISPONIBLES = ["formule", "méthode", "définition", "théorème", "exercice"];
@@ -4328,44 +4334,52 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
     return selection.some(q => q.id === idExercice);
   }
 
-  // Ajoute une nouvelle instance du même exercice aléatoire, avec un tirage
-  // garanti différent de toutes les copies déjà présentes dans la sélection.
-  function dupliquerSelection(item) {
+  // Ajoute `nombre` nouvelles instances du même exercice aléatoire. Chaque
+  // tirage est vérifié différent de toutes les copies déjà présentes ET de
+  // celles ajoutées plus tôt dans ce même lot.
+  function dupliquerSelection(item, nombre) {
     if (!item._aleatoire) return;
 
     const def = BIBLIOTHEQUE_EXERCICES[item.id];
     const exoBase = !def ? exercicesEnBase.find(e => e.id === item.id) : null;
     if (!def && !exoBase) return; // source introuvable (exercice supprimé entre-temps)
 
-    const instancesExistantes = selection.filter(s => s.id === item.id);
-    let tirage, tentative = 0;
-    do {
-      if (def) {
-        tirage = def.generer();
-      } else {
-        const valeurs = {};
-        Object.entries(exoBase.parametres).forEach(([nom, d]) => { valeurs[nom] = tirerValeurParametre(d); });
-        tirage = {
-          enonce: substituerPlaceholders(exoBase.enonce_modele, valeurs),
-          reponse: substituerPlaceholders(exoBase.reponse_modele, valeurs),
-        };
-      }
-      tentative++;
-      // Sécurité : au-delà de 25 tentatives, la plage de tirage est trop
-      // restreinte pour garantir l'unicité — on prend le dernier tirage tel quel.
-    } while (instancesExistantes.some(inst => inst.enonce === tirage.enonce) && tentative < 25);
-
-    const nouvelleInstance = {
-      ...item,
-      enonce: tirage.enonce,
-      reponse: tirage.reponse,
-      _cle: `${item.id}__${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`,
-    };
+    function tirerUnExemplaire() {
+      if (def) return def.generer();
+      const valeurs = {};
+      Object.entries(exoBase.parametres).forEach(([nom, d]) => { valeurs[nom] = tirerValeurParametre(d); });
+      return {
+        enonce: substituerPlaceholders(exoBase.enonce_modele, valeurs),
+        reponse: substituerPlaceholders(exoBase.reponse_modele, valeurs),
+      };
+    }
 
     setSelection(prev => {
       const idx = prev.findIndex(s => s._cle === item._cle);
+      const enoncesConnus = prev.filter(s => s.id === item.id).map(s => s.enonce);
+      const nouvellesInstances = [];
+
+      for (let i = 0; i < nombre; i++) {
+        let tirage, tentative = 0;
+        do {
+          tirage = tirerUnExemplaire();
+          tentative++;
+          // Sécurité : au-delà de 25 tentatives, la plage de tirage est trop
+          // restreinte pour garantir l'unicité — on prend le dernier tirage tel quel.
+        } while (
+          (enoncesConnus.includes(tirage.enonce) || nouvellesInstances.some(n => n.enonce === tirage.enonce))
+          && tentative < 25
+        );
+        nouvellesInstances.push({
+          ...item,
+          enonce: tirage.enonce,
+          reponse: tirage.reponse,
+          _cle: `${item.id}__${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}_${i}`,
+        });
+      }
+
       const copie = [...prev];
-      copie.splice(idx + 1, 0, nouvelleInstance);
+      copie.splice(idx + 1, 0, ...nouvellesInstances);
       return copie;
     });
   }
@@ -4897,7 +4911,13 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
                   <div className="gen-selected-enonce"><MathText>{q.enonce}</MathText></div>
                 </div>
                 {q._aleatoire && (
-                  <button className="gen-selected-duplicate" onClick={() => dupliquerSelection(q)} title="Dupliquer avec un nouveau tirage">🎲+</button>
+                  <>
+                    <input type="number" className="gen-selected-nbcopies" min={1} max={20}
+                      value={nbCopiesParItem[q._cle] || 1}
+                      onClick={e => e.stopPropagation()}
+                      onChange={e => setNbCopiesParItem(prev => ({ ...prev, [q._cle]: Math.max(1, Math.min(20, Number(e.target.value) || 1)) }))} />
+                    <button className="gen-selected-duplicate" onClick={() => dupliquerSelection(q, nbCopiesParItem[q._cle] || 1)} title="Dupliquer avec de nouveaux tirages">🎲+</button>
+                  </>
                 )}
                 <button className="gen-selected-remove" onClick={() => retirerSelection(q._cle)} title="Retirer">✕</button>
               </div>
@@ -5056,6 +5076,7 @@ function QcmZone({ currentUser, currentProfile, qcmSessionARecharger, onSessionC
   const [tiragesQcm, setTiragesQcm] = useState({});                 // { qcm_id: {enonce, choix, valeurs} } dernier tirage
   const [selection, setSelection] = useState([]);
   const [elementsCoches, setElementsCoches] = useState(new Set());
+  const [nbCopiesParItem, setNbCopiesParItem] = useState({});           // _cle -> nombre de copies à dupliquer
   const NIVEAUX_DISPONIBLES = [1, 2, 3];
   const [niveauxActifs, setNiveauxActifs] = useState(new Set(NIVEAUX_DISPONIBLES));
   // Filtre par origine (Seconde / nouveautés Première) — exclure/inclure vite,
@@ -5190,31 +5211,38 @@ function QcmZone({ currentUser, currentProfile, qcmSessionARecharger, onSessionC
     setElementsCoches(prev => { const c = new Set(prev); c.delete(cle); return c; });
   }
 
-  // Ajoute une nouvelle instance du même QCM aléatoire, avec un tirage garanti
-  // différent de toutes les copies déjà présentes dans la sélection.
-  function dupliquerSelection(item) {
+  // Ajoute `nombre` nouvelles instances du même QCM aléatoire. Chaque tirage
+  // est vérifié différent de toutes les copies déjà présentes ET de celles
+  // ajoutées plus tôt dans ce même lot.
+  function dupliquerSelection(item, nombre) {
     if (item.mode !== "aleatoire") return;
     const source = Object.values(qcmParChapitre).flat().find(q => q.id === item.id);
     if (!source) return; // source introuvable (QCM supprimé entre-temps)
 
-    const instancesExistantes = selection.filter(s => s.id === item.id);
-    let tirage, tentative = 0;
-    do {
-      tirage = tirerQcm(source);
-      tentative++;
-    } while (instancesExistantes.some(inst => inst.enonce === tirage.enonce) && tentative < 25);
-
-    const nouvelleInstance = {
-      ...item,
-      enonce: tirage.enonce,
-      choix: tirage.choix,
-      _cle: `${item.id}__${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`,
-    };
-
     setSelection(prev => {
       const idx = prev.findIndex(s => s._cle === item._cle);
+      const enoncesConnus = prev.filter(s => s.id === item.id).map(s => s.enonce);
+      const nouvellesInstances = [];
+
+      for (let i = 0; i < nombre; i++) {
+        let tirage, tentative = 0;
+        do {
+          tirage = tirerQcm(source);
+          tentative++;
+        } while (
+          (enoncesConnus.includes(tirage.enonce) || nouvellesInstances.some(n => n.enonce === tirage.enonce))
+          && tentative < 25
+        );
+        nouvellesInstances.push({
+          ...item,
+          enonce: tirage.enonce,
+          choix: tirage.choix,
+          _cle: `${item.id}__${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}_${i}`,
+        });
+      }
+
       const copie = [...prev];
-      copie.splice(idx + 1, 0, nouvelleInstance);
+      copie.splice(idx + 1, 0, ...nouvellesInstances);
       return copie;
     });
   }
@@ -5610,7 +5638,13 @@ function QcmZone({ currentUser, currentProfile, qcmSessionARecharger, onSessionC
                   <div className="gen-selected-enonce"><MathText>{q.enonce}</MathText></div>
                 </div>
                 {q.mode === "aleatoire" && (
-                  <button className="gen-selected-duplicate" onClick={() => dupliquerSelection(q)} title="Dupliquer avec un nouveau tirage">🎲+</button>
+                  <>
+                    <input type="number" className="gen-selected-nbcopies" min={1} max={20}
+                      value={nbCopiesParItem[q._cle] || 1}
+                      onClick={e => e.stopPropagation()}
+                      onChange={e => setNbCopiesParItem(prev => ({ ...prev, [q._cle]: Math.max(1, Math.min(20, Number(e.target.value) || 1)) }))} />
+                    <button className="gen-selected-duplicate" onClick={() => dupliquerSelection(q, nbCopiesParItem[q._cle] || 1)} title="Dupliquer avec de nouveaux tirages">🎲+</button>
+                  </>
                 )}
                 <button className="gen-selected-remove" onClick={() => retirerSelection(q._cle)} title="Retirer">✕</button>
               </div>
