@@ -116,7 +116,17 @@ const CSS = `
   }
   .login-logo { font-size: 13px; font-weight: 600; letter-spacing: .12em; color: var(--accent); text-transform: uppercase; margin-bottom: 8px; }
   .login-title { font-size: 26px; font-weight: 600; margin-bottom: 6px; }
-  .login-sub { font-size: 13px; color: var(--text-muted); margin-bottom: 36px; }
+  .login-sub { font-size: 13px; color: var(--text-muted); margin-bottom: 16px; }
+  .login-niveaux-dots { display: flex; gap: 6px; margin-bottom: 28px; }
+  .login-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+  .champ-mdp-wrap { position: relative; display: flex; }
+  .champ-mdp-wrap input { flex: 1; padding-right: 40px; }
+  .btn-voir-mdp {
+    position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
+    background: none; border: none; cursor: pointer; font-size: 15px; padding: 4px 6px;
+    line-height: 1; opacity: .7;
+  }
+  .btn-voir-mdp:hover { opacity: 1; }
   .field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px; }
   .field label { font-size: 12px; font-weight: 500; color: var(--text-muted); letter-spacing: .06em; text-transform: uppercase; }
   .field input {
@@ -1706,6 +1716,7 @@ const BIBLIOTHEQUE_EXERCICES = {};
 function Login({ onLogin }) {
   const [identifiant, setIdentifiant] = useState("");
   const [pwd, setPwd] = useState("");
+  const [voirPwd, setVoirPwd] = useState(false);
   const [err, setErr] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -1722,9 +1733,14 @@ function Login({ onLogin }) {
   return (
     <div className="login-wrap">
       <div className="login-card">
-        <div className="login-logo">Terminale Spé · Préparation au Grand Oral</div>
-        <div className="login-title">Grand Oral</div>
-        <div className="login-sub">Espace de préparation individuelle</div>
+        <div className="login-logo">Lycée Valadon</div>
+        <div className="login-title">Mathématiques à Valadon</div>
+        <div className="login-sub">Automatismes, QCM et préparation au Grand Oral</div>
+        <div className="login-niveaux-dots">
+          <span className="login-dot" style={{ background: "#2563eb" }} />
+          <span className="login-dot" style={{ background: "#7c3aed" }} />
+          <span className="login-dot" style={{ background: "#059669" }} />
+        </div>
         <div className="field">
           <label>Identifiant</label>
           <input type="text" value={identifiant} onChange={e => setIdentifiant(e.target.value)}
@@ -1732,8 +1748,14 @@ function Login({ onLogin }) {
         </div>
         <div className="field">
           <label>Mot de passe</label>
-          <input type="password" value={pwd} onChange={e => setPwd(e.target.value)}
-            placeholder="••••••••" onKeyDown={e => e.key === "Enter" && handleLogin()} />
+          <div className="champ-mdp-wrap">
+            <input type={voirPwd ? "text" : "password"} value={pwd} onChange={e => setPwd(e.target.value)}
+              placeholder="••••••••" onKeyDown={e => e.key === "Enter" && handleLogin()} />
+            <button type="button" className="btn-voir-mdp" onClick={() => setVoirPwd(v => !v)}
+              title={voirPwd ? "Masquer le mot de passe" : "Afficher le mot de passe"}>
+              {voirPwd ? "🙈" : "👁️"}
+            </button>
+          </div>
         </div>
         <button className="btn-login" onClick={handleLogin} disabled={loading}>
           {loading ? "Connexion…" : "Se connecter"}
@@ -1787,6 +1809,7 @@ function SaisieSubject({ profile, onSave, nomProf }) {
 function ChangePasswordModal({ onClose }) {
   const [pwd1, setPwd1] = useState("");
   const [pwd2, setPwd2] = useState("");
+  const [voirPwd, setVoirPwd] = useState(false);
   const [err, setErr] = useState("");
   const [success, setSuccess] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -1810,12 +1833,24 @@ function ChangePasswordModal({ onClose }) {
         <div className="modal-sub">Choisis un nouveau mot de passe, facile à retenir mais difficile à deviner.</div>
         <div className="modal-field">
           <label>Nouveau mot de passe</label>
-          <input type="password" value={pwd1} onChange={e => setPwd1(e.target.value)} placeholder="••••••••" autoFocus />
+          <div className="champ-mdp-wrap">
+            <input type={voirPwd ? "text" : "password"} value={pwd1} onChange={e => setPwd1(e.target.value)} placeholder="••••••••" autoFocus />
+            <button type="button" className="btn-voir-mdp" onClick={() => setVoirPwd(v => !v)}
+              title={voirPwd ? "Masquer le mot de passe" : "Afficher le mot de passe"}>
+              {voirPwd ? "🙈" : "👁️"}
+            </button>
+          </div>
         </div>
         <div className="modal-field">
           <label>Confirmer le mot de passe</label>
-          <input type="password" value={pwd2} onChange={e => setPwd2(e.target.value)} placeholder="••••••••"
-            onKeyDown={e => e.key === "Enter" && handleChange()} />
+          <div className="champ-mdp-wrap">
+            <input type={voirPwd ? "text" : "password"} value={pwd2} onChange={e => setPwd2(e.target.value)} placeholder="••••••••"
+              onKeyDown={e => e.key === "Enter" && handleChange()} />
+            <button type="button" className="btn-voir-mdp" onClick={() => setVoirPwd(v => !v)}
+              title={voirPwd ? "Masquer le mot de passe" : "Afficher le mot de passe"}>
+              {voirPwd ? "🙈" : "👁️"}
+            </button>
+          </div>
         </div>
         {err && <div className="modal-error">{err}</div>}
         {success && <div className="modal-success">✓ Mot de passe mis à jour !</div>}
@@ -6587,7 +6622,7 @@ export default function App() {
         )}
 
       </div>
-      {showPasswordModal && <ChangePasswordModal onClose={() => setShowPasswordModal(false)} />}
+      {showPasswordModal && profile?.role === "professeur" && <ChangePasswordModal onClose={() => setShowPasswordModal(false)} />}
     </>
   );
 }
