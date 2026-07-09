@@ -1260,7 +1260,7 @@ function extraireSegmentsTableau(texte) {
 function parserTableauLatex(corps) {
   return corps
     .replace(/\\hline/g, "")
-    .split("\\\\")
+    .split(/\\\\(?:\[[^\]]*\])?/)
     .map(ligne => ligne.trim())
     .filter(ligne => ligne.length > 0)
     .map(ligne => ligne.split("&").map(cellule => cellule.trim()));
