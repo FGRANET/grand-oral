@@ -174,7 +174,9 @@ const CSS = `
   }
   .usage-badge.alerte { color: var(--red); }
 
-  .site-titre { font-size: 19px; font-weight: 600; color: var(--accent-light); flex-shrink: 0; white-space: nowrap; }
+  .site-titre { font-size: 19px; font-weight: 600; color: var(--accent-light); flex-shrink: 0; white-space: nowrap; cursor: pointer; }
+  .site-titre-clic { font-size: 15px; font-weight: 600; color: var(--accent-light); cursor: pointer; transition: opacity .15s; }
+  .site-titre-clic:hover { opacity: .8; }
 
   .eleve-item {
     display: flex; align-items: center; gap: 12px; padding: 10px 12px;
@@ -1782,6 +1784,9 @@ function SaisieSubject({ profile, onSave, nomProf }) {
   return (
     <div className="sujet-wrap">
       <div className="sujet-card">
+        <div className="site-titre-clic" onClick={() => supabase.auth.signOut()} title="Se déconnecter">
+          Mathématiques à Valadon
+        </div>
         <div className="sujet-emoji">🎤</div>
         <div className="sujet-title">Bonjour {profile.prenom} !</div>
         <div className="sujet-sub">
@@ -6430,7 +6435,7 @@ export default function App() {
             {/* Barre unifiée : rangée 1 fixe (titre + QCM + niveaux + compte), rangée 2 contextuelle (sous-onglets) */}
             <div className="niveau-top-bar">
               <div className="niveau-top-row1">
-                <div className="site-titre">Mathématiques à Valadon</div>
+                <div className="site-titre" onClick={() => supabase.auth.signOut()} title="Se déconnecter">Mathématiques à Valadon</div>
                 <div className="niveau-separateur"></div>
 
                 {/* Automatismes QCM : indépendant du niveau (regroupe Seconde + Première),
@@ -6606,6 +6611,10 @@ export default function App() {
 
         {profile.role === "eleve" && (
           <div style={{ display: "flex", flexDirection: "column", flex: 1, minWidth: 0 }}>
+            <div className="site-titre-clic" onClick={() => supabase.auth.signOut()} title="Se déconnecter"
+              style={{ padding: "10px 20px", borderBottom: "1px solid var(--border)" }}>
+              Mathématiques à Valadon
+            </div>
             <div className="sidebar-tabs eleve-tabs">
               <button className={`sidebar-tab${activeTab === "chat" ? " active" : ""}`}
                 onClick={() => setActiveTab("chat")}>💬 Discussion</button>
