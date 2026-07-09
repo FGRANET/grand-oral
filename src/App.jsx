@@ -6729,8 +6729,8 @@ export default function App() {
                     { id: "premiere_techno", label: "1re techno", icone: "🔻" },
                     { id: "seconde", label: "Seconde", icone: "🔺" },
                   ].map(n => (
-                    <button key={n.id} className={`niveau-pill${niveauScolaire === n.id ? " active" : ""}`}
-                      style={niveauScolaire === n.id ? { background: COULEURS_NIVEAU[n.id] } : {}}
+                    <button key={n.id} className={`niveau-pill${(!estContexteQcm && niveauScolaire === n.id) ? " active" : ""}`}
+                      style={(!estContexteQcm && niveauScolaire === n.id) ? { background: COULEURS_NIVEAU[n.id] } : {}}
                       onClick={() => {
                         setNiveauScolaire(n.id);
                         if (estContexteQcm) {
