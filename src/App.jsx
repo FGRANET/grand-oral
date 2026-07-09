@@ -70,6 +70,8 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import katex from "https://esm.sh/katex@0.16.9";
+import jsPDF from "https://esm.sh/jspdf@2.5.2";
+import html2canvas from "https://esm.sh/html2canvas@1.4.1";
 
 // ⚠️ REMPLACER PAR VOS VRAIES VALEURS SUPABASE
 const SUPABASE_URL = "https://bolmwalxiqsuimuagrhx.supabase.co";
@@ -428,6 +430,53 @@ const CSS = `
   }
   .hist-toolbar-filter:hover { border-color: var(--accent); }
   .hist-toolbar-filter.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+  /* ── Recherche globale ── */
+  .recherche-zone { flex: 1; min-height: 0; overflow-y: auto; padding: 24px 28px; }
+  .recherche-barre { display: flex; gap: 10px; max-width: 620px; margin-bottom: 20px; }
+  .recherche-input {
+    flex: 1; background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+    padding: 10px 16px; color: var(--text); font-family: var(--font); font-size: 14px; outline: none;
+  }
+  .recherche-input:focus { border-color: var(--accent); }
+  .btn-recherche {
+    background: var(--accent); color: #fff; border: none; border-radius: 10px; padding: 10px 18px;
+    font-family: var(--font); font-size: 13px; font-weight: 600; cursor: pointer; white-space: nowrap;
+  }
+  .btn-recherche:hover { background: var(--accent-light); }
+  .btn-recherche:disabled { opacity: .5; cursor: not-allowed; }
+  .recherche-compteur { font-size: 13px; color: var(--text-muted); margin-bottom: 16px; }
+  .recherche-groupe { margin-bottom: 24px; }
+  .recherche-groupe-titre {
+    font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em;
+    color: var(--accent-light); margin-bottom: 10px;
+  }
+  .recherche-item {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+    padding: 12px 16px; margin-bottom: 8px; cursor: pointer; transition: border-color .15s;
+  }
+  .recherche-item:hover { border-color: var(--accent); }
+  .recherche-item-meta { font-size: 11px; color: var(--text-muted); margin-bottom: 4px; }
+  .recherche-item-reponse { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); color: var(--text-muted); }
+  .recherche-vide { color: var(--text-muted); }
+
+  /* ── Statistiques ── */
+  .stats-zone { flex: 1; min-height: 0; overflow-y: auto; padding: 24px 28px; }
+  .stats-chargement { color: var(--text-muted); }
+  .stats-niveau-bloc { margin-bottom: 32px; }
+  .stats-niveau-titre { font-size: 16px; font-weight: 600; color: var(--accent-light); margin-bottom: 12px; }
+  .stats-cartes { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; max-width: 640px; margin-bottom: 16px; }
+  .stats-carte { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 12px 16px; }
+  .stats-carte-valeur { font-size: 22px; font-weight: 600; color: var(--text); }
+  .stats-carte-label { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+  .stats-table { border-collapse: collapse; width: 100%; max-width: 720px; font-size: 13px; }
+  .stats-table th { text-align: left; color: var(--text-muted); font-weight: 500; padding: 6px 10px; border-bottom: 1px solid var(--border); }
+  .stats-table td { padding: 6px 10px; border-bottom: 1px solid var(--border); color: var(--text); }
+  .stats-row-vide td:first-child { color: var(--text-muted); }
+  .stats-badge-vide {
+    margin-left: 8px; font-size: 10px; background: rgba(239,68,68,0.15); color: #f87171;
+    padding: 2px 8px; border-radius: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .03em;
+  }
   .hist-empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; color: var(--text-muted); font-size: 13px; }
 
   /* ── Spinner de chargement (teinté selon le niveau actif via var(--accent)) ── */
@@ -1319,8 +1368,89 @@ function MathText({ children, inline = true }) {
   );
 }
 
+// ─── Export PDF direct (aperçu navigateur, sans pdflatex) ──────────────
+// Réutilise la même logique que MathText (formules $...$ et tableaux LaTeX)
+// mais produit une chaîne HTML brute, exploitable hors React par jsPDF.
+function echapperHtml(s) {
+  return (s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+function texteVersHtml(texte) {
+  const segmentsTableau = extraireSegmentsTableau(texte || "");
+  return segmentsTableau.map(segTab => {
+    if (segTab.type === "tableau") {
+      const lignes = parserTableauLatex(segTab.content);
+      const lignesHtml = lignes.map(ligne =>
+        `<tr>${ligne.map(cellule => `<td style="border:1px solid #333;padding:5px 12px;text-align:center;">${texteVersHtml(cellule)}</td>`).join("")}</tr>`
+      ).join("");
+      return `<table style="border-collapse:collapse;margin:8px auto;">${lignesHtml}</table>`;
+    }
+    return renderMathSegments(segTab.content).map(seg => {
+      if (seg.type === "text") return echapperHtml(seg.content);
+      try {
+        return katex.renderToString(seg.content, { displayMode: seg.displayMode, throwOnError: false });
+      } catch {
+        return echapperHtml(seg.content);
+      }
+    }).join("");
+  }).join("");
+}
+
+// items : sélection déjà résolue (mêmes objets que pour l'export .tex).
+// typeContenu : "classique" (questions/exercices) ou "qcm".
+async function exporterPdfDirect({ items, avecCorrige, entete, nomFichier, typeContenu }) {
+  const conteneur = document.createElement("div");
+  conteneur.style.position = "fixed";
+  conteneur.style.left = "-9999px";
+  conteneur.style.top = "0";
+  conteneur.style.width = "700px";
+  conteneur.style.background = "#ffffff";
+  conteneur.style.color = "#111111";
+  conteneur.style.fontFamily = "'DM Sans', Arial, sans-serif";
+  conteneur.style.fontSize = "13px";
+  conteneur.style.padding = "10px";
+
+  let html = `<div style="display:flex;justify-content:space-between;font-size:11px;color:#444;border-bottom:1px solid #ccc;padding-bottom:8px;margin-bottom:10px;">
+    <span>${echapperHtml(entete)}</span><span>${avecCorrige ? "Corrigé" : "Durée : 30 min"}</span>
+  </div>
+  <div style="margin-bottom:14px;">
+    <strong>Nom :</strong> ______________________&nbsp;&nbsp;&nbsp;
+    <strong>Prénom :</strong> ______________________&nbsp;&nbsp;&nbsp;
+    <strong>Classe :</strong> __________
+  </div>`;
+
+  items.forEach((q, idx) => {
+    html += `<div style="margin-bottom:16px;">
+      <div><strong>Question ${idx + 1}.</strong> ${texteVersHtml(q.enonce)}</div>`;
+    if (typeContenu === "qcm") {
+      const lettres = ["a", "b", "c", "d"];
+      html += `<div style="margin-top:6px;padding-left:14px;">`;
+      (q.choix || []).forEach((c, i) => {
+        const bonne = avecCorrige && i === q.bonne_reponse;
+        html += `<div style="margin:3px 0;${bonne ? "font-weight:600;" : ""}">${bonne ? "&#9746;" : "&#9744;"} ${lettres[i]}) ${texteVersHtml(c)}</div>`;
+      });
+      html += `</div>`;
+    } else if (avecCorrige) {
+      html += `<div style="margin-top:6px;padding:8px 10px;background:#f2f2f2;border-radius:4px;">${texteVersHtml(q.reponse)}</div>`;
+    } else {
+      html += `<div style="margin-top:10px;border-bottom:1px solid #999;height:1px;"></div>
+                <div style="margin-top:14px;border-bottom:1px solid #999;height:1px;"></div>
+                <div style="margin-top:14px;border-bottom:1px solid #999;height:1px;"></div>`;
+    }
+    html += `</div>`;
+  });
+
+  conteneur.innerHTML = html;
+  document.body.appendChild(conteneur);
+
+  try {
+    const doc = new jsPDF({ unit: "pt", format: "a4" });
+    await doc.html(conteneur, { margin: [30, 30, 30, 30], autoPaging: "text", width: 535, windowWidth: 700 });
+    doc.save(`${nomFichier}${avecCorrige ? "-corrige" : ""}.pdf`);
+  } finally {
+    document.body.removeChild(conteneur);
+  }
+}
 // ─── Moteur de tirage des exercices d'application ──────────────────────
-// Tire une valeur aléatoire pour un paramètre donné, selon ses bornes et son type.
 // Formate un nombre avec virgule décimale (notation française)
 // Ex : 1.5 → "1,5"  ;  -0.333 → "-0,333"  ;  2 → "2"
 function formatNombre(n) {
@@ -4781,6 +4911,32 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
     sauvegarderDansHistorique(avecCorrige ? "tex_corrige" : "tex_eleve");
   }
 
+  const NOMS_NIVEAU_ENTETE = {
+    terminale_spe: "Terminale spé", premiere_specifique: "1re spécifique",
+    premiere_spe: "1re spécialité", premiere_techno: "1re techno", seconde: "Seconde",
+  };
+  const [exportPdfEnCours, setExportPdfEnCours] = useState(false);
+  // Aperçu PDF direct, généré dans le navigateur (sans pdflatex) : pratique pour
+  // un contrôle rapide avant impression. La mise en page est plus simple que
+  // l'export .tex (pas de colonnes, pas de tcolorbox), mais suffit pour un aperçu.
+  async function telechargerPdf(avecCorrige) {
+    if (selection.length === 0 || exportPdfEnCours) return;
+    setExportPdfEnCours(true);
+    try {
+      const date = new Date().toISOString().slice(0, 10);
+      await exporterPdfDirect({
+        items: selection, avecCorrige, typeContenu: "classique",
+        entete: NOMS_NIVEAU_ENTETE[niveauScolaire] || "Grand Oral",
+        nomFichier: `interro_${date}`,
+      });
+      sauvegarderDansHistorique(avecCorrige ? "pdf_corrige" : "pdf_eleve");
+    } catch (e) {
+      alert("Erreur lors de la génération du PDF : " + e.message);
+    } finally {
+      setExportPdfEnCours(false);
+    }
+  }
+
   // Nettoie une question pour l'export : retire les champs internes à la base
   // (chapitre_id, prof_id, created_at) et remet le nom de chapitre en texte,
   // exactement le format attendu pour un futur réimport.
@@ -5191,6 +5347,9 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
           </button>
           <button className="gen-export-btn-secondary" onClick={() => telechargerTex(true)} disabled={selection.length === 0}>
             📝 .tex corrigé
+          </button>
+          <button className="gen-export-btn-secondary" onClick={() => telechargerPdf(false)} disabled={selection.length === 0 || exportPdfEnCours}>
+            {exportPdfEnCours ? "⏳ Génération…" : "🖨️ Aperçu PDF"}
           </button>
           <button className="gen-export-btn" onClick={() => setAfficherReglagesDiapo(true)} disabled={selection.length === 0}>
             ▶ Diaporama
@@ -5714,6 +5873,25 @@ function QcmZone({ currentUser, currentProfile, qcmSessionARecharger, onSessionC
     sauvegarderDansHistorique(avecCorrige ? "tex_corrige" : "tex_eleve");
   }
 
+  const [exportPdfEnCours, setExportPdfEnCours] = useState(false);
+  async function telechargerPdfQcm(avecCorrige) {
+    if (selection.length === 0 || exportPdfEnCours) return;
+    setExportPdfEnCours(true);
+    try {
+      const date = new Date().toISOString().slice(0, 10);
+      await exporterPdfDirect({
+        items: selection, avecCorrige, typeContenu: "qcm",
+        entete: "QCM — Automatismes",
+        nomFichier: `qcm_${date}`,
+      });
+      sauvegarderDansHistorique(avecCorrige ? "pdf_corrige" : "pdf_eleve");
+    } catch (e) {
+      alert("Erreur lors de la génération du PDF : " + e.message);
+    } finally {
+      setExportPdfEnCours(false);
+    }
+  }
+
   // Exporte toute la banque de QCM du niveau actif dans le même format
   // que celui attendu par ImportQcm (chapitre nommé, mode fixe/aléatoire,
   // parametres inclus) — utile pour sauvegarder, migrer, ou repartir d'un
@@ -5970,6 +6148,9 @@ function QcmZone({ currentUser, currentProfile, qcmSessionARecharger, onSessionC
           </button>
           <button className="gen-export-btn-secondary" onClick={() => telechargerTexQcm(true)} disabled={selection.length === 0}>
             📝 .tex corrigé
+          </button>
+          <button className="gen-export-btn-secondary" onClick={() => telechargerPdfQcm(false)} disabled={selection.length === 0 || exportPdfEnCours}>
+            {exportPdfEnCours ? "⏳ Génération…" : "🖨️ Aperçu PDF"}
           </button>
           <button className="gen-export-btn" onClick={() => setAfficherReglagesDiapo(true)} disabled={selection.length === 0}>
             ▶ Diaporama
@@ -6520,6 +6701,218 @@ function ChatZone({ eleveId, currentUser, currentProfile, allProfiles }) {
   );
 }
 
+// ─── Composant RechercheZone (recherche globale, tous niveaux confondus) ──
+function RechercheZone() {
+  const [terme, setTerme] = useState("");
+  const [enCours, setEnCours] = useState(false);
+  const [resultats, setResultats] = useState(null);
+  const [chapitresParId, setChapitresParId] = useState({});
+  const [ouverts, setOuverts] = useState(() => new Set());
+
+  const NOMS_NIVEAU = {
+    terminale_spe: "Terminale spé", premiere_specifique: "1re spécifique",
+    premiere_spe: "1re spécialité", premiere_techno: "1re techno", seconde: "Seconde",
+  };
+
+  useEffect(() => {
+    supabase.from("chapitres").select("*").then(({ data }) => {
+      const map = {};
+      (data || []).forEach(c => { map[c.id] = c; });
+      setChapitresParId(map);
+    });
+  }, []);
+
+  async function rechercher() {
+    const mot = terme.trim();
+    if (mot.length < 2) { setResultats(null); return; }
+    setEnCours(true);
+    const motif = `%${mot}%`;
+    const [{ data: questions }, { data: exercices }, { data: qcms }] = await Promise.all([
+      supabase.from("questions").select("*").ilike("enonce", motif).limit(60),
+      supabase.from("exercices_application").select("*").ilike("enonce_modele", motif).limit(60),
+      supabase.from("qcm").select("*").or(`enonce.ilike.${motif},enonce_modele.ilike.${motif}`).limit(60),
+    ]);
+    setResultats({ questions: questions || [], exercices: exercices || [], qcms: qcms || [] });
+    setEnCours(false);
+  }
+
+  function toggle(cle) {
+    setOuverts(prev => {
+      const copie = new Set(prev);
+      if (copie.has(cle)) copie.delete(cle); else copie.add(cle);
+      return copie;
+    });
+  }
+
+  function nomChapitre(id) { return chapitresParId[id]?.nom || "?"; }
+  function niveauChapitre(id) {
+    const niv = chapitresParId[id]?.niveau_scolaire;
+    return NOMS_NIVEAU[niv] || niv || "";
+  }
+
+  const total = resultats ? resultats.questions.length + resultats.exercices.length + resultats.qcms.length : null;
+
+  return (
+    <div className="recherche-zone">
+      <div className="recherche-barre">
+        <input className="recherche-input" value={terme} placeholder="Rechercher dans les énoncés (2 caractères min.)…"
+          onChange={e => setTerme(e.target.value)}
+          onKeyDown={e => { if (e.key === "Enter") rechercher(); }} />
+        <button className="btn-recherche" onClick={rechercher} disabled={enCours}>
+          {enCours ? "Recherche…" : "🔍 Rechercher"}
+        </button>
+      </div>
+
+      {resultats && (
+        <div className="recherche-resultats">
+          <p className="recherche-compteur">{total} résultat{total !== 1 ? "s" : ""} pour « {terme} »</p>
+
+          {resultats.questions.length > 0 && (
+            <div className="recherche-groupe">
+              <div className="recherche-groupe-titre">Questions ({resultats.questions.length})</div>
+              {resultats.questions.map(q => (
+                <div key={q.id} className="recherche-item" onClick={() => toggle("q_" + q.id)}>
+                  <div className="recherche-item-meta">{nomChapitre(q.chapitre_id)} · {niveauChapitre(q.chapitre_id)}</div>
+                  <div className="recherche-item-enonce"><MathText>{q.enonce}</MathText></div>
+                  {ouverts.has("q_" + q.id) && <div className="recherche-item-reponse"><MathText inline={false}>{q.reponse}</MathText></div>}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {resultats.exercices.length > 0 && (
+            <div className="recherche-groupe">
+              <div className="recherche-groupe-titre">Exercices aléatoires ({resultats.exercices.length})</div>
+              {resultats.exercices.map(ex => (
+                <div key={ex.id} className="recherche-item" onClick={() => toggle("e_" + ex.id)}>
+                  <div className="recherche-item-meta">{nomChapitre(ex.chapitre_id)} · {niveauChapitre(ex.chapitre_id)}</div>
+                  <div className="recherche-item-enonce"><MathText>{ex.enonce_modele}</MathText></div>
+                  {ouverts.has("e_" + ex.id) && <div className="recherche-item-reponse"><MathText inline={false}>{ex.reponse_modele}</MathText></div>}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {resultats.qcms.length > 0 && (
+            <div className="recherche-groupe">
+              <div className="recherche-groupe-titre">QCM ({resultats.qcms.length})</div>
+              {resultats.qcms.map(q => (
+                <div key={q.id} className="recherche-item" onClick={() => toggle("c_" + q.id)}>
+                  <div className="recherche-item-meta">{nomChapitre(q.chapitre_id)} · {niveauChapitre(q.chapitre_id)}</div>
+                  <div className="recherche-item-enonce"><MathText>{q.enonce || q.enonce_modele}</MathText></div>
+                  {ouverts.has("c_" + q.id) && (
+                    <div className="recherche-item-reponse">
+                      {(q.choix || q.choix_modele || []).map((c, i) => (
+                        <div key={i}>{i === q.bonne_reponse ? "✓ " : "· "}<MathText>{c}</MathText></div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {total === 0 && <p className="recherche-vide">Aucun résultat.</p>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Composant StatistiquesZone (couverture de la banque, par niveau/chapitre) ──
+function StatistiquesZone() {
+  const [chargement, setChargement] = useState(true);
+  const [chapitres, setChapitres] = useState([]);
+  const [questions, setQuestions] = useState([]);
+  const [exercices, setExercices] = useState([]);
+  const [qcms, setQcms] = useState([]);
+
+  const NOMS_NIVEAU = {
+    terminale_spe: "Terminale spé", premiere_specifique: "1re spécifique",
+    premiere_spe: "1re spécialité", premiere_techno: "1re techno", seconde: "Seconde",
+  };
+  const ORDRE_NIVEAU = ["terminale_spe", "premiere_specifique", "premiere_spe", "premiere_techno", "seconde"];
+
+  useEffect(() => {
+    setChargement(true);
+    Promise.all([
+      supabase.from("chapitres").select("id,nom,niveau_scolaire,ordre"),
+      supabase.from("questions").select("id,chapitre_id"),
+      supabase.from("exercices_application").select("id,chapitre_id"),
+      supabase.from("qcm").select("id,chapitre_id"),
+    ]).then(([c, q, e, qc]) => {
+      setChapitres(c.data || []);
+      setQuestions(q.data || []);
+      setExercices(e.data || []);
+      setQcms(qc.data || []);
+      setChargement(false);
+    });
+  }, []);
+
+  const parChapitre = useMemo(() => {
+    const map = {};
+    chapitres.forEach(c => { map[c.id] = { chapitre: c, nbQuestions: 0, nbExercices: 0, nbQcm: 0 }; });
+    questions.forEach(q => { if (map[q.chapitre_id]) map[q.chapitre_id].nbQuestions++; });
+    exercices.forEach(e => { if (map[e.chapitre_id]) map[e.chapitre_id].nbExercices++; });
+    qcms.forEach(q => { if (map[q.chapitre_id]) map[q.chapitre_id].nbQcm++; });
+    return map;
+  }, [chapitres, questions, exercices, qcms]);
+
+  const parNiveau = useMemo(() => {
+    const groupes = {};
+    Object.values(parChapitre).forEach(entree => {
+      const niveau = entree.chapitre.niveau_scolaire || "terminale_spe";
+      if (!groupes[niveau]) groupes[niveau] = { chapitres: [], totalQuestions: 0, totalExercices: 0, totalQcm: 0 };
+      groupes[niveau].chapitres.push(entree);
+      groupes[niveau].totalQuestions += entree.nbQuestions;
+      groupes[niveau].totalExercices += entree.nbExercices;
+      groupes[niveau].totalQcm += entree.nbQcm;
+    });
+    Object.values(groupes).forEach(g => g.chapitres.sort((a, b) => (a.chapitre.ordre || 0) - (b.chapitre.ordre || 0)));
+    return groupes;
+  }, [parChapitre]);
+
+  if (chargement) return <div className="stats-zone"><p className="stats-chargement">Chargement des statistiques…</p></div>;
+
+  const niveauxPresents = ORDRE_NIVEAU.filter(n => parNiveau[n]);
+
+  return (
+    <div className="stats-zone">
+      {niveauxPresents.map(niveau => {
+        const groupe = parNiveau[niveau];
+        return (
+          <div key={niveau} className="stats-niveau-bloc">
+            <div className="stats-niveau-titre">{NOMS_NIVEAU[niveau] || niveau}</div>
+            <div className="stats-cartes">
+              <div className="stats-carte"><div className="stats-carte-valeur">{groupe.totalQuestions}</div><div className="stats-carte-label">Questions</div></div>
+              <div className="stats-carte"><div className="stats-carte-valeur">{groupe.totalExercices}</div><div className="stats-carte-label">Exercices aléatoires</div></div>
+              <div className="stats-carte"><div className="stats-carte-valeur">{groupe.totalQcm}</div><div className="stats-carte-label">QCM</div></div>
+              <div className="stats-carte"><div className="stats-carte-valeur">{groupe.chapitres.length}</div><div className="stats-carte-label">Chapitres</div></div>
+            </div>
+            <table className="stats-table">
+              <thead><tr><th>Chapitre</th><th>Questions</th><th>Exercices</th><th>QCM</th><th>Total</th></tr></thead>
+              <tbody>
+                {groupe.chapitres.map(entree => {
+                  const total = entree.nbQuestions + entree.nbExercices + entree.nbQcm;
+                  return (
+                    <tr key={entree.chapitre.id} className={total === 0 ? "stats-row-vide" : ""}>
+                      <td>{entree.chapitre.nom}{total === 0 && <span className="stats-badge-vide">sous-alimenté</span>}</td>
+                      <td>{entree.nbQuestions}</td>
+                      <td>{entree.nbExercices}</td>
+                      <td>{entree.nbQcm}</td>
+                      <td>{total}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // ─── App principale ───────────────────────────────────────────────────
 export default function App() {
   const [user, setUser] = useState(null);
@@ -6560,21 +6953,60 @@ export default function App() {
   const COULEUR_QCM = "#f59e0b";
   const COULEUR_QCM_LIGHT = "#fbbf24";
   const COULEUR_QCM_RGB = "245,158,11";
+  const COULEUR_OUTIL = "#7d8590";
+  const COULEUR_OUTIL_LIGHT = "#a8afc0";
+  const COULEUR_OUTIL_RGB = "125,133,144";
   const estContexteQcm = activeTab === "qcm" || activeTab === "historique_qcm";
-  const couleurActive = estContexteQcm ? COULEUR_QCM : (COULEURS_NIVEAU[niveauScolaire] || "#2563eb");
+  const estOutil = activeTab === "recherche" || activeTab === "statistiques";
+  const couleurActive = estContexteQcm ? COULEUR_QCM : estOutil ? COULEUR_OUTIL : (COULEURS_NIVEAU[niveauScolaire] || "#2563eb");
   const estTerminaleSpe = niveauScolaire === "terminale_spe";
   // Injectées en CSS custom properties sur le conteneur de contenu : tout ce qui
   // utilise déjà var(--accent) / var(--accent-light) / var(--accent-rgb) (filtres,
   // badges, boutons, checkboxes, tirage, barre de progression…) se reteinte
   // automatiquement selon le niveau actif, sans toucher au CSS de chaque composant.
-  // L'onglet QCM a sa propre identité (ambre) : elle prime sur la couleur du niveau,
-  // pour ne pas hériter du niveau sélectionné juste avant d'y accéder.
+  // L'onglet QCM a sa propre identité (ambre), tout comme Recherche/Statistiques
+  // (gris neutre) : elles priment sur la couleur du niveau, pour ne pas hériter
+  // du niveau sélectionné juste avant d'y accéder.
   const styleNiveau = {
     "--accent": couleurActive,
-    "--accent-light": estContexteQcm ? COULEUR_QCM_LIGHT : (COULEURS_NIVEAU_LIGHT[niveauScolaire] || "#7b8fff"),
-    "--accent-rgb": estContexteQcm ? COULEUR_QCM_RGB : (COULEURS_NIVEAU_RGB[niveauScolaire] || "91,115,255"),
+    "--accent-light": estContexteQcm ? COULEUR_QCM_LIGHT : estOutil ? COULEUR_OUTIL_LIGHT : (COULEURS_NIVEAU_LIGHT[niveauScolaire] || "#7b8fff"),
+    "--accent-rgb": estContexteQcm ? COULEUR_QCM_RGB : estOutil ? COULEUR_OUTIL_RGB : (COULEURS_NIVEAU_RGB[niveauScolaire] || "91,115,255"),
     background: "radial-gradient(ellipse 1200px 800px at 15% 0%, rgba(var(--accent-rgb), 0.06), transparent 60%), var(--bg)",
   };
+  const [exportBaseEnCours, setExportBaseEnCours] = useState(false);
+  // Sauvegarde/export complet de la banque (chapitres + questions + exercices +
+  // QCM + préfixes) en un seul fichier JSON téléchargé localement — un filet de
+  // sécurité simple, indépendant des sauvegardes automatiques de Supabase.
+  async function exporterBaseComplete() {
+    if (exportBaseEnCours) return;
+    setExportBaseEnCours(true);
+    try {
+      const [{ data: chapitres }, { data: questions }, { data: exercices }, { data: qcms }, { data: prefixes }] = await Promise.all([
+        supabase.from("chapitres").select("*"),
+        supabase.from("questions").select("*"),
+        supabase.from("exercices_application").select("*"),
+        supabase.from("qcm").select("*"),
+        supabase.from("prefixes_chapitres").select("*"),
+      ]);
+      const sauvegarde = {
+        export_le: new Date().toISOString(),
+        chapitres: chapitres || [], questions: questions || [],
+        exercices_application: exercices || [], qcm: qcms || [],
+        prefixes_chapitres: prefixes || [],
+      };
+      const blob = new Blob([JSON.stringify(sauvegarde, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `grand-oral-sauvegarde-${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      alert("Erreur lors de l'export de la base : " + e.message);
+    } finally {
+      setExportBaseEnCours(false);
+    }
+  }
   const [sessionARecharger, setSessionARecharger] = useState(null); // ids de questions à charger dans le générateur
   const [contenuExactARecharger, setContenuExactARecharger] = useState(null); // contenu déjà résolu (mêmes valeurs), générateur
   // Incrémenté à chaque sauvegarde de session (diaporama/.tex), pour que
@@ -6729,11 +7161,11 @@ export default function App() {
                     { id: "premiere_techno", label: "1re techno", icone: "🔻" },
                     { id: "seconde", label: "Seconde", icone: "🔺" },
                   ].map(n => (
-                    <button key={n.id} className={`niveau-pill${(!estContexteQcm && niveauScolaire === n.id) ? " active" : ""}`}
-                      style={(!estContexteQcm && niveauScolaire === n.id) ? { background: COULEURS_NIVEAU[n.id] } : {}}
+                    <button key={n.id} className={`niveau-pill${(!estContexteQcm && !estOutil && niveauScolaire === n.id) ? " active" : ""}`}
+                      style={(!estContexteQcm && !estOutil && niveauScolaire === n.id) ? { background: COULEURS_NIVEAU[n.id] } : {}}
                       onClick={() => {
                         setNiveauScolaire(n.id);
-                        if (estContexteQcm) {
+                        if (estContexteQcm || estOutil) {
                           setActiveTab(n.id === "terminale_spe" ? "generateur" : "automatismes");
                         }
                       }}>
@@ -6744,6 +7176,20 @@ export default function App() {
 
                 {/* Actions de compte — à droite de la même rangée */}
                 <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
+                  <button className="btn-key" onClick={() => setActiveTab("recherche")}
+                    style={activeTab === "recherche" ? { borderColor: COULEUR_OUTIL, color: COULEUR_OUTIL_LIGHT } : {}}
+                    title="Recherche globale dans les énoncés">
+                    🔍 Recherche
+                  </button>
+                  <button className="btn-key" onClick={() => setActiveTab("statistiques")}
+                    style={activeTab === "statistiques" ? { borderColor: COULEUR_OUTIL, color: COULEUR_OUTIL_LIGHT } : {}}
+                    title="Tableau de bord statistique de la banque">
+                    📊 Statistiques
+                  </button>
+                  <button className="btn-key" onClick={exporterBaseComplete} disabled={exportBaseEnCours}
+                    title="Télécharger une sauvegarde complète de la banque (JSON)">
+                    {exportBaseEnCours ? "💾 Export…" : "💾 Sauvegarde"}
+                  </button>
                   <UsageIndicator />
                   <button className="btn-key" onClick={() => setShowPasswordModal(true)} title="Changer mon mot de passe">
                     🔑 Mot de passe
@@ -6753,9 +7199,13 @@ export default function App() {
               </div>
 
               <div className="niveau-top-row2">
-                {/* Sous-onglets contextuels : QCM (si actif) prime sur le niveau,
-                    sinon Terminale Spé ou Seconde/Première selon la pill sélectionnée */}
-                {estContexteQcm ? (
+                {/* Sous-onglets contextuels : Recherche/Statistiques (outils, hors niveau)
+                    priment sur QCM, qui prime lui-même sur le niveau */}
+                {estOutil ? (
+                  <div className="sidebar-tab-top" style={{ color: COULEUR_OUTIL, cursor: "default", borderBottom: "2px solid transparent" }}>
+                    {activeTab === "recherche" ? "Recherche globale" : "Tableau de bord statistique"}
+                  </div>
+                ) : estContexteQcm ? (
                   <>
                     <button className="sidebar-tab-top" onClick={() => setActiveTab("qcm")}
                       style={{ color: activeTab === "qcm" ? COULEUR_QCM : "", borderBottom: activeTab === "qcm" ? `2px solid ${COULEUR_QCM}` : "2px solid transparent" }}>
@@ -6890,6 +7340,14 @@ export default function App() {
                   else setQcmSessionARecharger(session.question_ids);
                   setActiveTab("qcm");
                 }} />
+            </div>
+
+            {/* Recherche globale et Statistiques : outils indépendants du niveau */}
+            <div style={{ display: activeTab === "recherche" ? "flex" : "none", flex: 1, minHeight: 0 }}>
+              <RechercheZone />
+            </div>
+            <div style={{ display: activeTab === "statistiques" ? "flex" : "none", flex: 1, minHeight: 0 }}>
+              <StatistiquesZone />
             </div>
 
           </div>
