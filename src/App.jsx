@@ -1361,7 +1361,9 @@ function genererDocumentationImport(contexte, chapitres, niveauScolaire) {
     L.push("");
     L.push('// ── Exemple : QCM aléatoire ──');
     L.push('// mode "aleatoire" : enonce_modele + choix_modele (4 textes avec placeholders) + parametres + bonne_reponse');
-    L.push('// bonne_reponse reste un index fixe : l\'ordre des 4 choix n\'est jamais mélangé.');
+    L.push('// bonne_reponse référence l\'ordre de choix_modele tel que stocké ci-dessus.');
+    L.push('// L\'application mélange l\'ordre des 4 choix à chaque tirage/affichage ;');
+    L.push('// ceci ne concerne que le stockage, pas l\'ordre vu par l\'élève.');
     L.push(JSON.stringify(estTerminale ? {
       chapitre: chapitreDerivation,
       mode: "aleatoire",
@@ -1667,21 +1669,29 @@ function formaterPolynome(coeffs, variable = "x") {
 
 // Tire un QCM complet à partir de son modèle stocké en base (mode "aleatoire") :
 // applique le même moteur que tirerExercice, mais sur l'énoncé ET sur les 4 choix.
-// En mode "fixe", retourne directement les valeurs telles quelles (rien à tirer).
-// L'index de la bonne réponse ne bouge jamais : on ne mélange pas l'ordre des choix.
+// En mode "fixe", retourne directement les valeurs telles quelles (rien à calculer).
+// Dans les deux cas, l'ordre des 4 choix est mélangé à CHAQUE tirage, pour éviter
+// que les élèves finissent par apprendre la lettre plutôt que le contenu de la bonne
+// réponse. bonne_reponse est réindexé pour continuer à pointer vers le bon choix
+// après mélange.
 function tirerQcm(qcm) {
+  let enonce, choix, valeurs = {};
   if (qcm.mode !== "aleatoire") {
-    return { enonce: qcm.enonce, choix: qcm.choix, valeurs: {} };
+    enonce = qcm.enonce;
+    choix = qcm.choix;
+  } else {
+    Object.entries(qcm.parametres || {}).forEach(([nom, def]) => {
+      valeurs[nom] = tirerValeurParametre(def);
+    });
+    enonce = substituerPlaceholders(qcm.enonce_modele, valeurs);
+    choix = (qcm.choix_modele || []).map(c => substituerPlaceholders(c, valeurs));
   }
-  const valeurs = {};
-  Object.entries(qcm.parametres || {}).forEach(([nom, def]) => {
-    valeurs[nom] = tirerValeurParametre(def);
-  });
-  return {
-    enonce: substituerPlaceholders(qcm.enonce_modele, valeurs),
-    choix: (qcm.choix_modele || []).map(c => substituerPlaceholders(c, valeurs)),
-    valeurs,
-  };
+
+  const ordre = melanger([0, 1, 2, 3]);
+  const choixMelanges = ordre.map(i => choix[i]);
+  const bonneReponseMelangee = ordre.indexOf(qcm.bonne_reponse);
+
+  return { enonce, choix: choixMelanges, bonne_reponse: bonneReponseMelangee, valeurs };
 }
 
 // Tire un exercice complet à partir de son modèle stocké en base :
@@ -3978,7 +3988,7 @@ function TirageAleatoireQcm({ chapitres, onAnnuler, onTirer }) {
     const tires = resultat.map(q => {
       const tirage = tirerQcm(q);
       return { id: q.id, chapitre_id: q.chapitre_id, niveau: q.niveau, mode: q.mode,
-        enonce: tirage.enonce, choix: tirage.choix, bonne_reponse: q.bonne_reponse, _cle: q.id };
+        enonce: tirage.enonce, choix: tirage.choix, bonne_reponse: tirage.bonne_reponse, _cle: q.id };
     });
 
     if (tires.length < nombre) {
@@ -5312,7 +5322,7 @@ function QcmZone({ currentUser, currentProfile, qcmSessionARecharger, onSessionC
           const q = parId[id];
           const tirage = tirerQcm(q);
           return { id: q.id, chapitre_id: q.chapitre_id, niveau: q.niveau, mode: q.mode,
-            enonce: tirage.enonce, choix: tirage.choix, bonne_reponse: q.bonne_reponse };
+            enonce: tirage.enonce, choix: tirage.choix, bonne_reponse: tirage.bonne_reponse };
         });
       setSelection(nouvelleSelection);
       onSessionChargee();
@@ -5352,7 +5362,7 @@ function QcmZone({ currentUser, currentProfile, qcmSessionARecharger, onSessionC
   function retirerAuSort(q) {
     const tirage = tirerQcm(q);
     setTiragesQcm(prev => ({ ...prev, [q.id]: tirage }));
-    setSelection(prev => prev.map(s => s.id === q.id ? { ...s, enonce: tirage.enonce, choix: tirage.choix } : s));
+    setSelection(prev => prev.map(s => s.id === q.id ? { ...s, enonce: tirage.enonce, choix: tirage.choix, bonne_reponse: tirage.bonne_reponse } : s));
   }
 
   function estSelectionne(qcmId) { return selection.some(s => s.id === qcmId); }
@@ -5369,7 +5379,7 @@ function QcmZone({ currentUser, currentProfile, qcmSessionARecharger, onSessionC
     }
     setSelection(prev => [...prev, {
       id: q.id, chapitre_id: q.chapitre_id, niveau: q.niveau, mode: q.mode,
-      enonce: tirage.enonce, choix: tirage.choix, bonne_reponse: q.bonne_reponse,
+      enonce: tirage.enonce, choix: tirage.choix, bonne_reponse: tirage.bonne_reponse,
       _cle: q.id,
     }]);
   }
@@ -5405,6 +5415,7 @@ function QcmZone({ currentUser, currentProfile, qcmSessionARecharger, onSessionC
           ...item,
           enonce: tirage.enonce,
           choix: tirage.choix,
+          bonne_reponse: tirage.bonne_reponse,
           _cle: `${item.id}__${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}_${i}`,
         });
       }
