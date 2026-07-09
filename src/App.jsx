@@ -467,6 +467,14 @@ const CSS = `
   }
   .hist-card-rejouer:hover { background: var(--accent-light); }
   .hist-card-auteur { font-size: 11px; color: var(--text-muted); }
+  .hist-famille { display: flex; flex-direction: column; gap: 8px; }
+  .hist-card-secondaire { opacity: .8; border-left-color: var(--border); margin-left: 16px; }
+  .hist-famille-toggle {
+    align-self: flex-start; margin-left: 16px; background: none; border: 1px dashed var(--border);
+    color: var(--text-muted); border-radius: 8px; padding: 5px 12px; font-family: var(--font);
+    font-size: 11px; font-weight: 600; cursor: pointer; transition: all .15s;
+  }
+  .hist-famille-toggle:hover { background: var(--surface2); color: var(--text); border-color: var(--accent); }
 
   .gen-reveal-btn {
     background: var(--surface2); border: 1px solid var(--border); color: var(--text-muted);
@@ -2977,6 +2985,7 @@ function HistoriqueZone({ currentUser, currentProfile, allProfiles, onRejouer, n
   const [renommageId, setRenommageId] = useState(null);
   const [brouillonNom, setBrouillonNom] = useState("");
   const [sessionASupprimer, setSessionASupprimer] = useState(null); // session en attente de confirmation
+  const [famillesDepliees, setFamillesDepliees] = useState(() => new Set()); // clés de familles dont l'historique des tirages est affiché
 
   const fetchSessions = useCallback(async () => {
     setLoading(true);
@@ -3036,6 +3045,28 @@ function HistoriqueZone({ currentUser, currentProfile, allProfiles, onRejouer, n
     setRenommageId(null);
   }
 
+  // Regroupe les sessions par famille (même signature = mêmes ids, indépendamment du tirage).
+  // `sessions` est trié par updated_at desc, donc pour chaque famille le premier élément
+  // rencontré est le tirage le plus récent — l'ordre des familles suit naturellement
+  // l'activité la plus récente en premier.
+  const familles = useMemo(() => {
+    const map = new Map();
+    sessions.forEach(s => {
+      const cle = `${s.type_session}__${s.signature}`;
+      if (!map.has(cle)) map.set(cle, []);
+      map.get(cle).push(s);
+    });
+    return [...map.values()];
+  }, [sessions]);
+
+  function toggleFamille(cle) {
+    setFamillesDepliees(prev => {
+      const copie = new Set(prev);
+      if (copie.has(cle)) copie.delete(cle); else copie.add(cle);
+      return copie;
+    });
+  }
+
   function libelleAction(action) {
     if (action === "tex_eleve") return "📝 .tex élève";
     if (action === "tex_corrige") return "📝 .tex corrigé";
@@ -3045,6 +3076,69 @@ function HistoriqueZone({ currentUser, currentProfile, allProfiles, onRejouer, n
   }
 
   const estProprietaire = (session) => session.prof_id === currentUser.id;
+
+  function renderCarte(session, secondaire) {
+    return (
+      <div key={session.id} className={`hist-card${secondaire ? " hist-card-secondaire" : ""}`}>
+        <div className="hist-card-top">
+          <div className="hist-card-main">
+            {renommageId === session.id ? (
+              <input className="hist-card-nom-input" value={brouillonNom} autoFocus
+                onChange={e => setBrouillonNom(e.target.value)}
+                onKeyDown={e => { if (e.key === "Enter") enregistrerRenommage(session); if (e.key === "Escape") setRenommageId(null); }}
+                onBlur={() => enregistrerRenommage(session)} />
+            ) : (
+              <div className="hist-card-nom">{session.nom}</div>
+            )}
+            <div className="hist-card-meta">
+              <span>{session.question_ids.length} question{session.question_ids.length !== 1 ? "s" : ""}</span>
+              {session.derniere_action && <span className="hist-badge">{libelleAction(session.derniere_action)}</span>}
+              {session.type_session === "qcm" && <span className="hist-badge qcm">🔤 QCM</span>}
+              {session.partage && <span className="hist-badge partage">Partagée</span>}
+              {!estProprietaire(session) && <span className="hist-card-auteur">par {nomAuteur(session.prof_id)}</span>}
+            </div>
+          </div>
+          <div className="hist-card-actions">
+            {estProprietaire(session) && (
+              <>
+                <button className={`hist-icon-btn${session.favori ? " fav-active" : ""}`}
+                  onClick={() => toggleFavori(session)} title={session.favori ? "Retirer des favoris" : "Mettre en favori"}>
+                  {session.favori ? "★" : "☆"}
+                </button>
+                <button className="hist-icon-btn" onClick={() => commencerRenommage(session)} title="Renommer">✏️</button>
+                <button className="hist-icon-btn" onClick={() => togglePartage(session)}
+                  title={session.partage ? "Rendre privée" : "Partager avec mes collègues"}>
+                  {session.partage ? "🔓" : "🔒"}
+                </button>
+                <button className="hist-icon-btn" onClick={() => demanderSuppressionSession(session)} title="Supprimer">🗑️</button>
+              </>
+            )}
+          </div>
+        </div>
+        {(() => {
+          const contenu = session.contenu_selection;
+          const aAleatoire = Array.isArray(contenu) && contenu.some(q => q.mode === "aleatoire" || q._aleatoire === true);
+          if (contenu && aAleatoire) {
+            return (
+              <div style={{ display: "flex", gap: 8 }}>
+                <button className="hist-card-rejouer" onClick={() => onRejouer(session, "memes")} title="Recharge exactement les mêmes valeurs qu'à l'origine">
+                  ↻ Mêmes valeurs
+                </button>
+                <button className="hist-card-rejouer" onClick={() => onRejouer(session, "nouvelles")} title="Retire de nouvelles valeurs pour les éléments aléatoires">
+                  🎲 Nouvelles valeurs
+                </button>
+              </div>
+            );
+          }
+          return (
+            <button className="hist-card-rejouer" onClick={() => onRejouer(session, "nouvelles")}>
+              ↻ Rejouer cette sélection
+            </button>
+          );
+        })()}
+      </div>
+    );
+  }
 
   return (
     <>
@@ -3071,66 +3165,22 @@ function HistoriqueZone({ currentUser, currentProfile, allProfiles, onRejouer, n
         </div>
       ) : (
         <div className="hist-list">
-          {sessions.map(session => (
-            <div key={session.id} className="hist-card">
-              <div className="hist-card-top">
-                <div className="hist-card-main">
-                  {renommageId === session.id ? (
-                    <input className="hist-card-nom-input" value={brouillonNom} autoFocus
-                      onChange={e => setBrouillonNom(e.target.value)}
-                      onKeyDown={e => { if (e.key === "Enter") enregistrerRenommage(session); if (e.key === "Escape") setRenommageId(null); }}
-                      onBlur={() => enregistrerRenommage(session)} />
-                  ) : (
-                    <div className="hist-card-nom">{session.nom}</div>
-                  )}
-                  <div className="hist-card-meta">
-                    <span>{session.question_ids.length} question{session.question_ids.length !== 1 ? "s" : ""}</span>
-                    {session.derniere_action && <span className="hist-badge">{libelleAction(session.derniere_action)}</span>}
-                    {session.type_session === "qcm" && <span className="hist-badge qcm">🔤 QCM</span>}
-                    {session.partage && <span className="hist-badge partage">Partagée</span>}
-                    {!estProprietaire(session) && <span className="hist-card-auteur">par {nomAuteur(session.prof_id)}</span>}
-                  </div>
-                </div>
-                <div className="hist-card-actions">
-                  {estProprietaire(session) && (
-                    <>
-                      <button className={`hist-icon-btn${session.favori ? " fav-active" : ""}`}
-                        onClick={() => toggleFavori(session)} title={session.favori ? "Retirer des favoris" : "Mettre en favori"}>
-                        {session.favori ? "★" : "☆"}
-                      </button>
-                      <button className="hist-icon-btn" onClick={() => commencerRenommage(session)} title="Renommer">✏️</button>
-                      <button className="hist-icon-btn" onClick={() => togglePartage(session)}
-                        title={session.partage ? "Rendre privée" : "Partager avec mes collègues"}>
-                        {session.partage ? "🔓" : "🔒"}
-                      </button>
-                      <button className="hist-icon-btn" onClick={() => demanderSuppressionSession(session)} title="Supprimer">🗑️</button>
-                    </>
-                  )}
-                </div>
-              </div>
-              {(() => {
-                const contenu = session.contenu_selection;
-                const aAleatoire = Array.isArray(contenu) && contenu.some(q => q.mode === "aleatoire" || q._aleatoire === true);
-                if (contenu && aAleatoire) {
-                  return (
-                    <div style={{ display: "flex", gap: 8 }}>
-                      <button className="hist-card-rejouer" onClick={() => onRejouer(session, "memes")} title="Recharge exactement les mêmes valeurs qu'à l'origine">
-                        ↻ Mêmes valeurs
-                      </button>
-                      <button className="hist-card-rejouer" onClick={() => onRejouer(session, "nouvelles")} title="Retire de nouvelles valeurs pour les éléments aléatoires">
-                        🎲 Nouvelles valeurs
-                      </button>
-                    </div>
-                  );
-                }
-                return (
-                  <button className="hist-card-rejouer" onClick={() => onRejouer(session, "nouvelles")}>
-                    ↻ Rejouer cette sélection
+          {familles.map(groupe => {
+            const [tete, ...anciens] = groupe;
+            const cleFamille = `${tete.type_session}__${tete.signature}`;
+            const estDepliee = famillesDepliees.has(cleFamille);
+            return (
+              <div key={cleFamille} className="hist-famille">
+                {renderCarte(tete, false)}
+                {anciens.length > 0 && (
+                  <button className="hist-famille-toggle" onClick={() => toggleFamille(cleFamille)}>
+                    {estDepliee ? "▲ Masquer" : "🔄"} {anciens.length} tirage{anciens.length > 1 ? "s" : ""} précédent{anciens.length > 1 ? "s" : ""}
                   </button>
-                );
-              })()}
-            </div>
-          ))}
+                )}
+                {estDepliee && anciens.map(session => renderCarte(session, true))}
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
@@ -4532,9 +4582,22 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
     return lignes.join("\n");
   }
 
-  // Calcule une signature stable pour un ensemble de questions, peu importe l'ordre
+  // Calcule une signature stable pour un ensemble de questions, peu importe l'ordre.
+  // C'est la signature de "famille" : elle ne dépend que des ids, pas du contenu réellement tiré.
   function calculerSignature(questionsSelection) {
     return questionsSelection.map(q => q.id).slice().sort().join(",");
+  }
+
+  // Signature du tirage réel : dépend du contenu effectivement généré (énoncé/réponse),
+  // donc deux tirages différents d'une même famille (mêmes ids) donnent des signatures différentes.
+  function calculerSignatureTirage(questionsSelection) {
+    const brut = questionsSelection.slice()
+      .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+      .map(q => `${q.id}|${q.enonce}|${q.reponse}`)
+      .join("§§");
+    let h = 5381;
+    for (let i = 0; i < brut.length; i++) h = ((h * 33) ^ brut.charCodeAt(i)) >>> 0;
+    return h.toString(36);
   }
 
   // Génère le nom auto : chapitres (max 2, "+N autres" sinon) · date · nombre de questions
@@ -4556,10 +4619,14 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
   async function sauvegarderDansHistorique(action) {
     if (selection.length === 0) return;
     const signature = calculerSignature(selection);
+    const tirageSignature = calculerSignatureTirage(selection);
     const niveau = niveauScolaire || "terminale_spe";
 
+    // Un tirage strictement identique (même famille ET même contenu déjà tiré) met à jour
+    // sa carte existante — un simple re-export du même tirage ne crée pas de doublon.
     const { data: existante } = await supabase.from("sessions_historique")
-      .select("id").eq("prof_id", currentUser.id).eq("signature", signature).eq("type_session", "classique").maybeSingle();
+      .select("id").eq("prof_id", currentUser.id).eq("signature", signature)
+      .eq("tirage_signature", tirageSignature).eq("type_session", "classique").maybeSingle();
 
     let erreur;
     if (existante) {
@@ -4577,11 +4644,26 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
         question_ids: selection.map(q => q.id),
         contenu_selection: selection,
         signature,
+        tirage_signature: tirageSignature,
         derniere_action: action,
         niveau_scolaire: niveau,
         type_session: "classique",
       });
       erreur = error;
+
+      // Limite à 5 tirages conservés par famille : au-delà, supprime les plus anciens
+      // (jamais les favoris, qui échappent à la purge automatique).
+      if (!error) {
+        const { data: memeFamille } = await supabase.from("sessions_historique")
+          .select("id, updated_at, favori").eq("prof_id", currentUser.id).eq("signature", signature)
+          .eq("type_session", "classique").order("updated_at", { ascending: false });
+        if (memeFamille && memeFamille.length > 5) {
+          const supprimables = memeFamille.slice(5).filter(s => !s.favori).map(s => s.id);
+          if (supprimables.length > 0) {
+            await supabase.from("sessions_historique").delete().in("id", supprimables);
+          }
+        }
+      }
     }
     if (erreur) {
       alert("Erreur lors de la sauvegarde dans l'historique : " + erreur.message);
@@ -5382,8 +5464,20 @@ function QcmZone({ currentUser, currentProfile, qcmSessionARecharger, onSessionC
   }
 
   // ── Historique (partagé avec les sessions classiques, différencié par type_session) ──
+  // Signature de famille (ids), comme pour les sessions classiques.
   function calculerSignature(qcmSelection) {
     return qcmSelection.map(q => q.id).slice().sort().join(",");
+  }
+  // Signature du tirage réel : dépend du contenu effectivement tiré (énoncé/choix),
+  // donc un nouveau tirage aléatoire d'un QCM donne une signature différente.
+  function calculerSignatureTirage(qcmSelection) {
+    const brut = qcmSelection.slice()
+      .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
+      .map(q => `${q.id}|${q.enonce}|${(q.choix || []).join("~")}|${q.bonne_reponse}`)
+      .join("§§");
+    let h = 5381;
+    for (let i = 0; i < brut.length; i++) h = ((h * 33) ^ brut.charCodeAt(i)) >>> 0;
+    return h.toString(36);
   }
   function genererNomSession(qcmSelection) {
     const chapitresUniques = [...new Set(qcmSelection.map(q => nomChapitre(q.chapitre_id)))];
@@ -5396,11 +5490,13 @@ function QcmZone({ currentUser, currentProfile, qcmSessionARecharger, onSessionC
   async function sauvegarderDansHistorique(action) {
     if (selection.length === 0) return;
     const signature = calculerSignature(selection);
+    const tirageSignature = calculerSignatureTirage(selection);
     // Niveau fixe, indépendant de la pill sélectionnée : le QCM mélange
     // Seconde et Première, donc "le niveau au moment du clic" n'a pas de sens.
     const niveau = "automatismes_qcm";
     const { data: existante } = await supabase.from("sessions_historique")
-      .select("id").eq("prof_id", currentUser.id).eq("signature", signature).eq("type_session", "qcm").maybeSingle();
+      .select("id").eq("prof_id", currentUser.id).eq("signature", signature)
+      .eq("tirage_signature", tirageSignature).eq("type_session", "qcm").maybeSingle();
     let erreur;
     if (existante) {
       const { error } = await supabase.from("sessions_historique").update({
@@ -5417,11 +5513,25 @@ function QcmZone({ currentUser, currentProfile, qcmSessionARecharger, onSessionC
         question_ids: selection.map(q => q.id),
         contenu_selection: selection,
         signature,
+        tirage_signature: tirageSignature,
         derniere_action: action,
         niveau_scolaire: niveau,
         type_session: "qcm",
       });
       erreur = error;
+
+      // Limite à 5 tirages conservés par famille (jamais les favoris).
+      if (!error) {
+        const { data: memeFamille } = await supabase.from("sessions_historique")
+          .select("id, updated_at, favori").eq("prof_id", currentUser.id).eq("signature", signature)
+          .eq("type_session", "qcm").order("updated_at", { ascending: false });
+        if (memeFamille && memeFamille.length > 5) {
+          const supprimables = memeFamille.slice(5).filter(s => !s.favori).map(s => s.id);
+          if (supprimables.length > 0) {
+            await supabase.from("sessions_historique").delete().in("id", supprimables);
+          }
+        }
+      }
     }
     if (erreur) {
       alert("Erreur lors de la sauvegarde dans l'historique : " + erreur.message);
