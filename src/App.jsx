@@ -907,6 +907,8 @@ const CSS = `
 
   .katex-render { font-size: 1em; }
   .katex-render .katex { font-size: 1.05em; }
+  .latex-table { border-collapse: collapse; margin: 10px auto; }
+  .latex-table td { border: 1px solid var(--border, currentColor); padding: 6px 14px; text-align: center; }
 
   /* ── Zone chat ── */
   .chat-area { flex: 1; display: flex; flex-direction: column; min-width: 0; position: relative; }
@@ -1227,31 +1229,91 @@ function renderTextSegments(texte, keyDebut) {
   return morceaux;
 }
 
+// Détecte un tableau LaTeX (\begin{tabular}{...}...\end{tabular}, éventuellement
+// entouré de \begin{center}...\end{center}) et le sépare du reste du texte : KaTeX
+// ne sait interpréter que des formules mathématiques, jamais des environnements
+// de mise en page comme tabular/center, qui doivent donc être rendus en HTML natif.
+function extraireSegmentsTableau(texte) {
+  if (!texte) return [];
+  const regex = /\\begin\{center\}\s*\\begin\{tabular\}\{[^}]*\}([\s\S]*?)\\end\{tabular\}\s*\\end\{center\}|\\begin\{tabular\}\{[^}]*\}([\s\S]*?)\\end\{tabular\}/g;
+  const segments = [];
+  let lastIndex = 0;
+  let match;
+  let key = 0;
+  while ((match = regex.exec(texte)) !== null) {
+    if (match.index > lastIndex) {
+      segments.push({ type: "texte", content: texte.slice(lastIndex, match.index), key: key++ });
+    }
+    const corps = match[1] !== undefined ? match[1] : match[2];
+    segments.push({ type: "tableau", content: corps, key: key++ });
+    lastIndex = regex.lastIndex;
+  }
+  if (lastIndex < texte.length) {
+    segments.push({ type: "texte", content: texte.slice(lastIndex), key: key++ });
+  }
+  return segments;
+}
+
+// Parse le corps d'un environnement tabular : retire les \hline, découpe en
+// lignes sur \\ puis en cellules sur &. Le contenu de chaque cellule (qui peut
+// contenir des formules $...$) est rendu séparément via MathText.
+function parserTableauLatex(corps) {
+  return corps
+    .replace(/\\hline/g, "")
+    .split("\\\\")
+    .map(ligne => ligne.trim())
+    .filter(ligne => ligne.length > 0)
+    .map(ligne => ligne.split("&").map(cellule => cellule.trim()));
+}
+
 function MathText({ children, inline = true }) {
-  const segments = renderMathSegments(children || "");
-  const Wrapper = inline ? "span" : "div";
+  const segmentsTableau = extraireSegmentsTableau(children || "");
+  const contientTableau = segmentsTableau.some(s => s.type === "tableau");
+  // Un <table> ne peut pas être imbriqué dans un <span> : on force un conteneur
+  // bloc dès qu'un tableau est présent, même si inline avait été demandé.
+  const Wrapper = (inline && !contientTableau) ? "span" : "div";
   return (
     <Wrapper className="katex-render">
-      {segments.map(seg => {
-        if (seg.type === "text") {
-          const morceaux = renderTextSegments(seg.content, seg.key * 1000);
+      {segmentsTableau.map(segTab => {
+        if (segTab.type === "tableau") {
+          const lignes = parserTableauLatex(segTab.content);
           return (
-            <span key={seg.key}>
-              {morceaux.map(m => {
-                if (m.type === "textbf") return <strong key={m.key}>{m.content}</strong>;
-                if (m.type === "textit" || m.type === "emph") return <em key={m.key}>{m.content}</em>;
-                if (m.type === "underline") return <u key={m.key}>{m.content}</u>;
-                return <span key={m.key}>{m.content}</span>;
-              })}
-            </span>
+            <table className="latex-table" key={segTab.key}>
+              <tbody>
+                {lignes.map((ligne, i) => (
+                  <tr key={i}>
+                    {ligne.map((cellule, j) => (
+                      <td key={j}><MathText>{cellule}</MathText></td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           );
         }
-        try {
-          const html = katex.renderToString(seg.content, { displayMode: seg.displayMode, throwOnError: false });
-          return <span key={seg.key} dangerouslySetInnerHTML={{ __html: html }} />;
-        } catch {
-          return <span key={seg.key}>{seg.content}</span>;
-        }
+        const segments = renderMathSegments(segTab.content);
+        return segments.map(seg => {
+          const cle = `${segTab.key}-${seg.key}`;
+          if (seg.type === "text") {
+            const morceaux = renderTextSegments(seg.content, seg.key * 1000);
+            return (
+              <span key={cle}>
+                {morceaux.map(m => {
+                  if (m.type === "textbf") return <strong key={m.key}>{m.content}</strong>;
+                  if (m.type === "textit" || m.type === "emph") return <em key={m.key}>{m.content}</em>;
+                  if (m.type === "underline") return <u key={m.key}>{m.content}</u>;
+                  return <span key={m.key}>{m.content}</span>;
+                })}
+              </span>
+            );
+          }
+          try {
+            const html = katex.renderToString(seg.content, { displayMode: seg.displayMode, throwOnError: false });
+            return <span key={cle} dangerouslySetInnerHTML={{ __html: html }} />;
+          } catch {
+            return <span key={cle}>{seg.content}</span>;
+          }
+        });
       })}
     </Wrapper>
   );
@@ -4591,6 +4653,10 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
     lignes.push("}");
     lignes.push("\\begin{document}");
     lignes.push("");
+    lignes.push("\\noindent\\textbf{Nom :}\\underline{\\hspace{3.5cm}} \\hfill \\textbf{Prénom :}\\underline{\\hspace{3.5cm}} \\hfill \\textbf{Classe :}\\underline{\\hspace{2cm}}");
+    lignes.push("");
+    lignes.push("\\vspace{6mm}");
+    lignes.push("");
 
     selection.forEach((q, idx) => {
       lignes.push(`\\stepcounter{qnum}`);
@@ -5593,6 +5659,10 @@ function QcmZone({ currentUser, currentProfile, qcmSessionARecharger, onSessionC
     lignes.push("\\rhead{Durée : 20 min}");
     lignes.push("\\newcounter{qnum}");
     lignes.push("\\begin{document}");
+    lignes.push("");
+    lignes.push("\\noindent\\textbf{Nom :}\\underline{\\hspace{3.5cm}} \\hfill \\textbf{Prénom :}\\underline{\\hspace{3.5cm}} \\hfill \\textbf{Classe :}\\underline{\\hspace{2cm}}");
+    lignes.push("");
+    lignes.push("\\vspace{6mm}");
     lignes.push("");
 
     selection.forEach((q, idx) => {
