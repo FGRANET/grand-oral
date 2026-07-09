@@ -3816,10 +3816,20 @@ function TirageAleatoire({ chapitres, onAnnuler, onTirer, niveauScolaire }) {
       const chapitresAvecQuestions = Object.keys(parChapitre);
       const quotaParChapitre = Math.ceil(nombre / chapitresAvecQuestions.length);
 
+      const pris = new Set();
       chapitresAvecQuestions.forEach(chId => {
         const tirees = melanger(parChapitre[chId]).slice(0, quotaParChapitre);
+        tirees.forEach(q => pris.add(q));
         resultat.push(...tirees);
       });
+      // Le quota par chapitre peut écrêter les chapitres bien fournis sans que les
+      // chapitres moins fournis ne compensent : si le vivier total permet d'atteindre
+      // le nombre demandé (ou de le rapprocher), on complète avec les candidats restants.
+      const cible = Math.min(nombre, pool.length);
+      if (resultat.length < cible) {
+        const restants = pool.filter(q => !pris.has(q));
+        resultat.push(...melanger(restants).slice(0, cible - resultat.length));
+      }
       resultat = melanger(resultat).slice(0, nombre);
     } else {
       resultat = melanger(pool).slice(0, nombre);
@@ -3976,9 +3986,19 @@ function TirageAleatoireQcm({ chapitres, onAnnuler, onTirer }) {
       pool.forEach(q => { (parChapitre[q.chapitre_id] = parChapitre[q.chapitre_id] || []).push(q); });
       const chapitresAvecQcm = Object.keys(parChapitre);
       const quotaParChapitre = Math.ceil(nombre / (chapitresAvecQcm.length || 1));
+      const pris = new Set();
       chapitresAvecQcm.forEach(chId => {
-        resultat.push(...melanger(parChapitre[chId]).slice(0, quotaParChapitre));
+        const choisis = melanger(parChapitre[chId]).slice(0, quotaParChapitre);
+        choisis.forEach(q => pris.add(q));
+        resultat.push(...choisis);
       });
+      // Idem que pour les questions classiques : complète si le quota par chapitre
+      // a laissé des candidats de côté alors que le vivier permettait d'en tirer plus.
+      const cible = Math.min(nombre, pool.length);
+      if (resultat.length < cible) {
+        const restants = pool.filter(q => !pris.has(q));
+        resultat.push(...melanger(restants).slice(0, cible - resultat.length));
+      }
       resultat = melanger(resultat).slice(0, nombre);
     } else {
       resultat = melanger(pool).slice(0, nombre);
