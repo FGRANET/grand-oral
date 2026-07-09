@@ -6557,17 +6557,22 @@ export default function App() {
     premiere_techno:     "192,38,211",
     seconde:       "5,150,105",
   };
-  const couleurActive = COULEURS_NIVEAU[niveauScolaire] || "#2563eb";
-  const estTerminaleSpe = niveauScolaire === "terminale_spe";
+  const COULEUR_QCM = "#f59e0b";
+  const COULEUR_QCM_LIGHT = "#fbbf24";
+  const COULEUR_QCM_RGB = "245,158,11";
   const estContexteQcm = activeTab === "qcm" || activeTab === "historique_qcm";
+  const couleurActive = estContexteQcm ? COULEUR_QCM : (COULEURS_NIVEAU[niveauScolaire] || "#2563eb");
+  const estTerminaleSpe = niveauScolaire === "terminale_spe";
   // Injectées en CSS custom properties sur le conteneur de contenu : tout ce qui
   // utilise déjà var(--accent) / var(--accent-light) / var(--accent-rgb) (filtres,
   // badges, boutons, checkboxes, tirage, barre de progression…) se reteinte
   // automatiquement selon le niveau actif, sans toucher au CSS de chaque composant.
+  // L'onglet QCM a sa propre identité (ambre) : elle prime sur la couleur du niveau,
+  // pour ne pas hériter du niveau sélectionné juste avant d'y accéder.
   const styleNiveau = {
     "--accent": couleurActive,
-    "--accent-light": COULEURS_NIVEAU_LIGHT[niveauScolaire] || "#7b8fff",
-    "--accent-rgb": COULEURS_NIVEAU_RGB[niveauScolaire] || "91,115,255",
+    "--accent-light": estContexteQcm ? COULEUR_QCM_LIGHT : (COULEURS_NIVEAU_LIGHT[niveauScolaire] || "#7b8fff"),
+    "--accent-rgb": estContexteQcm ? COULEUR_QCM_RGB : (COULEURS_NIVEAU_RGB[niveauScolaire] || "91,115,255"),
     background: "radial-gradient(ellipse 1200px 800px at 15% 0%, rgba(var(--accent-rgb), 0.06), transparent 60%), var(--bg)",
   };
   const [sessionARecharger, setSessionARecharger] = useState(null); // ids de questions à charger dans le générateur
@@ -6707,11 +6712,11 @@ export default function App() {
                     Reste visible même sur Terminale Spé — cette rangée ne bouge jamais. */}
                 <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
                   <button className={`niveau-pill${estContexteQcm ? " active" : ""}`}
-                    style={estContexteQcm ? { background: "#f59e0b", color: "#1c1300" } : {}}
+                    style={estContexteQcm ? { background: COULEUR_QCM, color: "#1c1300" } : {}}
                     onClick={() => setActiveTab("qcm")}>
                     <span aria-hidden="true" style={{ marginRight: 6 }}>🎲</span>Automatismes QCM
                   </button>
-                  <span style={{ fontSize: 9, color: "#f59e0b", letterSpacing: ".03em" }}>SECONDE + 1RE</span>
+                  <span style={{ fontSize: 9, color: COULEUR_QCM, letterSpacing: ".03em" }}>SECONDE + 1RE</span>
                 </div>
                 <div className="niveau-separateur"></div>
 
@@ -6753,11 +6758,11 @@ export default function App() {
                 {estContexteQcm ? (
                   <>
                     <button className="sidebar-tab-top" onClick={() => setActiveTab("qcm")}
-                      style={{ color: activeTab === "qcm" ? "#f59e0b" : "", borderBottom: activeTab === "qcm" ? "2px solid #f59e0b" : "2px solid transparent" }}>
+                      style={{ color: activeTab === "qcm" ? COULEUR_QCM : "", borderBottom: activeTab === "qcm" ? `2px solid ${COULEUR_QCM}` : "2px solid transparent" }}>
                       QCM
                     </button>
                     <button className="sidebar-tab-top" onClick={() => setActiveTab("historique_qcm")}
-                      style={{ color: activeTab === "historique_qcm" ? "#f59e0b" : "", borderBottom: activeTab === "historique_qcm" ? "2px solid #f59e0b" : "2px solid transparent" }}>
+                      style={{ color: activeTab === "historique_qcm" ? COULEUR_QCM : "", borderBottom: activeTab === "historique_qcm" ? `2px solid ${COULEUR_QCM}` : "2px solid transparent" }}>
                       Historique
                     </button>
                   </>
