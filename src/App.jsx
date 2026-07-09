@@ -3108,9 +3108,27 @@ function HistoriqueZone({ currentUser, currentProfile, allProfiles, onRejouer, n
                   )}
                 </div>
               </div>
-              <button className="hist-card-rejouer" onClick={() => onRejouer(session)}>
-                ↻ Rejouer cette sélection
-              </button>
+              {(() => {
+                const contenu = session.contenu_selection;
+                const aAleatoire = Array.isArray(contenu) && contenu.some(q => q.mode === "aleatoire" || q._aleatoire === true);
+                if (contenu && aAleatoire) {
+                  return (
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <button className="hist-card-rejouer" onClick={() => onRejouer(session, "memes")} title="Recharge exactement les mêmes valeurs qu'à l'origine">
+                        ↻ Mêmes valeurs
+                      </button>
+                      <button className="hist-card-rejouer" onClick={() => onRejouer(session, "nouvelles")} title="Retire de nouvelles valeurs pour les éléments aléatoires">
+                        🎲 Nouvelles valeurs
+                      </button>
+                    </div>
+                  );
+                }
+                return (
+                  <button className="hist-card-rejouer" onClick={() => onRejouer(session, "nouvelles")}>
+                    ↻ Rejouer cette sélection
+                  </button>
+                );
+              })()}
             </div>
           ))}
         </div>
@@ -4004,7 +4022,7 @@ function TirageAleatoireQcm({ chapitres, onAnnuler, onTirer }) {
   );
 }
 
-function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSessionChargee, niveauScolaire, onSessionSauvegardee }) {
+function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSessionChargee, contenuExactARecharger, onContenuExactCharge, niveauScolaire, onSessionSauvegardee }) {
   const [chapitres, setChapitres] = useState([]);
   const [questionsParChapitre, setQuestionsParChapitre] = useState({}); // { chapitre_id: [questions] }
   const [exercicesEnBase, setExercicesEnBase] = useState([]);           // exercices_application chargés depuis Supabase
@@ -4136,6 +4154,14 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
       onSessionChargee();
     });
   }, [sessionARecharger]);
+
+  // Rechargement "mêmes valeurs" : le contenu est déjà résolu (sauvegardé tel
+  // quel dans l'historique), aucun tirage ni requête nécessaire.
+  useEffect(() => {
+    if (!contenuExactARecharger) return;
+    setSelection(contenuExactARecharger);
+    onContenuExactCharge();
+  }, [contenuExactARecharger]);
 
   async function toggleChapitre(chapitreId) {
     const estOuvert = chapitresOuverts[chapitreId];
@@ -4535,22 +4561,31 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
     const { data: existante } = await supabase.from("sessions_historique")
       .select("id").eq("prof_id", currentUser.id).eq("signature", signature).eq("type_session", "classique").maybeSingle();
 
+    let erreur;
     if (existante) {
-      await supabase.from("sessions_historique").update({
+      const { error } = await supabase.from("sessions_historique").update({
         question_ids: selection.map(q => q.id),
+        contenu_selection: selection,
         derniere_action: action,
         updated_at: new Date().toISOString(),
       }).eq("id", existante.id);
+      erreur = error;
     } else {
-      await supabase.from("sessions_historique").insert({
+      const { error } = await supabase.from("sessions_historique").insert({
         prof_id: currentUser.id,
         nom: genererNomSession(selection),
         question_ids: selection.map(q => q.id),
+        contenu_selection: selection,
         signature,
         derniere_action: action,
         niveau_scolaire: niveau,
         type_session: "classique",
       });
+      erreur = error;
+    }
+    if (erreur) {
+      alert("Erreur lors de la sauvegarde dans l'historique : " + erreur.message);
+      return;
     }
     onSessionSauvegardee?.();
   }
@@ -5111,7 +5146,7 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
 // Rubrique indépendante pour les QCM (fixe + aléatoire), sur le modèle de
 // GenerateurZone mais simplifiée : un seul "type" de contenu, pas de filtre
 // par type de question, tirage/édition/export propres aux QCM.
-function QcmZone({ currentUser, currentProfile, qcmSessionARecharger, onSessionChargee, niveauScolaire, onSessionSauvegardee }) {
+function QcmZone({ currentUser, currentProfile, qcmSessionARecharger, onSessionChargee, qcmContenuExactARecharger, onContenuExactCharge, niveauScolaire, onSessionSauvegardee }) {
   const [chapitres, setChapitres] = useState([]);
   const [qcmParChapitre, setQcmParChapitre] = useState({});       // { chapitre_id: [qcm] }
   const [chapitresOuverts, setChapitresOuverts] = useState({});
@@ -5201,6 +5236,13 @@ function QcmZone({ currentUser, currentProfile, qcmSessionARecharger, onSessionC
       onSessionChargee();
     });
   }, [qcmSessionARecharger]);
+
+  // Rechargement "mêmes valeurs" : le contenu est déjà résolu, aucun tirage nécessaire.
+  useEffect(() => {
+    if (!qcmContenuExactARecharger) return;
+    setSelection(qcmContenuExactARecharger);
+    onContenuExactCharge();
+  }, [qcmContenuExactARecharger]);
 
   async function toggleChapitre(chapitreId) {
     const estOuvert = chapitresOuverts[chapitreId];
@@ -5359,22 +5401,31 @@ function QcmZone({ currentUser, currentProfile, qcmSessionARecharger, onSessionC
     const niveau = "automatismes_qcm";
     const { data: existante } = await supabase.from("sessions_historique")
       .select("id").eq("prof_id", currentUser.id).eq("signature", signature).eq("type_session", "qcm").maybeSingle();
+    let erreur;
     if (existante) {
-      await supabase.from("sessions_historique").update({
+      const { error } = await supabase.from("sessions_historique").update({
         question_ids: selection.map(q => q.id),
+        contenu_selection: selection,
         derniere_action: action,
         updated_at: new Date().toISOString(),
       }).eq("id", existante.id);
+      erreur = error;
     } else {
-      await supabase.from("sessions_historique").insert({
+      const { error } = await supabase.from("sessions_historique").insert({
         prof_id: currentUser.id,
         nom: genererNomSession(selection),
         question_ids: selection.map(q => q.id),
+        contenu_selection: selection,
         signature,
         derniere_action: action,
         niveau_scolaire: niveau,
         type_session: "qcm",
       });
+      erreur = error;
+    }
+    if (erreur) {
+      alert("Erreur lors de la sauvegarde dans l'historique : " + erreur.message);
+      return;
     }
     onSessionSauvegardee?.();
   }
@@ -6309,11 +6360,13 @@ export default function App() {
     background: "radial-gradient(ellipse 1200px 800px at 15% 0%, rgba(var(--accent-rgb), 0.06), transparent 60%), var(--bg)",
   };
   const [sessionARecharger, setSessionARecharger] = useState(null); // ids de questions à charger dans le générateur
+  const [contenuExactARecharger, setContenuExactARecharger] = useState(null); // contenu déjà résolu (mêmes valeurs), générateur
   // Incrémenté à chaque sauvegarde de session (diaporama/.tex), pour que
   // l'Historique se rafraîchisse même s'il est déjà ouvert au moment de la sauvegarde.
   const [historiqueVersion, setHistoriqueVersion] = useState(0);
   const notifierNouvelleSessionHistorique = () => setHistoriqueVersion(v => v + 1);
   const [qcmSessionARecharger, setQcmSessionARecharger] = useState(null); // ids de qcm à charger dans la rubrique QCM
+  const [qcmContenuExactARecharger, setQcmContenuExactARecharger] = useState(null); // contenu déjà résolu (mêmes valeurs), QCM
 
   // Charger le CSS de KaTeX une seule fois (nécessaire pour un rendu correct des formules)
   useEffect(() => {
@@ -6562,9 +6615,16 @@ export default function App() {
                 <div style={{ display: activeTab === "historique" ? "flex" : "none", flex: 1, minHeight: 0 }}>
                   <HistoriqueZone currentUser={user} currentProfile={profile} allProfiles={allProfiles}
                     niveauScolaire={niveauScolaire} actif={activeTab === "historique"} historiqueVersion={historiqueVersion}
-                    onRejouer={(session) => {
-                      if (session.type_session === "qcm") { setQcmSessionARecharger(session.question_ids); setActiveTab("qcm"); }
-                      else { setSessionARecharger(session.question_ids); setActiveTab("generateur"); }
+                    onRejouer={(session, mode) => {
+                      if (session.type_session === "qcm") {
+                        if (mode === "memes" && session.contenu_selection) setQcmContenuExactARecharger(session.contenu_selection);
+                        else setQcmSessionARecharger(session.question_ids);
+                        setActiveTab("qcm");
+                      } else {
+                        if (mode === "memes" && session.contenu_selection) setContenuExactARecharger(session.contenu_selection);
+                        else setSessionARecharger(session.question_ids);
+                        setActiveTab("generateur");
+                      }
                     }} />
                 </div>
               </>
@@ -6574,6 +6634,7 @@ export default function App() {
             <div style={{ display: activeTab === "generateur" || activeTab === "automatismes" ? "flex" : "none", flex: 1, minHeight: 0 }}>
               <GenerateurZone currentUser={user} currentProfile={profile}
                 sessionARecharger={sessionARecharger} onSessionChargee={() => setSessionARecharger(null)}
+                contenuExactARecharger={contenuExactARecharger} onContenuExactCharge={() => setContenuExactARecharger(null)}
                 niveauScolaire={niveauScolaire} onSessionSauvegardee={notifierNouvelleSessionHistorique} />
             </div>
 
@@ -6582,9 +6643,16 @@ export default function App() {
               <div style={{ display: activeTab === "historique" ? "flex" : "none", flex: 1, minHeight: 0 }}>
                 <HistoriqueZone currentUser={user} currentProfile={profile} allProfiles={allProfiles}
                   niveauScolaire={niveauScolaire} actif={activeTab === "historique"} historiqueVersion={historiqueVersion}
-                  onRejouer={(session) => {
-                    if (session.type_session === "qcm") { setQcmSessionARecharger(session.question_ids); setActiveTab("qcm"); }
-                    else { setSessionARecharger(session.question_ids); setActiveTab("automatismes"); }
+                  onRejouer={(session, mode) => {
+                    if (session.type_session === "qcm") {
+                      if (mode === "memes" && session.contenu_selection) setQcmContenuExactARecharger(session.contenu_selection);
+                      else setQcmSessionARecharger(session.question_ids);
+                      setActiveTab("qcm");
+                    } else {
+                      if (mode === "memes" && session.contenu_selection) setContenuExactARecharger(session.contenu_selection);
+                      else setSessionARecharger(session.question_ids);
+                      setActiveTab("automatismes");
+                    }
                   }} />
               </div>
             )}
@@ -6593,6 +6661,7 @@ export default function App() {
             <div style={{ display: activeTab === "qcm" ? "flex" : "none", flex: 1, minHeight: 0 }}>
               <QcmZone currentUser={user} currentProfile={profile}
                 qcmSessionARecharger={qcmSessionARecharger} onSessionChargee={() => setQcmSessionARecharger(null)}
+                qcmContenuExactARecharger={qcmContenuExactARecharger} onContenuExactCharge={() => setQcmContenuExactARecharger(null)}
                 niveauScolaire={niveauScolaire} onSessionSauvegardee={notifierNouvelleSessionHistorique} />
             </div>
 
@@ -6600,8 +6669,9 @@ export default function App() {
             <div style={{ display: activeTab === "historique_qcm" ? "flex" : "none", flex: 1, minHeight: 0 }}>
               <HistoriqueZone currentUser={user} currentProfile={profile} allProfiles={allProfiles}
                 niveauScolaire="automatismes_qcm" actif={activeTab === "historique_qcm"} historiqueVersion={historiqueVersion}
-                onRejouer={(session) => {
-                  setQcmSessionARecharger(session.question_ids);
+                onRejouer={(session, mode) => {
+                  if (mode === "memes" && session.contenu_selection) setQcmContenuExactARecharger(session.contenu_selection);
+                  else setQcmSessionARecharger(session.question_ids);
                   setActiveTab("qcm");
                 }} />
             </div>
