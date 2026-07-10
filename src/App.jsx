@@ -72,7 +72,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import katex from "https://esm.sh/katex@0.16.9";
 // ⚠️ REMPLACER PAR L'URL DE VOTRE SERVICE DE COMPILATION LATEX UNE FOIS DÉPLOYÉ
 // (voir dossier latex-service/ : Dockerfile + serveur à déployer sur Render ou Fly.io)
-const LATEX_COMPILE_URL = "https://VOTRE-SERVICE.onrender.com/compile";
+const LATEX_COMPILE_URL = "https://grand-oral.onrender.com/compile";
 
 // ⚠️ REMPLACER PAR VOS VRAIES VALEURS SUPABASE
 const SUPABASE_URL = "https://bolmwalxiqsuimuagrhx.supabase.co";
