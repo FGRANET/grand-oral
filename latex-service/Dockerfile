@@ -10,8 +10,17 @@ ENV TECTONIC_VERSION=0.16.9
 
 # Récupère le binaire Tectonic précompilé (pas de compilation depuis les
 # sources : téléchargement direct depuis les releases GitHub officielles).
+# Tectonic est un binaire dynamiquement lié : `ldd` sur le binaire réel montre
+# qu'il a besoin de libstdc++/libssl/libcrypto/libgcc_s/libc (déjà présentes
+# dans l'image Node de base) ET de libgraphite2, absente par défaut — d'où
+# l'erreur "error while loading shared libraries: libgraphite2.so.3" sans elle.
+# On ajoute aussi fontconfig/freetype/harfbuzz/png16 par sécurité (utilisés en
+# interne par certains rendus de polices, même sans lien dynamique direct).
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends ca-certificates curl && \
+    apt-get install -y --no-install-recommends \
+      ca-certificates curl \
+      libgraphite2-3 libssl3 \
+      libharfbuzz0b libfontconfig1 libfreetype6 libpng16-16 && \
     curl -fsSL -o /tmp/tectonic.tar.gz \
       "https://github.com/tectonic-typesetting/tectonic/releases/download/tectonic@${TECTONIC_VERSION}/tectonic-${TECTONIC_VERSION}-x86_64-unknown-linux-gnu.tar.gz" && \
     tar -xzf /tmp/tectonic.tar.gz -C /usr/local/bin && \
