@@ -1,33 +1,16 @@
 # Service de compilation LaTeX — Mathématiques à Valadon
 # ---------------------------------------------------------
-# Base légère (Debian), on y ajoute Tectonic (moteur LaTeX auto-suffisant,
-# licence MIT) et un petit serveur Node/Express qui l'expose en HTTP.
+# Base Alpine : Tectonic y est un paquet officiel (dépôt "community"), avec
+# TOUTES ses dépendances gérées automatiquement par apk. On évite ainsi les
+# deux pièges rencontrés avec un binaire téléchargé manuellement sur Debian :
+# bibliothèques partagées manquantes, et incompatibilité de version de glibc.
 
-FROM node:20-bookworm-slim
+FROM alpine:3.21
 
-# Version figée de Tectonic (mettre à jour cette valeur pour changer de version)
-ENV TECTONIC_VERSION=0.16.9
-
-# Récupère le binaire Tectonic précompilé (pas de compilation depuis les
-# sources : téléchargement direct depuis les releases GitHub officielles).
-# Tectonic est un binaire dynamiquement lié : `ldd` sur le binaire réel montre
-# qu'il a besoin de libstdc++/libssl/libcrypto/libgcc_s/libc (déjà présentes
-# dans l'image Node de base) ET de libgraphite2, absente par défaut — d'où
-# l'erreur "error while loading shared libraries: libgraphite2.so.3" sans elle.
-# On ajoute aussi fontconfig/freetype/harfbuzz/png16 par sécurité (utilisés en
-# interne par certains rendus de polices, même sans lien dynamique direct).
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends \
-      ca-certificates curl \
-      libgraphite2-3 libssl3 \
-      libharfbuzz0b libfontconfig1 libfreetype6 libpng16-16 && \
-    curl -fsSL -o /tmp/tectonic.tar.gz \
-      "https://github.com/tectonic-typesetting/tectonic/releases/download/tectonic@${TECTONIC_VERSION}/tectonic-${TECTONIC_VERSION}-x86_64-unknown-linux-gnu.tar.gz" && \
-    tar -xzf /tmp/tectonic.tar.gz -C /usr/local/bin && \
-    chmod +x /usr/local/bin/tectonic && \
-    rm /tmp/tectonic.tar.gz && \
-    apt-get remove -y curl && apt-get autoremove -y && \
-    rm -rf /var/lib/apt/lists/*
+# nodejs/npm pour le serveur, tectonic pour la compilation, ca-certificates
+# pour les requêtes HTTPS (récupération du bundle TeXLive au premier usage —
+# ici uniquement au moment du préchauffage, voir plus bas).
+RUN apk add --no-cache nodejs npm tectonic ca-certificates
 
 WORKDIR /app
 
