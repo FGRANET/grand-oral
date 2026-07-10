@@ -70,8 +70,9 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import katex from "https://esm.sh/katex@0.16.9";
-import { jsPDF } from "https://esm.sh/jspdf@2.5.2";
-import html2canvas from "https://esm.sh/html2canvas@1.4.1";
+// ⚠️ REMPLACER PAR L'URL DE VOTRE SERVICE DE COMPILATION LATEX UNE FOIS DÉPLOYÉ
+// (voir dossier latex-service/ : Dockerfile + serveur à déployer sur Render ou Fly.io)
+const LATEX_COMPILE_URL = "https://VOTRE-SERVICE.onrender.com/compile";
 
 // ⚠️ REMPLACER PAR VOS VRAIES VALEURS SUPABASE
 const SUPABASE_URL = "https://bolmwalxiqsuimuagrhx.supabase.co";
@@ -1383,110 +1384,32 @@ function MathText({ children, inline = true }) {
   );
 }
 
-// ─── Export PDF direct (aperçu navigateur, sans pdflatex) ──────────────
-// Réutilise la même logique que MathText (formules $...$ et tableaux LaTeX)
-// mais produit une chaîne HTML brute, exploitable hors React par jsPDF.
-function echapperHtml(s) {
-  return (s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-}
-function texteVersHtml(texte) {
-  const segmentsTableau = extraireSegmentsTableau(texte || "");
-  return segmentsTableau.map(segTab => {
-    if (segTab.type === "tableau") {
-      const lignes = parserTableauLatex(segTab.content);
-      const lignesHtml = lignes.map(ligne =>
-        `<tr>${ligne.map(cellule => `<td style="border:1px solid #333;padding:5px 12px;text-align:center;">${texteVersHtml(cellule)}</td>`).join("")}</tr>`
-      ).join("");
-      return `<table style="border-collapse:collapse;margin:8px auto;">${lignesHtml}</table>`;
-    }
-    return renderMathSegments(segTab.content).map(seg => {
-      if (seg.type === "text") return echapperHtml(seg.content);
-      try {
-        return katex.renderToString(seg.content, { displayMode: seg.displayMode, throwOnError: false });
-      } catch {
-        return echapperHtml(seg.content);
-      }
-    }).join("");
-  }).join("");
-}
-
-// items : sélection déjà résolue (mêmes objets que pour l'export .tex).
-// typeContenu : "classique" (questions/exercices) ou "qcm".
-async function exporterPdfDirect({ items, avecCorrige, entete, nomFichier, typeContenu }) {
-  const conteneur = document.createElement("div");
-  conteneur.style.position = "fixed";
-  conteneur.style.left = "-9999px";
-  conteneur.style.top = "0";
-  conteneur.style.width = "700px";
-  conteneur.style.background = "#ffffff";
-  conteneur.style.color = "#111111";
-  conteneur.style.fontFamily = "'DM Sans', Arial, sans-serif";
-  conteneur.style.fontSize = "13px";
-  conteneur.style.padding = "10px";
-
-  let html = `<div style="display:flex;justify-content:space-between;font-size:11px;color:#444;border-bottom:1px solid #ccc;padding-bottom:8px;margin-bottom:10px;">
-    <span>${echapperHtml(entete)}</span><span>${avecCorrige ? "Corrigé" : "Durée : 30 min"}</span>
-  </div>
-  <div style="margin-bottom:14px;">
-    <strong>Nom :</strong> ______________________&nbsp;&nbsp;&nbsp;
-    <strong>Prénom :</strong> ______________________&nbsp;&nbsp;&nbsp;
-    <strong>Classe :</strong> __________
-  </div>`;
-
-  items.forEach((q, idx) => {
-    html += `<div style="margin-bottom:16px;">
-      <div><strong>Question ${idx + 1}.</strong> ${texteVersHtml(q.enonce)}</div>`;
-    if (typeContenu === "qcm") {
-      const lettres = ["a", "b", "c", "d"];
-      html += `<div style="margin-top:6px;padding-left:14px;">`;
-      (q.choix || []).forEach((c, i) => {
-        const bonne = avecCorrige && i === q.bonne_reponse;
-        html += `<div style="margin:3px 0;${bonne ? "font-weight:600;" : ""}">${bonne ? "&#9746;" : "&#9744;"} ${lettres[i]}) ${texteVersHtml(c)}</div>`;
-      });
-      html += `</div>`;
-    } else if (avecCorrige) {
-      html += `<div style="margin-top:6px;padding:8px 10px;background:#f2f2f2;border-radius:4px;">${texteVersHtml(q.reponse)}</div>`;
-    } else {
-      html += `<div style="margin-top:10px;border-bottom:1px solid #999;height:1px;"></div>
-                <div style="margin-top:14px;border-bottom:1px solid #999;height:1px;"></div>
-                <div style="margin-top:14px;border-bottom:1px solid #999;height:1px;"></div>`;
-    }
-    html += `</div>`;
+// ─── Export PDF direct (vraie compilation LaTeX, via le service dédié) ──
+// Envoie le contenu .tex déjà généré par genererTex/genererTexQcm (le MÊME
+// texte que celui du bouton "Télécharger le .tex") au service de compilation,
+// et télécharge le PDF renvoyé. Comme c'est littéralement le même moteur
+// LaTeX qui compile, le rendu est garanti identique à celui obtenu en
+// compilant soi-même le .tex — pas une approximation HTML/CSS.
+async function compilerEtTelechargerPdf(contenuTex, nomFichier) {
+  const reponse = await fetch(LATEX_COMPILE_URL, {
+    method: "POST",
+    headers: { "Content-Type": "text/plain; charset=utf-8" },
+    body: contenuTex,
   });
 
-  conteneur.innerHTML = html;
-  document.body.appendChild(conteneur);
-
-  try {
-    const canvas = await html2canvas(conteneur, { backgroundColor: "#ffffff", scale: 2, windowWidth: 700 });
-
-    const doc = new jsPDF({ unit: "pt", format: "a4" });
-    const marge = 30;
-    const largeurUtile = doc.internal.pageSize.getWidth() - marge * 2;
-    const hauteurUtile = doc.internal.pageSize.getHeight() - marge * 2;
-    const pxParPt = canvas.width / largeurUtile; // pixels du canvas source par point PDF
-    const hauteurTranchePx = Math.floor(hauteurUtile * pxParPt);
-
-    let yPx = 0;
-    let pageIndex = 0;
-    while (yPx < canvas.height) {
-      const hauteurReellePx = Math.min(hauteurTranchePx, canvas.height - yPx);
-      const tranche = document.createElement("canvas");
-      tranche.width = canvas.width;
-      tranche.height = hauteurReellePx;
-      tranche.getContext("2d").drawImage(canvas, 0, yPx, canvas.width, hauteurReellePx, 0, 0, canvas.width, hauteurReellePx);
-
-      if (pageIndex > 0) doc.addPage();
-      const hauteurTranchePt = hauteurReellePx / pxParPt;
-      doc.addImage(tranche.toDataURL("image/png"), "PNG", marge, marge, largeurUtile, hauteurTranchePt);
-
-      yPx += hauteurReellePx;
-      pageIndex++;
-    }
-    doc.save(`${nomFichier}${avecCorrige ? "-corrige" : ""}.pdf`);
-  } finally {
-    document.body.removeChild(conteneur);
+  if (!reponse.ok) {
+    let detail = "";
+    try { detail = (await reponse.json()).details || ""; } catch { /* réponse non-JSON, ignore */ }
+    throw new Error(`Le service de compilation a renvoyé une erreur (${reponse.status}).${detail ? " Détail : " + detail.slice(0, 300) : ""}`);
   }
+
+  const blob = await reponse.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${nomFichier}.pdf`;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 // ─── Moteur de tirage des exercices d'application ──────────────────────
 // Formate un nombre avec virgule décimale (notation française)
@@ -4978,24 +4901,18 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
     sauvegarderDansHistorique(avecCorrige ? "tex_corrige" : "tex_eleve");
   }
 
-  const NOMS_NIVEAU_ENTETE = {
-    terminale_spe: "Terminale spé", premiere_specifique: "1re spécifique",
-    premiere_spe: "1re spécialité", premiere_techno: "1re techno", seconde: "Seconde",
-  };
   const [exportPdfEnCours, setExportPdfEnCours] = useState(false);
-  // Aperçu PDF direct, généré dans le navigateur (sans pdflatex) : pratique pour
-  // un contrôle rapide avant impression. La mise en page est plus simple que
-  // l'export .tex (pas de colonnes, pas de tcolorbox), mais suffit pour un aperçu.
+  // Aperçu PDF réel : envoie le même contenu .tex que le bouton "Télécharger
+  // le .tex" au service de compilation dédié (Tectonic) et télécharge le vrai
+  // PDF renvoyé — garantie de parité totale avec le .tex, ce n'est pas une
+  // approximation HTML/CSS.
   async function telechargerPdf(avecCorrige) {
     if (selection.length === 0 || exportPdfEnCours) return;
     setExportPdfEnCours(true);
     try {
+      const contenu = genererTex(avecCorrige);
       const date = new Date().toISOString().slice(0, 10);
-      await exporterPdfDirect({
-        items: selection, avecCorrige, typeContenu: "classique",
-        entete: NOMS_NIVEAU_ENTETE[niveauScolaire] || "Grand Oral",
-        nomFichier: `interro_${date}`,
-      });
+      await compilerEtTelechargerPdf(contenu, `interro_${date}${avecCorrige ? "_corrige" : "_eleve"}`);
       sauvegarderDansHistorique(avecCorrige ? "pdf_corrige" : "pdf_eleve");
     } catch (e) {
       alert("Erreur lors de la génération du PDF : " + e.message);
@@ -5963,12 +5880,9 @@ function QcmZone({ currentUser, currentProfile, qcmSessionARecharger, onSessionC
     if (selection.length === 0 || exportPdfEnCours) return;
     setExportPdfEnCours(true);
     try {
+      const contenu = genererTexQcm(avecCorrige);
       const date = new Date().toISOString().slice(0, 10);
-      await exporterPdfDirect({
-        items: selection, avecCorrige, typeContenu: "qcm",
-        entete: "QCM — Automatismes",
-        nomFichier: `qcm_${date}`,
-      });
+      await compilerEtTelechargerPdf(contenu, `qcm_${date}${avecCorrige ? "_corrige" : "_eleve"}`);
       sauvegarderDansHistorique(avecCorrige ? "pdf_corrige" : "pdf_eleve");
     } catch (e) {
       alert("Erreur lors de la génération du PDF : " + e.message);
