@@ -1,0 +1,14 @@
+{
+  "name": "grand-oral-latex-compile-service",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Service de compilation LaTeX (Tectonic) pour Mathématiques à Valadon",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.19.2"
+  }
+}
