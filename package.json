@@ -1,17 +1,14 @@
 {
-  "name": "grand-oral",
+  "name": "grand-oral-latex-compile-service",
   "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Service de compilation LaTeX (Tectonic) pour Mathématiques à Valadon",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview"
+    "start": "node server.js"
   },
   "dependencies": {
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0"
-  },
-  "devDependencies": {
-    "@vitejs/plugin-react": "^4.0.0",
-    "vite": "^4.4.0"
+    "cors": "^2.8.5",
+    "express": "^4.19.2"
   }
 }
