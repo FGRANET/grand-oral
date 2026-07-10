@@ -70,7 +70,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import katex from "https://esm.sh/katex@0.16.9";
-import jsPDF from "https://esm.sh/jspdf@2.5.2";
+import { jsPDF } from "https://esm.sh/jspdf@2.5.2";
 import html2canvas from "https://esm.sh/html2canvas@1.4.1";
 
 // ⚠️ REMPLACER PAR VOS VRAIES VALEURS SUPABASE
@@ -453,12 +453,27 @@ const CSS = `
   }
   .recherche-item {
     background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
-    padding: 12px 16px; margin-bottom: 8px; cursor: pointer; transition: border-color .15s;
+    padding: 12px 16px; margin-bottom: 8px; transition: border-color .15s;
   }
   .recherche-item:hover { border-color: var(--accent); }
-  .recherche-item-meta { font-size: 11px; color: var(--text-muted); margin-bottom: 4px; }
+  .recherche-item.recherche-item-ajoutee { border-color: var(--accent); background: rgba(var(--accent-rgb), 0.08); }
+  .recherche-item-header { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 6px; }
+  .recherche-item-meta { font-size: 11px; color: var(--text-muted); }
+  .recherche-item-enonce { cursor: pointer; }
+  .recherche-item-ajouter {
+    flex-shrink: 0; background: none; border: 1px solid var(--border); color: var(--text-muted);
+    border-radius: 8px; padding: 4px 10px; font-family: var(--font); font-size: 11px; font-weight: 600; cursor: pointer;
+  }
+  .recherche-item-ajouter:hover { border-color: var(--accent); color: var(--text); }
+  .recherche-item-ajoutee .recherche-item-ajouter { background: var(--accent); border-color: var(--accent); color: #fff; }
   .recherche-item-reponse { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); color: var(--text-muted); }
   .recherche-vide { color: var(--text-muted); }
+  .recherche-footer {
+    position: sticky; bottom: 0; display: flex; align-items: center; gap: 12px;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+    padding: 12px 18px; margin-top: 16px; max-width: 620px;
+  }
+  .recherche-footer-count { font-size: 13px; color: var(--text-muted); margin-right: auto; }
 
   /* ── Statistiques ── */
   .stats-zone { flex: 1; min-height: 0; overflow-y: auto; padding: 24px 28px; }
@@ -1443,8 +1458,31 @@ async function exporterPdfDirect({ items, avecCorrige, entete, nomFichier, typeC
   document.body.appendChild(conteneur);
 
   try {
+    const canvas = await html2canvas(conteneur, { backgroundColor: "#ffffff", scale: 2, windowWidth: 700 });
+
     const doc = new jsPDF({ unit: "pt", format: "a4" });
-    await doc.html(conteneur, { margin: [30, 30, 30, 30], autoPaging: "text", width: 535, windowWidth: 700 });
+    const marge = 30;
+    const largeurUtile = doc.internal.pageSize.getWidth() - marge * 2;
+    const hauteurUtile = doc.internal.pageSize.getHeight() - marge * 2;
+    const pxParPt = canvas.width / largeurUtile; // pixels du canvas source par point PDF
+    const hauteurTranchePx = Math.floor(hauteurUtile * pxParPt);
+
+    let yPx = 0;
+    let pageIndex = 0;
+    while (yPx < canvas.height) {
+      const hauteurReellePx = Math.min(hauteurTranchePx, canvas.height - yPx);
+      const tranche = document.createElement("canvas");
+      tranche.width = canvas.width;
+      tranche.height = hauteurReellePx;
+      tranche.getContext("2d").drawImage(canvas, 0, yPx, canvas.width, hauteurReellePx, 0, 0, canvas.width, hauteurReellePx);
+
+      if (pageIndex > 0) doc.addPage();
+      const hauteurTranchePt = hauteurReellePx / pxParPt;
+      doc.addImage(tranche.toDataURL("image/png"), "PNG", marge, marge, largeurUtile, hauteurTranchePt);
+
+      yPx += hauteurReellePx;
+      pageIndex++;
+    }
     doc.save(`${nomFichier}${avecCorrige ? "-corrige" : ""}.pdf`);
   } finally {
     document.body.removeChild(conteneur);
@@ -4294,7 +4332,7 @@ function TirageAleatoireQcm({ chapitres, onAnnuler, onTirer }) {
   );
 }
 
-function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSessionChargee, contenuExactARecharger, onContenuExactCharge, niveauScolaire, onSessionSauvegardee }) {
+function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSessionChargee, contenuExactARecharger, onContenuExactCharge, niveauScolaire, onSessionSauvegardee, elementsAAjouter, onElementsAjoutes }) {
   const [chapitres, setChapitres] = useState([]);
   const [questionsParChapitre, setQuestionsParChapitre] = useState({}); // { chapitre_id: [questions] }
   const [exercicesEnBase, setExercicesEnBase] = useState([]);           // exercices_application chargés depuis Supabase
@@ -4426,6 +4464,35 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
       onSessionChargee();
     });
   }, [sessionARecharger]);
+
+  // Ajoute des éléments trouvés via la recherche globale à la sélection EN COURS
+  // (contrairement au rechargement de session ci-dessus, qui remplace tout) —
+  // les doublons déjà présents sont ignorés.
+  useEffect(() => {
+    if (!elementsAAjouter || elementsAAjouter.length === 0) return;
+    Promise.all([
+      supabase.from("questions").select("*").in("id", elementsAAjouter),
+      supabase.from("exercices_application").select("*").in("id", elementsAAjouter),
+    ]).then(([{ data: questionsData }, { data: exercicesData }]) => {
+      const nouveaux = [];
+      (questionsData || []).forEach(q => nouveaux.push({ ...q, _cle: q.id }));
+      (exercicesData || []).forEach(ex => {
+        const valeurs = {};
+        Object.entries(ex.parametres || {}).forEach(([nom, d]) => { valeurs[nom] = tirerValeurParametre(d); });
+        nouveaux.push({
+          id: ex.id, chapitre_id: ex.chapitre_id, type: "exercice", niveau: ex.niveau,
+          enonce: substituerPlaceholders(ex.enonce_modele, valeurs),
+          reponse: substituerPlaceholders(ex.reponse_modele, valeurs),
+          _cle: ex.id, _aleatoire: true,
+        });
+      });
+      setSelection(prev => {
+        const idsExistants = new Set(prev.map(s => s.id));
+        return [...prev, ...nouveaux.filter(n => !idsExistants.has(n.id))];
+      });
+      onElementsAjoutes();
+    });
+  }, [elementsAAjouter]);
 
   // Rechargement "mêmes valeurs" : le contenu est déjà résolu (sauvegardé tel
   // quel dans l'historique), aucun tirage ni requête nécessaire.
@@ -5483,7 +5550,7 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
 // Rubrique indépendante pour les QCM (fixe + aléatoire), sur le modèle de
 // GenerateurZone mais simplifiée : un seul "type" de contenu, pas de filtre
 // par type de question, tirage/édition/export propres aux QCM.
-function QcmZone({ currentUser, currentProfile, qcmSessionARecharger, onSessionChargee, qcmContenuExactARecharger, onContenuExactCharge, niveauScolaire, onSessionSauvegardee }) {
+function QcmZone({ currentUser, currentProfile, qcmSessionARecharger, onSessionChargee, qcmContenuExactARecharger, onContenuExactCharge, niveauScolaire, onSessionSauvegardee, elementsAAjouter, onElementsAjoutes }) {
   const [chapitres, setChapitres] = useState([]);
   const [qcmParChapitre, setQcmParChapitre] = useState({});       // { chapitre_id: [qcm] }
   const [chapitresOuverts, setChapitresOuverts] = useState({});
@@ -5573,6 +5640,24 @@ function QcmZone({ currentUser, currentProfile, qcmSessionARecharger, onSessionC
       onSessionChargee();
     });
   }, [qcmSessionARecharger]);
+
+  // Ajoute des QCM trouvés via la recherche globale à la sélection EN COURS
+  // (ne remplace pas, contrairement au rechargement de session ci-dessus).
+  useEffect(() => {
+    if (!elementsAAjouter || elementsAAjouter.length === 0) return;
+    supabase.from("qcm").select("*").in("id", elementsAAjouter).then(({ data }) => {
+      const nouveaux = (data || []).map(q => {
+        const tirage = tirerQcm(q);
+        return { id: q.id, chapitre_id: q.chapitre_id, niveau: q.niveau, mode: q.mode,
+          enonce: tirage.enonce, choix: tirage.choix, bonne_reponse: tirage.bonne_reponse };
+      });
+      setSelection(prev => {
+        const idsExistants = new Set(prev.map(s => s.id));
+        return [...prev, ...nouveaux.filter(n => !idsExistants.has(n.id))];
+      });
+      onElementsAjoutes();
+    });
+  }, [elementsAAjouter]);
 
   // Rechargement "mêmes valeurs" : le contenu est déjà résolu, aucun tirage nécessaire.
   useEffect(() => {
@@ -6702,12 +6787,13 @@ function ChatZone({ eleveId, currentUser, currentProfile, allProfiles }) {
 }
 
 // ─── Composant RechercheZone (recherche globale, tous niveaux confondus) ──
-function RechercheZone() {
+function RechercheZone({ onEnvoyerAutomatismes, onEnvoyerQcm }) {
   const [terme, setTerme] = useState("");
   const [enCours, setEnCours] = useState(false);
   const [resultats, setResultats] = useState(null);
   const [chapitresParId, setChapitresParId] = useState({});
   const [ouverts, setOuverts] = useState(() => new Set());
+  const [panier, setPanier] = useState(() => new Set()); // clés "q:id" / "e:id" / "c:id"
 
   const NOMS_NIVEAU = {
     terminale_spe: "Terminale spé", premiere_specifique: "1re spécifique",
@@ -6727,18 +6813,34 @@ function RechercheZone() {
     if (mot.length < 2) { setResultats(null); return; }
     setEnCours(true);
     const motif = `%${mot}%`;
-    const [{ data: questions }, { data: exercices }, { data: qcms }] = await Promise.all([
+    // Deux requêtes séparées puis fusion (plutôt qu'un .or() PostgREST, plus
+    // fragile à écrire correctement et à déboguer en cas de résultat inattendu).
+    const [{ data: questions }, { data: exercices }, { data: qcmParEnonce }, { data: qcmParModele }] = await Promise.all([
       supabase.from("questions").select("*").ilike("enonce", motif).limit(60),
       supabase.from("exercices_application").select("*").ilike("enonce_modele", motif).limit(60),
-      supabase.from("qcm").select("*").or(`enonce.ilike.${motif},enonce_modele.ilike.${motif}`).limit(60),
+      supabase.from("qcm").select("*").ilike("enonce", motif).limit(60),
+      supabase.from("qcm").select("*").ilike("enonce_modele", motif).limit(60),
     ]);
-    setResultats({ questions: questions || [], exercices: exercices || [], qcms: qcms || [] });
+    const qcmMap = new Map();
+    (qcmParEnonce || []).forEach(q => qcmMap.set(q.id, q));
+    (qcmParModele || []).forEach(q => qcmMap.set(q.id, q));
+    setResultats({ questions: questions || [], exercices: exercices || [], qcms: [...qcmMap.values()] });
+    setPanier(new Set());
     setEnCours(false);
   }
 
   function toggle(cle) {
     setOuverts(prev => {
       const copie = new Set(prev);
+      if (copie.has(cle)) copie.delete(cle); else copie.add(cle);
+      return copie;
+    });
+  }
+
+  function toggleAuPanier(type, id) {
+    setPanier(prev => {
+      const copie = new Set(prev);
+      const cle = `${type}:${id}`;
       if (copie.has(cle)) copie.delete(cle); else copie.add(cle);
       return copie;
     });
@@ -6751,6 +6853,19 @@ function RechercheZone() {
   }
 
   const total = resultats ? resultats.questions.length + resultats.exercices.length + resultats.qcms.length : null;
+  const idsAutomatismes = [...panier].filter(c => c.startsWith("q:") || c.startsWith("e:")).map(c => c.slice(2));
+  const idsQcm = [...panier].filter(c => c.startsWith("c:")).map(c => c.slice(2));
+
+  function envoyerAutomatismes() {
+    if (idsAutomatismes.length === 0) return;
+    onEnvoyerAutomatismes(idsAutomatismes);
+    setPanier(new Set());
+  }
+  function envoyerQcm() {
+    if (idsQcm.length === 0) return;
+    onEnvoyerQcm(idsQcm);
+    setPanier(new Set());
+  }
 
   return (
     <div className="recherche-zone">
@@ -6770,49 +6885,92 @@ function RechercheZone() {
           {resultats.questions.length > 0 && (
             <div className="recherche-groupe">
               <div className="recherche-groupe-titre">Questions ({resultats.questions.length})</div>
-              {resultats.questions.map(q => (
-                <div key={q.id} className="recherche-item" onClick={() => toggle("q_" + q.id)}>
-                  <div className="recherche-item-meta">{nomChapitre(q.chapitre_id)} · {niveauChapitre(q.chapitre_id)}</div>
-                  <div className="recherche-item-enonce"><MathText>{q.enonce}</MathText></div>
-                  {ouverts.has("q_" + q.id) && <div className="recherche-item-reponse"><MathText inline={false}>{q.reponse}</MathText></div>}
-                </div>
-              ))}
+              {resultats.questions.map(q => {
+                const cle = `q:${q.id}`;
+                return (
+                  <div key={q.id} className={`recherche-item${panier.has(cle) ? " recherche-item-ajoutee" : ""}`}>
+                    <div className="recherche-item-header">
+                      <div className="recherche-item-meta">{nomChapitre(q.chapitre_id)} · {niveauChapitre(q.chapitre_id)}</div>
+                      <button className="recherche-item-ajouter" onClick={() => toggleAuPanier("q", q.id)}>
+                        {panier.has(cle) ? "✓ Ajoutée" : "+ Ajouter"}
+                      </button>
+                    </div>
+                    <div className="recherche-item-enonce" onClick={() => toggle("q_" + q.id)}><MathText>{q.enonce}</MathText></div>
+                    {ouverts.has("q_" + q.id) && <div className="recherche-item-reponse"><MathText inline={false}>{q.reponse}</MathText></div>}
+                  </div>
+                );
+              })}
             </div>
           )}
 
           {resultats.exercices.length > 0 && (
             <div className="recherche-groupe">
               <div className="recherche-groupe-titre">Exercices aléatoires ({resultats.exercices.length})</div>
-              {resultats.exercices.map(ex => (
-                <div key={ex.id} className="recherche-item" onClick={() => toggle("e_" + ex.id)}>
-                  <div className="recherche-item-meta">{nomChapitre(ex.chapitre_id)} · {niveauChapitre(ex.chapitre_id)}</div>
-                  <div className="recherche-item-enonce"><MathText>{ex.enonce_modele}</MathText></div>
-                  {ouverts.has("e_" + ex.id) && <div className="recherche-item-reponse"><MathText inline={false}>{ex.reponse_modele}</MathText></div>}
-                </div>
-              ))}
+              {resultats.exercices.map(ex => {
+                const cle = `e:${ex.id}`;
+                return (
+                  <div key={ex.id} className={`recherche-item${panier.has(cle) ? " recherche-item-ajoutee" : ""}`}>
+                    <div className="recherche-item-header">
+                      <div className="recherche-item-meta">{nomChapitre(ex.chapitre_id)} · {niveauChapitre(ex.chapitre_id)}</div>
+                      <button className="recherche-item-ajouter" onClick={() => toggleAuPanier("e", ex.id)}>
+                        {panier.has(cle) ? "✓ Ajoutée" : "+ Ajouter"}
+                      </button>
+                    </div>
+                    <div className="recherche-item-enonce" onClick={() => toggle("e_" + ex.id)}><MathText>{ex.enonce_modele}</MathText></div>
+                    {ouverts.has("e_" + ex.id) && <div className="recherche-item-reponse"><MathText inline={false}>{ex.reponse_modele}</MathText></div>}
+                  </div>
+                );
+              })}
             </div>
           )}
 
           {resultats.qcms.length > 0 && (
             <div className="recherche-groupe">
               <div className="recherche-groupe-titre">QCM ({resultats.qcms.length})</div>
-              {resultats.qcms.map(q => (
-                <div key={q.id} className="recherche-item" onClick={() => toggle("c_" + q.id)}>
-                  <div className="recherche-item-meta">{nomChapitre(q.chapitre_id)} · {niveauChapitre(q.chapitre_id)}</div>
-                  <div className="recherche-item-enonce"><MathText>{q.enonce || q.enonce_modele}</MathText></div>
-                  {ouverts.has("c_" + q.id) && (
-                    <div className="recherche-item-reponse">
-                      {(q.choix || q.choix_modele || []).map((c, i) => (
-                        <div key={i}>{i === q.bonne_reponse ? "✓ " : "· "}<MathText>{c}</MathText></div>
-                      ))}
+              {resultats.qcms.map(q => {
+                const cle = `c:${q.id}`;
+                return (
+                  <div key={q.id} className={`recherche-item${panier.has(cle) ? " recherche-item-ajoutee" : ""}`}>
+                    <div className="recherche-item-header">
+                      <div className="recherche-item-meta">{nomChapitre(q.chapitre_id)} · {niveauChapitre(q.chapitre_id)}</div>
+                      <button className="recherche-item-ajouter" onClick={() => toggleAuPanier("c", q.id)}>
+                        {panier.has(cle) ? "✓ Ajoutée" : "+ Ajouter"}
+                      </button>
                     </div>
-                  )}
-                </div>
-              ))}
+                    <div className="recherche-item-enonce" onClick={() => toggle("c_" + q.id)}><MathText>{q.enonce || q.enonce_modele}</MathText></div>
+                    {ouverts.has("c_" + q.id) && (
+                      <div className="recherche-item-reponse">
+                        {(q.choix || q.choix_modele || []).map((c, i) => (
+                          <div key={i}>{i === q.bonne_reponse ? "✓ " : "· "}<MathText>{c}</MathText></div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
 
+
           {total === 0 && <p className="recherche-vide">Aucun résultat.</p>}
+        </div>
+      )}
+
+      {panier.size > 0 && (
+        <div className="recherche-footer">
+          <div className="recherche-footer-count">
+            <strong>{panier.size}</strong> élément{panier.size !== 1 ? "s" : ""} ajouté{panier.size !== 1 ? "s" : ""}
+          </div>
+          {idsAutomatismes.length > 0 && (
+            <button className="gen-export-btn" onClick={envoyerAutomatismes}>
+              → Envoyer vers Automatismes ({idsAutomatismes.length})
+            </button>
+          )}
+          {idsQcm.length > 0 && (
+            <button className="gen-export-btn" onClick={envoyerQcm}>
+              → Envoyer vers QCM ({idsQcm.length})
+            </button>
+          )}
         </div>
       )}
     </div>
@@ -7015,6 +7173,8 @@ export default function App() {
   const notifierNouvelleSessionHistorique = () => setHistoriqueVersion(v => v + 1);
   const [qcmSessionARecharger, setQcmSessionARecharger] = useState(null); // ids de qcm à charger dans la rubrique QCM
   const [qcmContenuExactARecharger, setQcmContenuExactARecharger] = useState(null); // contenu déjà résolu (mêmes valeurs), QCM
+  const [elementsAAjouterAutomatismes, setElementsAAjouterAutomatismes] = useState(null); // ids envoyés depuis la Recherche (s'ajoutent, ne remplacent pas)
+  const [elementsAAjouterQcm, setElementsAAjouterQcm] = useState(null);
 
   // Charger le CSS de KaTeX une seule fois (nécessaire pour un rendu correct des formules)
   useEffect(() => {
@@ -7301,6 +7461,7 @@ export default function App() {
               <GenerateurZone currentUser={user} currentProfile={profile}
                 sessionARecharger={sessionARecharger} onSessionChargee={() => setSessionARecharger(null)}
                 contenuExactARecharger={contenuExactARecharger} onContenuExactCharge={() => setContenuExactARecharger(null)}
+                elementsAAjouter={elementsAAjouterAutomatismes} onElementsAjoutes={() => setElementsAAjouterAutomatismes(null)}
                 niveauScolaire={niveauScolaire} onSessionSauvegardee={notifierNouvelleSessionHistorique} />
             </div>
 
@@ -7328,6 +7489,7 @@ export default function App() {
               <QcmZone currentUser={user} currentProfile={profile}
                 qcmSessionARecharger={qcmSessionARecharger} onSessionChargee={() => setQcmSessionARecharger(null)}
                 qcmContenuExactARecharger={qcmContenuExactARecharger} onContenuExactCharge={() => setQcmContenuExactARecharger(null)}
+                elementsAAjouter={elementsAAjouterQcm} onElementsAjoutes={() => setElementsAAjouterQcm(null)}
                 niveauScolaire={niveauScolaire} onSessionSauvegardee={notifierNouvelleSessionHistorique} />
             </div>
 
@@ -7344,7 +7506,15 @@ export default function App() {
 
             {/* Recherche globale et Statistiques : outils indépendants du niveau */}
             <div style={{ display: activeTab === "recherche" ? "flex" : "none", flex: 1, minHeight: 0 }}>
-              <RechercheZone />
+              <RechercheZone
+                onEnvoyerAutomatismes={(ids) => {
+                  setElementsAAjouterAutomatismes(ids);
+                  setActiveTab(estTerminaleSpe ? "generateur" : "automatismes");
+                }}
+                onEnvoyerQcm={(ids) => {
+                  setElementsAAjouterQcm(ids);
+                  setActiveTab("qcm");
+                }} />
             </div>
             <div style={{ display: activeTab === "statistiques" ? "flex" : "none", flex: 1, minHeight: 0 }}>
               <StatistiquesZone />
