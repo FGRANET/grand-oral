@@ -4763,7 +4763,7 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
     lignes.push("\\pagestyle{fancy}");
     lignes.push("\\fancyhf{}");
     lignes.push("\\lhead{Terminale Spé}");
-    lignes.push("\\chead{Interrogation — " + (avecCorrige ? "Corrigé" : "Version élève") + "}");
+    lignes.push("\\chead{Interrogation" + (avecCorrige ? " — Corrigé" : "") + "}");
     lignes.push("\\rhead{Durée : 30 min}");
     lignes.push("\\newcounter{qnum}");
     lignes.push("\\newcounter{linectr}");
@@ -5819,7 +5819,7 @@ function QcmZone({ currentUser, currentProfile, qcmSessionARecharger, onSessionC
     lignes.push("\\pagestyle{fancy}");
     lignes.push("\\fancyhf{}");
     lignes.push("\\lhead{QCM}");
-    lignes.push("\\chead{Interrogation — " + (avecCorrige ? "Corrigé" : "Version élève") + "}");
+    lignes.push("\\chead{Interrogation" + (avecCorrige ? " — Corrigé" : "") + "}");
     lignes.push("\\rhead{Durée : 20 min}");
     lignes.push("\\newcounter{qnum}");
     lignes.push("\\begin{document}");
