@@ -605,6 +605,13 @@ const CSS = `
   }
   .gen-footer-count { font-size: 13px; color: var(--text-muted); }
   .gen-footer-count strong { color: var(--text); }
+  .gen-titre-input {
+    background: var(--surface2); border: 1px solid var(--border); border-radius: 8px;
+    padding: 8px 12px; color: var(--text); font-family: var(--font); font-size: 13px;
+    outline: none; width: 180px; margin-right: 4px;
+  }
+  .gen-titre-input:focus { border-color: var(--accent); }
+  .gen-titre-input::placeholder { color: var(--text-muted); }
   .gen-export-btn {
     margin-left: auto; background: var(--accent); color: #fff; border: none;
     border-radius: 8px; padding: 10px 20px; font-family: var(--font); font-size: 13px;
@@ -1063,6 +1070,13 @@ const CSS = `
     padding: 10px 12px; color: var(--text); font-family: var(--font); font-size: 14px; outline: none;
   }
   .modal-field input:focus { border-color: var(--accent); }
+  .modal-field select {
+    background: var(--surface2); border: 1px solid var(--border); border-radius: 8px;
+    padding: 10px 12px; color: var(--text); font-family: var(--font); font-size: 14px; outline: none;
+  }
+  .modal-field select:focus { border-color: var(--accent); }
+  .modal-field-checkbox { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; font-size: 13px; color: var(--text); cursor: pointer; }
+  .modal-field-checkbox input { accent-color: var(--accent); width: 16px; height: 16px; }
   .modal-actions { display: flex; gap: 8px; margin-top: 18px; }
   .modal-btn {
     flex: 1; border: none; border-radius: 8px; padding: 10px; font-family: var(--font);
@@ -2034,6 +2048,81 @@ function ChangePasswordModal({ onClose }) {
           <button className="modal-btn modal-btn-cancel" onClick={onClose}>Annuler</button>
           <button className="modal-btn modal-btn-confirm" onClick={handleChange} disabled={saving || success}>
             {saving ? "Enregistrement…" : "Valider"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Composant ReglagesExportModal (mise en page des exports .tex/PDF) ──
+// Réglages enregistrés par professeur, appliqués silencieusement à tous les
+// exports suivants (.tex et PDF, élève et corrigé) jusqu'à modification.
+function ReglagesExportModal({ valeurs, onFermer, onEnregistre, currentUser }) {
+  const [taillePolice, setTaillePolice] = useState(valeurs.taille_police);
+  const [marges, setMarges] = useState(valeurs.marges);
+  const [afficherNomPrenomClasse, setAfficherNomPrenomClasse] = useState(valeurs.afficher_nom_prenom_classe);
+  const [afficherDate, setAfficherDate] = useState(valeurs.afficher_date);
+  const [enregistrement, setEnregistrement] = useState(false);
+  const [erreur, setErreur] = useState("");
+
+  async function enregistrer() {
+    setEnregistrement(true);
+    setErreur("");
+    const nouvelles = {
+      taille_police: taillePolice, marges,
+      afficher_nom_prenom_classe: afficherNomPrenomClasse, afficher_date: afficherDate,
+    };
+    const { error } = await supabase.from("reglages_export").upsert(
+      { prof_id: currentUser.id, ...nouvelles, updated_at: new Date().toISOString() },
+      { onConflict: "prof_id" }
+    );
+    setEnregistrement(false);
+    if (error) { setErreur("Erreur lors de l'enregistrement : " + error.message); return; }
+    onEnregistre(nouvelles);
+    onFermer();
+  }
+
+  return (
+    <div className="modal-overlay" onClick={e => e.target === e.currentTarget && onFermer()}>
+      <div className="modal-card">
+        <div className="modal-title">⚙️ Mise en page des documents</div>
+        <div className="modal-sub">S'applique à tous tes exports .tex et PDF (élève et corrigé), jusqu'à ce que tu les changes à nouveau.</div>
+
+        <div className="modal-field">
+          <label>Taille de police</label>
+          <select value={taillePolice} onChange={e => setTaillePolice(Number(e.target.value))}>
+            <option value={10}>10 pt</option>
+            <option value={11}>11 pt</option>
+            <option value={12}>12 pt</option>
+          </select>
+        </div>
+
+        <div className="modal-field">
+          <label>Marges</label>
+          <select value={marges} onChange={e => setMarges(e.target.value)}>
+            <option value="serre">Serrées</option>
+            <option value="normal">Normales</option>
+            <option value="large">Larges</option>
+          </select>
+        </div>
+
+        <label className="modal-field-checkbox">
+          <input type="checkbox" checked={afficherNomPrenomClasse} onChange={e => setAfficherNomPrenomClasse(e.target.checked)} />
+          <span>Afficher Nom / Prénom / Classe en en-tête</span>
+        </label>
+
+        <label className="modal-field-checkbox">
+          <input type="checkbox" checked={afficherDate} onChange={e => setAfficherDate(e.target.checked)} />
+          <span>Afficher la date du jour</span>
+        </label>
+
+        {erreur && <div className="modal-error">{erreur}</div>}
+
+        <div className="modal-actions">
+          <button className="modal-btn modal-btn-cancel" onClick={onFermer}>Annuler</button>
+          <button className="modal-btn modal-btn-confirm" onClick={enregistrer} disabled={enregistrement}>
+            {enregistrement ? "Enregistrement…" : "Enregistrer"}
           </button>
         </div>
       </div>
@@ -4255,7 +4344,8 @@ function TirageAleatoireQcm({ chapitres, onAnnuler, onTirer }) {
   );
 }
 
-function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSessionChargee, contenuExactARecharger, onContenuExactCharge, niveauScolaire, onSessionSauvegardee, elementsAAjouter, onElementsAjoutes }) {
+function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSessionChargee, contenuExactARecharger, onContenuExactCharge, niveauScolaire, onSessionSauvegardee, elementsAAjouter, onElementsAjoutes, reglagesExport }) {
+  const [titreDocument, setTitreDocument] = useState(""); // texte de session, jamais sauvegardé en base ; "Interrogation" si vide
   const [chapitres, setChapitres] = useState([]);
   const [questionsParChapitre, setQuestionsParChapitre] = useState({}); // { chapitre_id: [questions] }
   const [exercicesEnBase, setExercicesEnBase] = useState([]);           // exercices_application chargés depuis Supabase
@@ -4751,7 +4841,9 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
   // ── Export .tex ──
   function genererTex(avecCorrige) {
     const lignes = [];
-    lignes.push("\\documentclass[12pt]{article}");
+    const margeCm = { serre: "1.5cm", normal: "2cm", large: "3cm" }[reglagesExport.marges] || "2cm";
+    const titre = titreDocument.trim() || "Interrogation";
+    lignes.push(`\\documentclass[${reglagesExport.taille_police}pt]{article}`);
     lignes.push("\\usepackage[utf8]{inputenc}");
     lignes.push("\\usepackage[T1]{fontenc}");
     lignes.push("\\usepackage[french]{babel}");
@@ -4759,11 +4851,11 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
     lignes.push("\\usepackage{tcolorbox}");
     lignes.push("\\usepackage{fancyhdr}");
     lignes.push("\\usepackage{forloop}");
-    lignes.push("\\usepackage[margin=2cm]{geometry}");
+    lignes.push(`\\usepackage[margin=${margeCm}]{geometry}`);
     lignes.push("\\pagestyle{fancy}");
     lignes.push("\\fancyhf{}");
     lignes.push("\\lhead{Terminale Spé}");
-    lignes.push("\\chead{Interrogation" + (avecCorrige ? " — Corrigé" : "") + "}");
+    lignes.push("\\chead{" + echapperLatex(titre) + (avecCorrige ? " — Corrigé" : "") + "}");
     lignes.push("\\rhead{Durée : 30 min}");
     lignes.push("\\newcounter{qnum}");
     lignes.push("\\newcounter{linectr}");
@@ -4773,10 +4865,18 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
     lignes.push("}");
     lignes.push("\\begin{document}");
     lignes.push("");
-    lignes.push("\\noindent\\textbf{Nom :}\\underline{\\hspace{3.5cm}} \\hfill \\textbf{Prénom :}\\underline{\\hspace{3.5cm}} \\hfill \\textbf{Classe :}\\underline{\\hspace{2cm}}");
-    lignes.push("");
-    lignes.push("\\vspace{6mm}");
-    lignes.push("");
+    if (reglagesExport.afficher_nom_prenom_classe) {
+      lignes.push("\\noindent\\textbf{Nom :}\\underline{\\hspace{3.5cm}} \\hfill \\textbf{Prénom :}\\underline{\\hspace{3.5cm}} \\hfill \\textbf{Classe :}\\underline{\\hspace{2cm}}");
+      lignes.push("");
+    }
+    if (reglagesExport.afficher_date) {
+      lignes.push("\\noindent\\textbf{Date :} \\today");
+      lignes.push("");
+    }
+    if (reglagesExport.afficher_nom_prenom_classe || reglagesExport.afficher_date) {
+      lignes.push("\\vspace{6mm}");
+      lignes.push("");
+    }
 
     selection.forEach((q, idx) => {
       lignes.push(`\\stepcounter{qnum}`);
@@ -5323,6 +5423,8 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
         )}
 
         <div className="gen-footer">
+          <input className="gen-titre-input" type="text" placeholder="Interrogation" value={titreDocument}
+            onChange={e => setTitreDocument(e.target.value)} title="Titre du document (utilisé dans les exports .tex et PDF)" />
           <div className="gen-footer-count">
             <strong>{selection.length}</strong> question{selection.length !== 1 ? "s" : ""} sélectionnée{selection.length !== 1 ? "s" : ""}
           </div>
@@ -5470,7 +5572,8 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
 // Rubrique indépendante pour les QCM (fixe + aléatoire), sur le modèle de
 // GenerateurZone mais simplifiée : un seul "type" de contenu, pas de filtre
 // par type de question, tirage/édition/export propres aux QCM.
-function QcmZone({ currentUser, currentProfile, qcmSessionARecharger, onSessionChargee, qcmContenuExactARecharger, onContenuExactCharge, niveauScolaire, onSessionSauvegardee, elementsAAjouter, onElementsAjoutes }) {
+function QcmZone({ currentUser, currentProfile, qcmSessionARecharger, onSessionChargee, qcmContenuExactARecharger, onContenuExactCharge, niveauScolaire, onSessionSauvegardee, elementsAAjouter, onElementsAjoutes, reglagesExport }) {
+  const [titreDocument, setTitreDocument] = useState("");
   const [chapitres, setChapitres] = useState([]);
   const [qcmParChapitre, setQcmParChapitre] = useState({});       // { chapitre_id: [qcm] }
   const [chapitresOuverts, setChapitresOuverts] = useState({});
@@ -5805,7 +5908,9 @@ function QcmZone({ currentUser, currentProfile, qcmSessionARecharger, onSessionC
   function genererTexQcm(avecCorrige) {
     const lettres = ["a", "b", "c", "d"];
     const lignes = [];
-    lignes.push("\\documentclass[12pt]{article}");
+    const margeCm = { serre: "2cm", normal: "2.5cm", large: "3.5cm" }[reglagesExport.marges] || "2.5cm";
+    const titre = titreDocument.trim() || "Interrogation";
+    lignes.push(`\\documentclass[${reglagesExport.taille_police}pt]{article}`);
     lignes.push("\\usepackage[utf8]{inputenc}");
     lignes.push("\\usepackage[T1]{fontenc}");
     lignes.push("\\usepackage[french]{babel}");
@@ -5813,21 +5918,29 @@ function QcmZone({ currentUser, currentProfile, qcmSessionARecharger, onSessionC
     lignes.push("\\usepackage{enumitem}");
     lignes.push("\\usepackage{multicol}");
     lignes.push("\\usepackage{fancyhdr}");
-    lignes.push("\\usepackage[margin=2.5cm]{geometry}");
+    lignes.push(`\\usepackage[margin=${margeCm}]{geometry}`);
     lignes.push("\\setlength{\\parindent}{0pt}");
     lignes.push("\\setlength{\\parskip}{0pt}");
     lignes.push("\\pagestyle{fancy}");
     lignes.push("\\fancyhf{}");
     lignes.push("\\lhead{QCM}");
-    lignes.push("\\chead{Interrogation" + (avecCorrige ? " — Corrigé" : "") + "}");
+    lignes.push("\\chead{" + echapperLatex(titre) + (avecCorrige ? " — Corrigé" : "") + "}");
     lignes.push("\\rhead{Durée : 20 min}");
     lignes.push("\\newcounter{qnum}");
     lignes.push("\\begin{document}");
     lignes.push("");
-    lignes.push("\\noindent\\textbf{Nom :}\\underline{\\hspace{3.5cm}} \\hfill \\textbf{Prénom :}\\underline{\\hspace{3.5cm}} \\hfill \\textbf{Classe :}\\underline{\\hspace{2cm}}");
-    lignes.push("");
-    lignes.push("\\vspace{6mm}");
-    lignes.push("");
+    if (reglagesExport.afficher_nom_prenom_classe) {
+      lignes.push("\\noindent\\textbf{Nom :}\\underline{\\hspace{3.5cm}} \\hfill \\textbf{Prénom :}\\underline{\\hspace{3.5cm}} \\hfill \\textbf{Classe :}\\underline{\\hspace{2cm}}");
+      lignes.push("");
+    }
+    if (reglagesExport.afficher_date) {
+      lignes.push("\\noindent\\textbf{Date :} \\today");
+      lignes.push("");
+    }
+    if (reglagesExport.afficher_nom_prenom_classe || reglagesExport.afficher_date) {
+      lignes.push("\\vspace{6mm}");
+      lignes.push("");
+    }
 
     selection.forEach((q, idx) => {
       lignes.push(`\\stepcounter{qnum}`);
@@ -6142,6 +6255,8 @@ function QcmZone({ currentUser, currentProfile, qcmSessionARecharger, onSessionC
         )}
 
         <div className="gen-footer">
+          <input className="gen-titre-input" type="text" placeholder="Interrogation" value={titreDocument}
+            onChange={e => setTitreDocument(e.target.value)} title="Titre du document (utilisé dans les exports .tex et PDF)" />
           <div className="gen-footer-count">
             <strong>{selection.length}</strong> QCM sélectionné{selection.length !== 1 ? "s" : ""}
           </div>
@@ -7002,6 +7117,21 @@ export default function App() {
   const [activeTab, setActiveTab] = useState("generateur");
   const [niveauScolaire, setNiveauScolaire] = useState("terminale_spe");
   const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [reglagesExport, setReglagesExport] = useState({
+    taille_police: 11, marges: "normal", afficher_nom_prenom_classe: true, afficher_date: false,
+  });
+  const [showReglagesExportModal, setShowReglagesExportModal] = useState(false);
+  useEffect(() => {
+    if (!user) return;
+    supabase.from("reglages_export").select("*").eq("prof_id", user.id).maybeSingle().then(({ data }) => {
+      if (data) {
+        setReglagesExport({
+          taille_police: data.taille_police, marges: data.marges,
+          afficher_nom_prenom_classe: data.afficher_nom_prenom_classe, afficher_date: data.afficher_date,
+        });
+      }
+    });
+  }, [user]);
 
   useEffect(() => { document.title = "Mathématiques à Valadon"; }, []);
 
@@ -7271,6 +7401,9 @@ export default function App() {
                     {exportBaseEnCours ? "💾 Export…" : "💾 Sauvegarde"}
                   </button>
                   <UsageIndicator />
+                  <button className="btn-key" onClick={() => setShowReglagesExportModal(true)} title="Réglages de mise en page des exports .tex/PDF">
+                    ⚙️ Mise en page
+                  </button>
                   <button className="btn-key" onClick={() => setShowPasswordModal(true)} title="Changer mon mot de passe">
                     🔑 Mot de passe
                   </button>
@@ -7382,7 +7515,8 @@ export default function App() {
                 sessionARecharger={sessionARecharger} onSessionChargee={() => setSessionARecharger(null)}
                 contenuExactARecharger={contenuExactARecharger} onContenuExactCharge={() => setContenuExactARecharger(null)}
                 elementsAAjouter={elementsAAjouterAutomatismes} onElementsAjoutes={() => setElementsAAjouterAutomatismes(null)}
-                niveauScolaire={niveauScolaire} onSessionSauvegardee={notifierNouvelleSessionHistorique} />
+                niveauScolaire={niveauScolaire} onSessionSauvegardee={notifierNouvelleSessionHistorique}
+                reglagesExport={reglagesExport} />
             </div>
 
             {/* Historique Seconde/Première */}
@@ -7410,7 +7544,8 @@ export default function App() {
                 qcmSessionARecharger={qcmSessionARecharger} onSessionChargee={() => setQcmSessionARecharger(null)}
                 qcmContenuExactARecharger={qcmContenuExactARecharger} onContenuExactCharge={() => setQcmContenuExactARecharger(null)}
                 elementsAAjouter={elementsAAjouterQcm} onElementsAjoutes={() => setElementsAAjouterQcm(null)}
-                niveauScolaire={niveauScolaire} onSessionSauvegardee={notifierNouvelleSessionHistorique} />
+                niveauScolaire={niveauScolaire} onSessionSauvegardee={notifierNouvelleSessionHistorique}
+                reglagesExport={reglagesExport} />
             </div>
 
             {/* Historique QCM : indépendant du niveau, comme l'onglet Automatismes QCM lui-même */}
@@ -7469,6 +7604,11 @@ export default function App() {
 
       </div>
       {showPasswordModal && profile?.role === "professeur" && <ChangePasswordModal onClose={() => setShowPasswordModal(false)} />}
+      {showReglagesExportModal && (
+        <ReglagesExportModal valeurs={reglagesExport} currentUser={user}
+          onFermer={() => setShowReglagesExportModal(false)}
+          onEnregistre={(nouvelles) => setReglagesExport(nouvelles)} />
+      )}
     </>
   );
 }
