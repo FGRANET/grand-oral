@@ -4763,7 +4763,7 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
     lignes.push("\\pagestyle{fancy}");
     lignes.push("\\fancyhf{}");
     lignes.push("\\lhead{Terminale Spé}");
-    lignes.push("\\chead{Interrogation" + (avecCorrige ? " — Corrigé" : "") + "}");
+    lignes.push("\\chead{Interrogation — " + (avecCorrige ? "Corrigé" : "Version élève") + "}");
     lignes.push("\\rhead{Durée : 30 min}");
     lignes.push("\\newcounter{qnum}");
     lignes.push("\\newcounter{linectr}");
@@ -5333,7 +5333,10 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
             📝 .tex corrigé
           </button>
           <button className="gen-export-btn-secondary" onClick={() => telechargerPdf(false)} disabled={selection.length === 0 || exportPdfEnCours}>
-            {exportPdfEnCours ? "⏳ Génération…" : "🖨️ Aperçu PDF"}
+            {exportPdfEnCours ? "⏳ Génération…" : "🖨️ PDF élève"}
+          </button>
+          <button className="gen-export-btn-secondary" onClick={() => telechargerPdf(true)} disabled={selection.length === 0 || exportPdfEnCours}>
+            {exportPdfEnCours ? "⏳ Génération…" : "🖨️ PDF corrigé"}
           </button>
           <button className="gen-export-btn" onClick={() => setAfficherReglagesDiapo(true)} disabled={selection.length === 0}>
             ▶ Diaporama
@@ -5816,7 +5819,7 @@ function QcmZone({ currentUser, currentProfile, qcmSessionARecharger, onSessionC
     lignes.push("\\pagestyle{fancy}");
     lignes.push("\\fancyhf{}");
     lignes.push("\\lhead{QCM}");
-    lignes.push("\\chead{Interrogation" + (avecCorrige ? " — Corrigé" : "") + "}");
+    lignes.push("\\chead{Interrogation — " + (avecCorrige ? "Corrigé" : "Version élève") + "}");
     lignes.push("\\rhead{Durée : 20 min}");
     lignes.push("\\newcounter{qnum}");
     lignes.push("\\begin{document}");
@@ -6149,7 +6152,10 @@ function QcmZone({ currentUser, currentProfile, qcmSessionARecharger, onSessionC
             📝 .tex corrigé
           </button>
           <button className="gen-export-btn-secondary" onClick={() => telechargerPdfQcm(false)} disabled={selection.length === 0 || exportPdfEnCours}>
-            {exportPdfEnCours ? "⏳ Génération…" : "🖨️ Aperçu PDF"}
+            {exportPdfEnCours ? "⏳ Génération…" : "🖨️ PDF élève"}
+          </button>
+          <button className="gen-export-btn-secondary" onClick={() => telechargerPdfQcm(true)} disabled={selection.length === 0 || exportPdfEnCours}>
+            {exportPdfEnCours ? "⏳ Génération…" : "🖨️ PDF corrigé"}
           </button>
           <button className="gen-export-btn" onClick={() => setAfficherReglagesDiapo(true)} disabled={selection.length === 0}>
             ▶ Diaporama
