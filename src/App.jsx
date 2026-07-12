@@ -432,6 +432,19 @@ const CSS = `
   .hist-toolbar-filter:hover { border-color: var(--accent); }
   .hist-toolbar-filter.active { background: var(--accent); border-color: var(--accent); color: #fff; }
 
+  /* ── Menu déroulant "Outils" (regroupe Recherche/Statistiques/Sauvegarde/Mise en page/Mot de passe) ── */
+  .menu-outils-dropdown {
+    position: absolute; top: 100%; right: 0; margin-top: 6px; background: var(--surface);
+    border: 1px solid var(--border); border-radius: 10px; padding: 6px; display: flex; flex-direction: column;
+    gap: 2px; min-width: 210px; z-index: 50; box-shadow: 0 8px 24px rgba(0,0,0,0.35);
+  }
+  .menu-outils-item {
+    background: none; border: none; text-align: left; padding: 9px 12px; border-radius: 8px;
+    color: var(--text); font-family: var(--font); font-size: 13px; cursor: pointer; white-space: nowrap;
+  }
+  .menu-outils-item:hover { background: var(--surface2); }
+  .menu-outils-item:disabled { opacity: .5; cursor: not-allowed; }
+
   /* ── Recherche globale ── */
   .recherche-zone { flex: 1; min-height: 0; overflow-y: auto; padding: 24px 28px; }
   .recherche-barre { display: flex; gap: 10px; max-width: 620px; margin-bottom: 20px; }
@@ -612,6 +625,8 @@ const CSS = `
   }
   .gen-titre-input:focus { border-color: var(--accent); }
   .gen-titre-input::placeholder { color: var(--text-muted); }
+  .gen-titre-wrap { display: flex; align-items: center; gap: 6px; }
+  .gen-titre-label { font-size: 12px; color: var(--text-muted); font-weight: 500; white-space: nowrap; }
   .gen-export-btn {
     margin-left: auto; background: var(--accent); color: #fff; border: none;
     border-radius: 8px; padding: 10px 20px; font-family: var(--font); font-size: 13px;
@@ -5423,8 +5438,11 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
         )}
 
         <div className="gen-footer">
-          <input className="gen-titre-input" type="text" placeholder="Interrogation" value={titreDocument}
-            onChange={e => setTitreDocument(e.target.value)} title="Titre du document (utilisé dans les exports .tex et PDF)" />
+          <div className="gen-titre-wrap">
+            <span className="gen-titre-label">Titre :</span>
+            <input className="gen-titre-input" type="text" placeholder="Interrogation" value={titreDocument}
+              onChange={e => setTitreDocument(e.target.value)} title="Titre du document (utilisé dans les exports .tex et PDF)" />
+          </div>
           <div className="gen-footer-count">
             <strong>{selection.length}</strong> question{selection.length !== 1 ? "s" : ""} sélectionnée{selection.length !== 1 ? "s" : ""}
           </div>
@@ -6255,8 +6273,11 @@ function QcmZone({ currentUser, currentProfile, qcmSessionARecharger, onSessionC
         )}
 
         <div className="gen-footer">
-          <input className="gen-titre-input" type="text" placeholder="Interrogation" value={titreDocument}
-            onChange={e => setTitreDocument(e.target.value)} title="Titre du document (utilisé dans les exports .tex et PDF)" />
+          <div className="gen-titre-wrap">
+            <span className="gen-titre-label">Titre :</span>
+            <input className="gen-titre-input" type="text" placeholder="Interrogation" value={titreDocument}
+              onChange={e => setTitreDocument(e.target.value)} title="Titre du document (utilisé dans les exports .tex et PDF)" />
+          </div>
           <div className="gen-footer-count">
             <strong>{selection.length}</strong> QCM sélectionné{selection.length !== 1 ? "s" : ""}
           </div>
@@ -7121,6 +7142,7 @@ export default function App() {
     taille_police: 11, marges: "normal", afficher_nom_prenom_classe: true, afficher_date: false,
   });
   const [showReglagesExportModal, setShowReglagesExportModal] = useState(false);
+  const [menuOutilsOuvert, setMenuOutilsOuvert] = useState(false);
   useEffect(() => {
     if (!user) return;
     supabase.from("reglages_export").select("*").eq("prof_id", user.id).maybeSingle().then(({ data }) => {
@@ -7386,27 +7408,31 @@ export default function App() {
 
                 {/* Actions de compte — à droite de la même rangée */}
                 <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
-                  <button className="btn-key" onClick={() => setActiveTab("recherche")}
-                    style={activeTab === "recherche" ? { borderColor: COULEUR_OUTIL, color: COULEUR_OUTIL_LIGHT } : {}}
-                    title="Recherche globale dans les énoncés">
-                    🔍 Recherche
-                  </button>
-                  <button className="btn-key" onClick={() => setActiveTab("statistiques")}
-                    style={activeTab === "statistiques" ? { borderColor: COULEUR_OUTIL, color: COULEUR_OUTIL_LIGHT } : {}}
-                    title="Tableau de bord statistique de la banque">
-                    📊 Statistiques
-                  </button>
-                  <button className="btn-key" onClick={exporterBaseComplete} disabled={exportBaseEnCours}
-                    title="Télécharger une sauvegarde complète de la banque (JSON)">
-                    {exportBaseEnCours ? "💾 Export…" : "💾 Sauvegarde"}
-                  </button>
                   <UsageIndicator />
-                  <button className="btn-key" onClick={() => setShowReglagesExportModal(true)} title="Réglages de mise en page des exports .tex/PDF">
-                    ⚙️ Mise en page
-                  </button>
-                  <button className="btn-key" onClick={() => setShowPasswordModal(true)} title="Changer mon mot de passe">
-                    🔑 Mot de passe
-                  </button>
+                  <div style={{ position: "relative" }} onMouseLeave={() => setMenuOutilsOuvert(false)}>
+                    <button className="btn-key" onClick={() => setMenuOutilsOuvert(v => !v)} title="Recherche, statistiques, sauvegarde, mise en page, mot de passe">
+                      ⋯ Outils
+                    </button>
+                    {menuOutilsOuvert && (
+                      <div className="menu-outils-dropdown">
+                        <button className="menu-outils-item" onClick={() => { setActiveTab("recherche"); setMenuOutilsOuvert(false); }}>
+                          🔍 Recherche
+                        </button>
+                        <button className="menu-outils-item" onClick={() => { setActiveTab("statistiques"); setMenuOutilsOuvert(false); }}>
+                          📊 Statistiques
+                        </button>
+                        <button className="menu-outils-item" onClick={() => { exporterBaseComplete(); setMenuOutilsOuvert(false); }} disabled={exportBaseEnCours}>
+                          {exportBaseEnCours ? "💾 Export…" : "💾 Sauvegarde"}
+                        </button>
+                        <button className="menu-outils-item" onClick={() => { setShowReglagesExportModal(true); setMenuOutilsOuvert(false); }}>
+                          ⚙️ Mise en page
+                        </button>
+                        <button className="menu-outils-item" onClick={() => { setShowPasswordModal(true); setMenuOutilsOuvert(false); }}>
+                          🔑 Mot de passe
+                        </button>
+                      </div>
+                    )}
+                  </div>
                   <button className="btn-logout" onClick={() => supabase.auth.signOut()}>Déconnexion</button>
                 </div>
               </div>
