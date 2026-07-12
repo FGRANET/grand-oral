@@ -433,6 +433,7 @@ const CSS = `
   .hist-toolbar-filter.active { background: var(--accent); border-color: var(--accent); color: #fff; }
 
   /* ── Menu déroulant "Outils" (regroupe Recherche/Statistiques/Sauvegarde/Mise en page/Mot de passe) ── */
+  .menu-outils-overlay { position: fixed; inset: 0; z-index: 40; }
   .menu-outils-dropdown {
     position: absolute; top: 100%; right: 0; margin-top: 6px; background: var(--surface);
     border: 1px solid var(--border); border-radius: 10px; padding: 6px; display: flex; flex-direction: column;
@@ -4871,7 +4872,6 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
     lignes.push("\\fancyhf{}");
     lignes.push("\\lhead{Terminale Spé}");
     lignes.push("\\chead{" + echapperLatex(titre) + (avecCorrige ? " — Corrigé" : "") + "}");
-    lignes.push("\\rhead{Durée : 30 min}");
     lignes.push("\\newcounter{qnum}");
     lignes.push("\\newcounter{linectr}");
     lignes.push("\\newcommand{\\reponse}[1]{");
@@ -5943,7 +5943,6 @@ function QcmZone({ currentUser, currentProfile, qcmSessionARecharger, onSessionC
     lignes.push("\\fancyhf{}");
     lignes.push("\\lhead{QCM}");
     lignes.push("\\chead{" + echapperLatex(titre) + (avecCorrige ? " — Corrigé" : "") + "}");
-    lignes.push("\\rhead{Durée : 20 min}");
     lignes.push("\\newcounter{qnum}");
     lignes.push("\\begin{document}");
     lignes.push("");
@@ -7409,28 +7408,31 @@ export default function App() {
                 {/* Actions de compte — à droite de la même rangée */}
                 <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
                   <UsageIndicator />
-                  <div style={{ position: "relative" }} onMouseLeave={() => setMenuOutilsOuvert(false)}>
+                  <div style={{ position: "relative" }}>
                     <button className="btn-key" onClick={() => setMenuOutilsOuvert(v => !v)} title="Recherche, statistiques, sauvegarde, mise en page, mot de passe">
                       ⋯ Outils
                     </button>
                     {menuOutilsOuvert && (
-                      <div className="menu-outils-dropdown">
-                        <button className="menu-outils-item" onClick={() => { setActiveTab("recherche"); setMenuOutilsOuvert(false); }}>
-                          🔍 Recherche
-                        </button>
-                        <button className="menu-outils-item" onClick={() => { setActiveTab("statistiques"); setMenuOutilsOuvert(false); }}>
-                          📊 Statistiques
-                        </button>
-                        <button className="menu-outils-item" onClick={() => { exporterBaseComplete(); setMenuOutilsOuvert(false); }} disabled={exportBaseEnCours}>
-                          {exportBaseEnCours ? "💾 Export…" : "💾 Sauvegarde"}
-                        </button>
-                        <button className="menu-outils-item" onClick={() => { setShowReglagesExportModal(true); setMenuOutilsOuvert(false); }}>
-                          ⚙️ Mise en page
-                        </button>
-                        <button className="menu-outils-item" onClick={() => { setShowPasswordModal(true); setMenuOutilsOuvert(false); }}>
-                          🔑 Mot de passe
-                        </button>
-                      </div>
+                      <>
+                        <div className="menu-outils-overlay" onClick={() => setMenuOutilsOuvert(false)} />
+                        <div className="menu-outils-dropdown">
+                          <button className="menu-outils-item" onClick={() => { setActiveTab("recherche"); setMenuOutilsOuvert(false); }}>
+                            🔍 Recherche
+                          </button>
+                          <button className="menu-outils-item" onClick={() => { setActiveTab("statistiques"); setMenuOutilsOuvert(false); }}>
+                            📊 Statistiques
+                          </button>
+                          <button className="menu-outils-item" onClick={() => { exporterBaseComplete(); setMenuOutilsOuvert(false); }} disabled={exportBaseEnCours}>
+                            {exportBaseEnCours ? "💾 Export…" : "💾 Sauvegarde"}
+                          </button>
+                          <button className="menu-outils-item" onClick={() => { setShowReglagesExportModal(true); setMenuOutilsOuvert(false); }}>
+                            ⚙️ Mise en page
+                          </button>
+                          <button className="menu-outils-item" onClick={() => { setShowPasswordModal(true); setMenuOutilsOuvert(false); }}>
+                            🔑 Mot de passe
+                          </button>
+                        </div>
+                      </>
                     )}
                   </div>
                   <button className="btn-logout" onClick={() => supabase.auth.signOut()}>Déconnexion</button>
