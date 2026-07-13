@@ -4369,7 +4369,21 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
   const [chargementChapitre, setChargementChapitre] = useState({});    // { chapitre_id: bool }
   const [questionsDetail, setQuestionsDetail] = useState({});          // { question_id: bool } détail ouvert
   const [reponsesVisibles, setReponsesVisibles] = useState({});        // { question_id: bool } réponse révélée (masquée par défaut)
-  const [selection, setSelection] = useState([]);                       // [question objects, dans l'ordre de sélection]
+  // Une sélection par niveau (au lieu d'un seul tableau partagé) : changer de
+  // niveau (Seconde ↔ Terminale, etc.) ne doit plus faire disparaître ce qui
+  // était déjà en cours de construction ailleurs. `selection`/`setSelection`
+  // gardent la même API qu'un useState classique (support des deux formes,
+  // valeur directe ou updater), donc rien d'autre à changer dans le reste du
+  // composant : ils lisent/écrivent simplement la tranche du niveau actif.
+  const [selectionsParNiveau, setSelectionsParNiveau] = useState({});
+  const selection = selectionsParNiveau[niveauScolaire] || [];
+  function setSelection(updater) {
+    setSelectionsParNiveau(prev => {
+      const courante = prev[niveauScolaire] || [];
+      const nouvelle = typeof updater === "function" ? updater(courante) : updater;
+      return { ...prev, [niveauScolaire]: nouvelle };
+    });
+  }
   const [elementsCoches, setElementsCoches] = useState(new Set());      // ids cochés dans la colonne de droite pour suppression groupée
   const [nbCopiesParItem, setNbCopiesParItem] = useState({});           // _cle -> nombre de copies à dupliquer
   const [tiragesExercices, setTiragesExercices] = useState({});         // { id_exercice: {enonce, reponse, valeurs} } - dernier tirage affiché
@@ -4422,7 +4436,6 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
     setChapitresOuverts({});
     setQuestionsParChapitre({});
     setExercicesEnBase([]);
-    setSelection([]);
     const niveau = niveauScolaire || "terminale_spe";
     supabase.from("chapitres").select("*")
       .eq("niveau_scolaire", niveau)
