@@ -5199,8 +5199,16 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
           const questions = questionsParChapitre[ch.id] || [];
           const questionsFiltrees = questions.filter(questionVisible);
           const nbMasquees = questions.length - questionsFiltrees.length;
-          const nbExercicesSelectionnes = exercicesDuChapitre(ch.nom).filter(ex => estExerciceSelectionne(ex.id)).length;
+          const exercicesChapitre = exercicesDuChapitre(ch.nom); // déjà filtré par type/niveau actifs
+          const nbExercicesSelectionnes = exercicesChapitre.filter(ex => estExerciceSelectionne(ex.id)).length;
           const nbSelectionnees = questions.filter(q => estSelectionnee(q.id)).length + nbExercicesSelectionnes;
+          // Compte BRUT des exercices du chapitre, indépendant des filtres de type/niveau actifs :
+          // sert uniquement à distinguer "chapitre vraiment vide" de "tout est filtré".
+          const nbExercicesBrut = exercicesEnBase.filter(ex => ex.chapitre_id === ch.id).length
+            + Object.values(BIBLIOTHEQUE_EXERCICES).filter(def =>
+                def.chapitre === ch.nom && def.niveauScolaire === (niveauScolaire || "terminale_spe")).length;
+          const chapitreVraimentVide = questions.length === 0 && nbExercicesBrut === 0;
+          const toutFiltre = !chapitreVraimentVide && questionsFiltrees.length === 0 && exercicesChapitre.length === 0;
           return (
             <div key={ch.id} className="gen-chapitre-block">
               <div className="gen-chapitre-row" onClick={() => toggleChapitre(ch.id)}>
@@ -5224,10 +5232,10 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
                   {chargementChapitre[ch.id] && (
                     <div className="gen-empty-chapitre">Chargement…</div>
                   )}
-                  {!chargementChapitre[ch.id] && questions.length === 0 && (
+                  {!chargementChapitre[ch.id] && chapitreVraimentVide && (
                     <div className="gen-empty-chapitre">Aucune question dans ce chapitre pour l'instant.</div>
                   )}
-                  {!chargementChapitre[ch.id] && questions.length > 0 && questionsFiltrees.length === 0 && (
+                  {!chargementChapitre[ch.id] && toutFiltre && (
                     <div className="gen-empty-chapitre">Aucune question ne correspond aux filtres actifs.</div>
                   )}
                   {questionsFiltrees.map(q => (
@@ -5317,7 +5325,7 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
                     </div>
                   ))}
 
-                  {exercicesDuChapitre(ch.nom).map(ex => {
+                  {exercicesChapitre.map(ex => {
                     const tirage = tiragesExercices[ex.id];
                     return (
                       <div key={ex.id}>
