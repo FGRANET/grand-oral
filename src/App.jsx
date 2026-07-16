@@ -6176,15 +6176,15 @@ function QcmZone({ currentUser, currentProfile, qcmSessionARecharger, onSessionC
                         {detailOuvert[q.id] && (
                           <div className="gen-question-detail">
                             {(() => {
-                              const t = q.mode === "aleatoire" ? tirage : { enonce: q.enonce, choix: q.choix };
+                              const t = q.mode === "aleatoire" ? tirage : { enonce: q.enonce, choix: q.choix, bonne_reponse: q.bonne_reponse };
                               if (!t) return null;
                               return (
                                 <>
                                   <MathText inline={false}>{t.enonce}</MathText>
                                   <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 6 }}>
                                     {t.choix.map((c, i) => (
-                                      <div key={i} style={{ color: i === q.bonne_reponse ? "var(--green)" : "var(--text-muted)" }}>
-                                        {["a", "b", "c", "d"][i]}) <MathText>{c}</MathText>{i === q.bonne_reponse ? " ✓" : ""}
+                                      <div key={i} style={{ color: i === t.bonne_reponse ? "var(--green)" : "var(--text-muted)" }}>
+                                        {["a", "b", "c", "d"][i]}) <MathText>{c}</MathText>{i === t.bonne_reponse ? " ✓" : ""}
                                       </div>
                                     ))}
                                   </div>
