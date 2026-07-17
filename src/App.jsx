@@ -4909,11 +4909,16 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
       return;
     }
 
+    // Chaque (re)sélection relance un NOUVEAU tirage : décocher puis recocher
+    // une question aléatoire donne des valeurs différentes, sans passer par
+    // "Relancer". Le cache est mis à jour pour que l'aperçu de la carte reste
+    // synchronisé avec ce qui part dans la sélection.
+
     // Source bibliothèque
     const def = BIBLIOTHEQUE_EXERCICES[idExercice];
     if (def) {
-      const tirage = tiragesExercices[idExercice] || def.generer();
-      if (!tiragesExercices[idExercice]) setTiragesExercices(prev => ({ ...prev, [idExercice]: tirage }));
+      const tirage = def.generer();
+      setTiragesExercices(prev => ({ ...prev, [idExercice]: tirage }));
       setSelection(prev => [...prev, { id: idExercice, chapitre_id: chapitreId, type: "exercice", enonce: tirage.enonce, reponse: tirage.reponse, niveau, _cle: idExercice, _aleatoire: true }]);
       return;
     }
@@ -4921,17 +4926,14 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
     // Source base de données
     const exoBase = exercicesEnBase.find(e => e.id === idExercice);
     if (exoBase) {
-      let tirage = tiragesExercices[idExercice];
-      if (!tirage) {
-        const valeurs = {};
-        Object.entries(exoBase.parametres).forEach(([nom, d]) => { valeurs[nom] = tirerValeurParametre(d); });
-        tirage = {
-          enonce: substituerPlaceholders(exoBase.enonce_modele, valeurs),
-          reponse: substituerPlaceholders(exoBase.reponse_modele, valeurs),
-          valeurs,
-        };
-        setTiragesExercices(prev => ({ ...prev, [idExercice]: tirage }));
-      }
+      const valeurs = {};
+      Object.entries(exoBase.parametres).forEach(([nom, d]) => { valeurs[nom] = tirerValeurParametre(d); });
+      const tirage = {
+        enonce: substituerPlaceholders(exoBase.enonce_modele, valeurs),
+        reponse: substituerPlaceholders(exoBase.reponse_modele, valeurs),
+        valeurs,
+      };
+      setTiragesExercices(prev => ({ ...prev, [idExercice]: tirage }));
       setSelection(prev => [...prev, { id: idExercice, chapitre_id: chapitreId, type: "exercice", enonce: tirage.enonce, reponse: tirage.reponse, niveau, _cle: idExercice, _aleatoire: true }]);
     }
   }
@@ -4977,24 +4979,23 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
     const nouveauxTirages = {};
     const exercicesAAjouter = [];
     exercices.filter(ex => !estExerciceSelectionne(ex.id)).forEach(ex => {
-      let tirage = tiragesExercices[ex.id];
-      if (!tirage) {
-        const def = BIBLIOTHEQUE_EXERCICES[ex.id];
-        if (def) {
-          tirage = def.generer();
-        } else {
-          const exoBase = exercicesEnBase.find(e => e.id === ex.id);
-          if (!exoBase) return;
-          const valeurs = {};
-          Object.entries(exoBase.parametres).forEach(([nom, d]) => { valeurs[nom] = tirerValeurParametre(d); });
-          tirage = {
-            enonce: substituerPlaceholders(exoBase.enonce_modele, valeurs),
-            reponse: substituerPlaceholders(exoBase.reponse_modele, valeurs),
-            valeurs,
-          };
-        }
-        nouveauxTirages[ex.id] = tirage;
+      // Nouveau tirage systématique, cohérent avec la sélection individuelle
+      let tirage;
+      const def = BIBLIOTHEQUE_EXERCICES[ex.id];
+      if (def) {
+        tirage = def.generer();
+      } else {
+        const exoBase = exercicesEnBase.find(e => e.id === ex.id);
+        if (!exoBase) return;
+        const valeurs = {};
+        Object.entries(exoBase.parametres).forEach(([nom, d]) => { valeurs[nom] = tirerValeurParametre(d); });
+        tirage = {
+          enonce: substituerPlaceholders(exoBase.enonce_modele, valeurs),
+          reponse: substituerPlaceholders(exoBase.reponse_modele, valeurs),
+          valeurs,
+        };
       }
+      nouveauxTirages[ex.id] = tirage;
       exercicesAAjouter.push({ id: ex.id, chapitre_id: ch.id, type: "exercice", enonce: tirage.enonce, reponse: tirage.reponse, niveau: ex.niveau, _cle: ex.id, _aleatoire: true });
     });
 
@@ -5910,11 +5911,10 @@ function QcmZone({ currentUser, currentProfile, qcmSessionARecharger, onSessionC
       setSelection(prev => prev.filter(s => s.id !== q.id));
       return;
     }
-    let tirage = tiragesQcm[q.id];
-    if (!tirage) {
-      tirage = tirerQcm(q);
-      setTiragesQcm(prev => ({ ...prev, [q.id]: tirage }));
-    }
+    // Chaque (re)sélection d'un QCM relance un nouveau tirage
+    // (mélange des choix inclus) ; le cache d'aperçu est resynchronisé.
+    const tirage = tirerQcm(q);
+    setTiragesQcm(prev => ({ ...prev, [q.id]: tirage }));
     setSelection(prev => [...prev, {
       id: q.id, chapitre_id: q.chapitre_id, niveau: q.niveau, mode: q.mode,
       enonce: tirage.enonce, choix: tirage.choix, bonne_reponse: tirage.bonne_reponse,
