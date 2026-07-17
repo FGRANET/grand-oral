@@ -4867,6 +4867,74 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
     }
   }
 
+  // ── Sélection groupée d'un chapitre entier ──
+  // Retourne les questions du chapitre visibles selon les filtres actifs,
+  // en les chargeant depuis Supabase si le chapitre n'a jamais été ouvert.
+  async function questionsVisiblesDuChapitre(chapitreId) {
+    let questions = questionsParChapitre[chapitreId];
+    if (!questions) {
+      setChargementChapitre(prev => ({ ...prev, [chapitreId]: true }));
+      const { data } = await supabase.from("questions").select("*").eq("chapitre_id", chapitreId).order("id");
+      questions = data || [];
+      setQuestionsParChapitre(prev => ({ ...prev, [chapitreId]: questions }));
+      setChargementChapitre(prev => ({ ...prev, [chapitreId]: false }));
+    }
+    return questions.filter(questionVisible);
+  }
+
+  // Coche ou décoche d'un seul coup toutes les questions et tous les exercices
+  // du chapitre visibles selon les filtres actifs. Si tout est déjà sélectionné,
+  // tout est retiré ; sinon les éléments manquants sont ajoutés à la sélection.
+  async function toggleSelectionChapitre(ch) {
+    const questionsVisibles = await questionsVisiblesDuChapitre(ch.id);
+    const exercices = exercicesDuChapitre(ch.nom);
+    const idsChapitre = [...questionsVisibles.map(q => q.id), ...exercices.map(ex => ex.id)];
+    if (idsChapitre.length === 0) return;
+
+    const toutSelectionne = idsChapitre.every(id => selection.some(s => s.id === id));
+    if (toutSelectionne) {
+      const ids = new Set(idsChapitre);
+      setSelection(prev => prev.filter(q => !ids.has(q.id)));
+      return;
+    }
+
+    // Questions fixes manquantes
+    const questionsAAjouter = questionsVisibles
+      .filter(q => !estSelectionnee(q.id))
+      .map(q => ({ ...q, _cle: q.id }));
+
+    // Exercices manquants, avec tirage (réutilise le tirage existant s'il y en a un).
+    // Les nouveaux tirages sont accumulés puis stockés en une seule mise à jour d'état.
+    const nouveauxTirages = {};
+    const exercicesAAjouter = [];
+    exercices.filter(ex => !estExerciceSelectionne(ex.id)).forEach(ex => {
+      let tirage = tiragesExercices[ex.id];
+      if (!tirage) {
+        const def = BIBLIOTHEQUE_EXERCICES[ex.id];
+        if (def) {
+          tirage = def.generer();
+        } else {
+          const exoBase = exercicesEnBase.find(e => e.id === ex.id);
+          if (!exoBase) return;
+          const valeurs = {};
+          Object.entries(exoBase.parametres).forEach(([nom, d]) => { valeurs[nom] = tirerValeurParametre(d); });
+          tirage = {
+            enonce: substituerPlaceholders(exoBase.enonce_modele, valeurs),
+            reponse: substituerPlaceholders(exoBase.reponse_modele, valeurs),
+            valeurs,
+          };
+        }
+        nouveauxTirages[ex.id] = tirage;
+      }
+      exercicesAAjouter.push({ id: ex.id, chapitre_id: ch.id, type: "exercice", enonce: tirage.enonce, reponse: tirage.reponse, niveau: ex.niveau, _cle: ex.id, _aleatoire: true });
+    });
+
+    if (Object.keys(nouveauxTirages).length > 0) setTiragesExercices(prev => ({ ...prev, ...nouveauxTirages }));
+    if (questionsAAjouter.length + exercicesAAjouter.length > 0) {
+      setSelection(prev => [...prev, ...questionsAAjouter, ...exercicesAAjouter]);
+    }
+  }
+
   // ── Export .tex ──
   function genererTex(avecCorrige) {
     const lignes = [];
@@ -5209,9 +5277,18 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
                 def.chapitre === ch.nom && def.niveauScolaire === (niveauScolaire || "terminale_spe")).length;
           const chapitreVraimentVide = questions.length === 0 && nbExercicesBrut === 0;
           const toutFiltre = !chapitreVraimentVide && questionsFiltrees.length === 0 && exercicesChapitre.length === 0;
+          // États de la case "tout le chapitre" : basés sur les éléments VISIBLES (filtres actifs)
+          const nbItemsVisibles = questionsFiltrees.length + exercicesChapitre.length;
+          const nbSelVisibles = questionsFiltrees.filter(q => estSelectionnee(q.id)).length + nbExercicesSelectionnes;
           return (
             <div key={ch.id} className="gen-chapitre-block">
               <div className="gen-chapitre-row" onClick={() => toggleChapitre(ch.id)}>
+                <input type="checkbox"
+                  checked={nbItemsVisibles > 0 && nbSelVisibles === nbItemsVisibles}
+                  ref={el => { if (el) el.indeterminate = nbSelVisibles > 0 && nbSelVisibles < nbItemsVisibles; }}
+                  onChange={() => toggleSelectionChapitre(ch)}
+                  onClick={e => e.stopPropagation()}
+                  title="Sélectionner / désélectionner tout le chapitre" />
                 <span className={`gen-chevron${ouvert ? " open" : ""}`}>▶</span>
                 <span className="gen-chapitre-nom">{ch.nom}</span>
                 {nbSelectionnees > 0 && <span className="gen-chapitre-count">{nbSelectionnees} sélectionnée{nbSelectionnees > 1 ? "s" : ""}</span>}
