@@ -1782,7 +1782,8 @@ function substituerPlaceholders(texteModele, valeurs) {
     }
 
     // Cas spécial : {frac(num, den)} — fraction exacte simplifiée en LaTeX
-    // Ex: {frac(-b, a)} avec b=5, a=3 → \frac{-5}{3}
+    // Ex: {frac(-b, a)} avec b=5, a=3 → \dfrac{-5}{3} (dfrac : même taille que
+    // les fractions des énoncés, à l'écran comme dans le PDF corrigé)
     const matchFrac = exprPropre.match(/^frac\((.+),(.+)\)$/);
     if (matchFrac) {
       const num = evaluerExpressionSimple(matchFrac[1].trim(), valeurs);
@@ -1793,7 +1794,7 @@ function substituerPlaceholders(texteModele, valeurs) {
         let n = Math.round(num) / g, d = Math.round(den) / g;
         if (d < 0) { n = -n; d = -d; }
         if (d === 1) return String(n);
-        return `\\frac{${n}}{${d}}`;
+        return `\\dfrac{${n}}{${d}}`;
       }
     }
 
