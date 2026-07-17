@@ -716,8 +716,13 @@ const CSS = `
   }
   .diapo-timer-ring { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
 
-  .diapo-progress-bar { height: 3px; background: var(--border); flex-shrink: 0; }
-  .diapo-progress-bar-fill { height: 100%; background: var(--accent); transition: width .3s linear; }
+  .diapo-progress-bar { height: 6px; flex-shrink: 0; display: flex; gap: 3px; padding: 0 4px; }
+  .diapo-progress-seg { flex: 1; height: 100%; background: var(--border); border-radius: 3px; cursor: pointer; transition: background .2s; }
+  .diapo-progress-seg:hover { background: var(--text-muted); }
+  .diapo-progress-seg.done { background: var(--accent); }
+  .diapo-progress-seg.done:hover { background: var(--accent-light); }
+  .diapo-progress-seg.current { background: var(--accent); opacity: .55; }
+  .diapo-pause-btn:disabled { opacity: .35; cursor: default; }
 
   .diapo-content {
     flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
@@ -2338,19 +2343,43 @@ function DiapoViewer({ questions, mode, delai, nomChapitre, onFermer }) {
     avancer();
   }
 
+  // Navigation manuelle directe : met le diaporama en pause automatiquement,
+  // pour laisser le temps de discuter de la question affichée.
+  function allerA(nouvelIndex) {
+    clearInterval(intervalRef.current);
+    setEnPause(true);
+    setIndex(nouvelIndex);
+    setEtape("question");
+    setTempsRestant(delai);
+  }
+
+  function reculerManuel() {
+    if (etape === "recap") { allerA(questions.length - 1); return; }
+    if (etape === "reponse") { allerA(index); return; } // revient à l'énoncé de la question courante
+    if (index > 0) allerA(index - 1);
+  }
+
+  function allerAuRecap() {
+    clearInterval(intervalRef.current);
+    setEtape("recap");
+  }
+
   useEffect(() => {
     function onKeyDown(e) {
       if (e.key === "Escape") { onFermer(); return; }
       if (e.key === " " || e.key === "ArrowRight" || e.key === "Enter") {
         e.preventDefault();
         avancerManuel();
+        return;
       }
+      if (e.key === "ArrowLeft") { e.preventDefault(); reculerManuel(); return; }
+      if (e.key === "End") { e.preventDefault(); allerAuRecap(); return; }
+      if (e.key === "Home") { e.preventDefault(); allerA(0); }
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   });
 
-  const progressionPct = ((index + (etape === "reponse" ? 0.5 : 0)) / questions.length) * 100;
 
   return (
     <div className="diapo-viewer">
@@ -2359,8 +2388,12 @@ function DiapoViewer({ questions, mode, delai, nomChapitre, onFermer }) {
           {etape === "recap" ? "Récapitulatif" : `Question ${index + 1} / ${questions.length}`}
         </div>
         <div className="diapo-topbar-actions">
+          <button className="diapo-pause-btn" onClick={reculerManuel} title="Question précédente (←)"
+            disabled={etape === "question" && index === 0}>◀</button>
           {etape !== "recap" && (
             <>
+              <button className="diapo-pause-btn" onClick={avancerManuel} title="Avancer (→)">▶</button>
+              <button className="diapo-pause-btn" onClick={allerAuRecap} title="Aller au récapitulatif (Fin)">⏭ Récap</button>
               <div className="diapo-timer-display">
                 <span className="diapo-timer-ring" style={{ opacity: enPause ? 0.3 : 1 }} />
                 {tempsRestant}s
@@ -2375,7 +2408,11 @@ function DiapoViewer({ questions, mode, delai, nomChapitre, onFermer }) {
       </div>
 
       <div className="diapo-progress-bar">
-        <div className="diapo-progress-bar-fill" style={{ width: `${etape === "recap" ? 100 : progressionPct}%` }} />
+        {questions.map((q, i) => (
+          <div key={i} title={`Question ${i + 1}`}
+            className={`diapo-progress-seg${etape === "recap" || i < index ? " done" : ""}${i === index && etape !== "recap" ? " current" : ""}`}
+            onClick={() => allerA(i)}></div>
+        ))}
       </div>
 
       {etape !== "recap" ? (
@@ -2478,19 +2515,43 @@ function DiapoViewerQcm({ questions, mode, delai, nomChapitre, onFermer }) {
     avancer();
   }
 
+  // Navigation manuelle directe : met le diaporama en pause automatiquement,
+  // pour laisser le temps de discuter de la question affichée.
+  function allerA(nouvelIndex) {
+    clearInterval(intervalRef.current);
+    setEnPause(true);
+    setIndex(nouvelIndex);
+    setEtape("question");
+    setTempsRestant(delai);
+  }
+
+  function reculerManuel() {
+    if (etape === "recap") { allerA(questions.length - 1); return; }
+    if (etape === "reponse") { allerA(index); return; } // revient à l'énoncé de la question courante
+    if (index > 0) allerA(index - 1);
+  }
+
+  function allerAuRecap() {
+    clearInterval(intervalRef.current);
+    setEtape("recap");
+  }
+
   useEffect(() => {
     function onKeyDown(e) {
       if (e.key === "Escape") { onFermer(); return; }
       if (e.key === " " || e.key === "ArrowRight" || e.key === "Enter") {
         e.preventDefault();
         avancerManuel();
+        return;
       }
+      if (e.key === "ArrowLeft") { e.preventDefault(); reculerManuel(); return; }
+      if (e.key === "End") { e.preventDefault(); allerAuRecap(); return; }
+      if (e.key === "Home") { e.preventDefault(); allerA(0); }
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   });
 
-  const progressionPct = ((index + (etape === "reponse" ? 0.5 : 0)) / questions.length) * 100;
 
   return (
     <div className="diapo-viewer">
@@ -2499,8 +2560,12 @@ function DiapoViewerQcm({ questions, mode, delai, nomChapitre, onFermer }) {
           {etape === "recap" ? "Récapitulatif" : `QCM ${index + 1} / ${questions.length}`}
         </div>
         <div className="diapo-topbar-actions">
+          <button className="diapo-pause-btn" onClick={reculerManuel} title="Question précédente (←)"
+            disabled={etape === "question" && index === 0}>◀</button>
           {etape !== "recap" && (
             <>
+              <button className="diapo-pause-btn" onClick={avancerManuel} title="Avancer (→)">▶</button>
+              <button className="diapo-pause-btn" onClick={allerAuRecap} title="Aller au récapitulatif (Fin)">⏭ Récap</button>
               <div className="diapo-timer-display">
                 <span className="diapo-timer-ring" style={{ opacity: enPause ? 0.3 : 1 }} />
                 {tempsRestant}s
@@ -2515,7 +2580,11 @@ function DiapoViewerQcm({ questions, mode, delai, nomChapitre, onFermer }) {
       </div>
 
       <div className="diapo-progress-bar">
-        <div className="diapo-progress-bar-fill" style={{ width: `${etape === "recap" ? 100 : progressionPct}%` }} />
+        {questions.map((q, i) => (
+          <div key={i} title={`Question ${i + 1}`}
+            className={`diapo-progress-seg${etape === "recap" || i < index ? " done" : ""}${i === index && etape !== "recap" ? " current" : ""}`}
+            onClick={() => allerA(i)}></div>
+        ))}
       </div>
 
       {etape !== "recap" ? (
