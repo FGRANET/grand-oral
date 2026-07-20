@@ -727,6 +727,7 @@ const CSS = `
   .diapo-content {
     flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
     padding: 40px 80px; text-align: center; cursor: pointer; user-select: none;
+    overflow-y: auto;
   }
   .diapo-chapitre-tag {
     font-size: 13px; color: var(--accent-light); font-weight: 600; text-transform: uppercase;
@@ -737,7 +738,7 @@ const CSS = `
   .diapo-reponse-divider { width: 80px; height: 2px; background: var(--accent); margin: 32px 0; }
   .diapo-reponse { font-size: 24px; line-height: 1.6; max-width: 900px; color: var(--accent-light); }
   .diapo-hint { font-size: 12px; color: var(--text-muted); margin-top: 40px; }
-  .diapo-qcm-choix-liste { display: flex; flex-direction: column; gap: 14px; width: 100%; max-width: 720px; margin-top: 36px; }
+  .diapo-qcm-choix-liste { display: flex; flex-direction: column; gap: 14px; width: 100%; max-width: 720px; margin-top: 20px; }
   .diapo-qcm-choix {
     display: flex; align-items: center; gap: 14px; padding: 16px 20px; border-radius: 12px;
     border: 1.5px solid var(--border); background: var(--surface); font-size: 18px; text-align: left;
