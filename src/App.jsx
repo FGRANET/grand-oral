@@ -725,8 +725,8 @@ const CSS = `
   .diapo-pause-btn:disabled { opacity: .35; cursor: default; }
 
   .diapo-content {
-    flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
-    padding: 40px 80px; text-align: center; cursor: pointer; user-select: none;
+    flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-start;
+    padding: 60px 80px 40px; text-align: center; cursor: pointer; user-select: none;
     overflow-y: auto;
   }
   .diapo-chapitre-tag {
