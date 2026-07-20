@@ -6480,7 +6480,11 @@ function QcmZone({ currentUser, currentProfile, qcmSessionARecharger, onSessionC
       lignes.push("\\vspace{4mm}");
       lignes.push("");
       lignes.push("\\small");
-      lignes.push("\\begin{multicols}{2}");
+      // Avec une figure au-dessus, 2 colonnes étroites rendent les choix peu
+      // lisibles (l'œil reste sur la figure) : on repasse en liste pleine
+      // largeur, une seule colonne, dans ce cas précis.
+      const surUneColonne = !!q.figure;
+      if (!surUneColonne) lignes.push("\\begin{multicols}{2}");
       lignes.push("\\begin{enumerate}[leftmargin=2.4em, itemsep=4mm, label=$\\square$~\\alph*)]");
       q.choix.forEach((c, i) => {
         const estBonne = avecCorrige && i === q.bonne_reponse;
@@ -6491,10 +6495,10 @@ function QcmZone({ currentUser, currentProfile, qcmSessionARecharger, onSessionC
         } else {
           lignes.push(`\\item ${texte}`);
         }
-        if (i === 1) lignes.push("\\columnbreak"); // force a,b à gauche / c,d à droite
+        if (!surUneColonne && i === 1) lignes.push("\\columnbreak"); // force a,b à gauche / c,d à droite
       });
       lignes.push("\\end{enumerate}");
-      lignes.push("\\end{multicols}");
+      if (!surUneColonne) lignes.push("\\end{multicols}");
       lignes.push("\\normalsize");
       lignes.push("");
       if (idx < selection.length - 1) {
