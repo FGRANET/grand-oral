@@ -755,6 +755,7 @@ const CSS = `
   .diapo-recap-item { margin-bottom: 24px; padding-bottom: 20px; border-bottom: 1px solid var(--border); }
   .diapo-recap-num { font-size: 11px; color: var(--text-muted); font-weight: 600; margin-bottom: 6px; }
   .diapo-recap-enonce { font-size: 15px; margin-bottom: 10px; }
+  .figure-svg { color: var(--text); }
   .diapo-recap-reponse { font-size: 15px; color: var(--accent-light); }
 
   /* ── Import JSON de questions ── */
@@ -1446,6 +1447,188 @@ async function compilerEtTelechargerPdf(contenuTex, nomFichier) {
   a.click();
   URL.revokeObjectURL(url);
 }
+
+// ─── Figures géométriques (schéma déclaratif → SVG web + TikZ export) ──
+// Une figure est un objet jsonb : { points, segments, vecteurs, pointilles,
+// quadrillage, cercles, marques_egalite, labels }. Les coordonnées des points
+// sont exprimées en repère mathématique classique (y vers le haut) ; c'est le
+// composant SVG qui inverse l'axe y pour l'écran, TikZ utilisant la même
+// convention que les données stockées.
+// En mode aléatoire, une coordonnée peut être une chaîne à placeholders
+// ("{x1}") au lieu d'un nombre littéral : resoudreFigure la fait passer par
+// le même moteur de substitution que enonce_modele avant de rendre la figure.
+function resoudreCoordonnee(valeur, valeurs) {
+  if (typeof valeur === "number") return valeur;
+  const texte = substituerPlaceholders(String(valeur), valeurs);
+  const nombre = parseFloat(String(texte).replace(",", "."));
+  return isNaN(nombre) ? 0 : nombre;
+}
+
+function resoudreFigure(figure, valeurs) {
+  if (!figure || !figure.points) return null;
+  const points = {};
+  Object.entries(figure.points).forEach(([nom, coord]) => {
+    points[nom] = [resoudreCoordonnee(coord[0], valeurs), resoudreCoordonnee(coord[1], valeurs)];
+  });
+  return { ...figure, points };
+}
+
+// Positions de label disponibles pour un point, partagées entre le rendu SVG
+// (décalage en pixels) et l'export TikZ (mot-clé \node[...]).
+const POSITIONS_LABEL = {
+  "haut": { svg: [0, -8], tikz: "above" },
+  "bas": { svg: [0, 15], tikz: "below" },
+  "gauche": { svg: [-10, 4], tikz: "left" },
+  "droite": { svg: [8, 4], tikz: "right" },
+  "haut-gauche": { svg: [-10, -8], tikz: "above left" },
+  "haut-droite": { svg: [8, -8], tikz: "above right" },
+  "bas-gauche": { svg: [-10, 15], tikz: "below left" },
+  "bas-droite": { svg: [8, 15], tikz: "below right" },
+};
+
+// Rendu web/diaporama d'une figure déjà résolue (coordonnées numériques).
+// N'affiche rien si la figure est absente ou ne contient aucun point.
+function FigureSVG({ figure }) {
+  if (!figure || !figure.points || Object.keys(figure.points).length === 0) return null;
+
+  const noms = Object.keys(figure.points);
+  const pt = nom => figure.points[nom];
+  const xs = noms.map(n => pt(n)[0]);
+  const ys = noms.map(n => pt(n)[1]);
+  const grille = figure.quadrillage;
+  if (grille) {
+    xs.push(grille.xMin ?? Math.min(...xs), grille.xMax ?? Math.max(...xs));
+    ys.push(grille.yMin ?? Math.min(...ys), grille.yMax ?? Math.max(...ys));
+  }
+  const minX = Math.min(...xs), maxX = Math.max(...xs);
+  const minY = Math.min(...ys), maxY = Math.max(...ys);
+
+  const marge = 1;
+  const largeurMath = Math.max(maxX - minX, 1) + 2 * marge;
+  const hauteurMath = Math.max(maxY - minY, 1) + 2 * marge;
+  const largeurPx = 340;
+  const echelle = largeurPx / largeurMath;
+  const hauteurPx = hauteurMath * echelle;
+
+  const versX = x => (x - minX + marge) * echelle;
+  const versY = y => hauteurPx - (y - minY + marge) * echelle;
+
+  const lignesQuadrillage = [];
+  if (grille) {
+    const xMin = grille.xMin ?? minX, xMax = grille.xMax ?? maxX;
+    const yMin = grille.yMin ?? minY, yMax = grille.yMax ?? maxY;
+    const pas = grille.pas || 1;
+    for (let x = Math.ceil(xMin / pas) * pas; x <= xMax + 1e-9; x += pas) {
+      lignesQuadrillage.push(["v", x]);
+    }
+    for (let y = Math.ceil(yMin / pas) * pas; y <= yMax + 1e-9; y += pas) {
+      lignesQuadrillage.push(["h", y]);
+    }
+  }
+
+  return (
+    <svg className="figure-svg" viewBox={`0 0 ${largeurPx} ${hauteurPx}`}
+      style={{ width: "100%", maxWidth: 360, display: "block", margin: "10px auto" }}>
+      <defs>
+        <marker id="figure-fleche" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M2 1L8 5L2 9" fill="none" stroke="var(--text)" strokeWidth="1.5" />
+        </marker>
+      </defs>
+
+      {grille && lignesQuadrillage.map(([sens, v], i) => sens === "v"
+        ? <line key={"gx" + i} x1={versX(v)} y1={versY(grille.yMin ?? minY)} x2={versX(v)} y2={versY(grille.yMax ?? maxY)} stroke="var(--border)" strokeWidth="0.5" />
+        : <line key={"gy" + i} x1={versX(grille.xMin ?? minX)} y1={versY(v)} x2={versX(grille.xMax ?? maxX)} y2={versY(v)} stroke="var(--border)" strokeWidth="0.5" />
+      )}
+
+      {(figure.segments || []).map(([a, b], i) => {
+        const A = pt(a), B = pt(b);
+        if (!A || !B) return null;
+        return <line key={"seg" + i} x1={versX(A[0])} y1={versY(A[1])} x2={versX(B[0])} y2={versY(B[1])} stroke="var(--text)" strokeWidth="1.3" />;
+      })}
+
+      {(figure.pointilles || []).map(([a, b], i) => {
+        const A = pt(a), B = pt(b);
+        if (!A || !B) return null;
+        return <line key={"poin" + i} x1={versX(A[0])} y1={versY(A[1])} x2={versX(B[0])} y2={versY(B[1])} stroke="var(--text-muted)" strokeWidth="1" strokeDasharray="4 3" />;
+      })}
+
+      {(figure.vecteurs || []).map(([a, b], i) => {
+        const A = pt(a), B = pt(b);
+        if (!A || !B) return null;
+        return <line key={"vec" + i} x1={versX(A[0])} y1={versY(A[1])} x2={versX(B[0])} y2={versY(B[1])} stroke="var(--text)" strokeWidth="1.6" markerEnd="url(#figure-fleche)" />;
+      })}
+
+      {(figure.cercles || []).map((c, i) => {
+        const C = pt(c.centre);
+        if (!C) return null;
+        return <circle key={"cer" + i} cx={versX(C[0])} cy={versY(C[1])} r={c.rayon * echelle} fill="none" stroke="var(--text)" strokeWidth="1" />;
+      })}
+
+      {(figure.marques_egalite || []).map(([a, b], i) => {
+        const A = pt(a), B = pt(b);
+        if (!A || !B) return null;
+        const mx = (versX(A[0]) + versX(B[0])) / 2, my = (versY(A[1]) + versY(B[1])) / 2;
+        const dx = versX(B[0]) - versX(A[0]), dy = versY(B[1]) - versY(A[1]);
+        const len = Math.sqrt(dx * dx + dy * dy) || 1;
+        const nx = -dy / len * 5, ny = dx / len * 5;
+        return <line key={"mq" + i} x1={mx - nx} y1={my - ny} x2={mx + nx} y2={my + ny} stroke="var(--text)" strokeWidth="1.3" />;
+      })}
+
+      {noms.map(nom => {
+        const [x, y] = pt(nom);
+        const px = versX(x), py = versY(y);
+        const position = (figure.labels && figure.labels[nom]) || "haut-droite";
+        const [ox, oy] = (POSITIONS_LABEL[position] || POSITIONS_LABEL["haut-droite"]).svg;
+        return (
+          <g key={"pt" + nom}>
+            <circle cx={px} cy={py} r="2.8" fill="var(--text)" />
+            <text x={px + ox} y={py + oy} fontSize="13" fill="var(--text)">{nom}</text>
+          </g>
+        );
+      })}
+    </svg>
+  );
+}
+
+// Génère un bloc TikZ à partir d'une figure déjà résolue (coordonnées
+// numériques), destiné à être inséré tel quel dans le .tex produit par
+// genererTex/genererTexQcm. Même repère que les données stockées (y vers le
+// haut) : contrairement au SVG web, aucune inversion d'axe n'est nécessaire.
+function genererTikZ(figure) {
+  if (!figure || !figure.points || Object.keys(figure.points).length === 0) return "";
+  const L = [];
+  L.push("\\begin{center}");
+  L.push("\\begin{tikzpicture}[scale=0.8]");
+
+  if (figure.quadrillage) {
+    const g = figure.quadrillage;
+    const pas = g.pas || 1;
+    L.push(`\\draw[step=${pas}cm, very thin, color=gray!30] (${g.xMin ?? 0},${g.yMin ?? 0}) grid (${g.xMax ?? 5},${g.yMax ?? 5});`);
+  }
+
+  Object.entries(figure.points).forEach(([nom, coord]) => {
+    L.push(`\\coordinate (${nom}) at (${coord[0]},${coord[1]});`);
+  });
+
+  (figure.segments || []).forEach(([a, b]) => L.push(`\\draw[thick] (${a}) -- (${b});`));
+  (figure.pointilles || []).forEach(([a, b]) => L.push(`\\draw[dashed, gray] (${a}) -- (${b});`));
+  (figure.vecteurs || []).forEach(([a, b]) => L.push(`\\draw[thick, -{Latex[length=3mm]}] (${a}) -- (${b});`));
+  (figure.cercles || []).forEach(c => L.push(`\\draw (${c.centre}) circle (${c.rayon}cm);`));
+  (figure.marques_egalite || []).forEach(([a, b]) => {
+    L.push(`\\draw ($(${a})!0.5!(${b})+(-0.05,-0.08)$) -- ($(${a})!0.5!(${b})+(0.05,0.08)$);`);
+  });
+
+  Object.keys(figure.points).forEach(nom => {
+    const position = (figure.labels && figure.labels[nom]) || "haut-droite";
+    const motTikz = (POSITIONS_LABEL[position] || POSITIONS_LABEL["haut-droite"]).tikz;
+    L.push(`\\fill (${nom}) circle (1.6pt);`);
+    L.push(`\\node[${motTikz}] at (${nom}) {$${nom}$};`);
+  });
+
+  L.push("\\end{tikzpicture}");
+  L.push("\\end{center}");
+  return L.join("\n");
+}
 // ─── Moteur de tirage des exercices d'application ──────────────────────
 // Formate un nombre avec virgule décimale (notation française)
 // Ex : 1.5 → "1,5"  ;  -0.333 → "-0,333"  ;  2 → "2"
@@ -1879,8 +2062,9 @@ function tirerQcm(qcm) {
   const ordre = melanger([0, 1, 2, 3]);
   const choixMelanges = ordre.map(i => choix[i]);
   const bonneReponseMelangee = ordre.indexOf(qcm.bonne_reponse);
+  const figure = qcm.figure ? resoudreFigure(qcm.figure, valeurs) : null;
 
-  return { enonce, choix: choixMelanges, bonne_reponse: bonneReponseMelangee, valeurs };
+  return { enonce, choix: choixMelanges, bonne_reponse: bonneReponseMelangee, valeurs, figure };
 }
 
 // Tire un exercice complet à partir de son modèle stocké en base :
@@ -1894,6 +2078,7 @@ function tirerExercice(exercice) {
     enonce: substituerPlaceholders(exercice.enonce_modele, valeurs),
     reponse: substituerPlaceholders(exercice.reponse_modele, valeurs),
     valeurs,
+    figure: exercice.figure ? resoudreFigure(exercice.figure, valeurs) : null,
   };
 }
 
@@ -2420,6 +2605,7 @@ function DiapoViewer({ questions, mode, delai, nomChapitre, onFermer }) {
         <div className="diapo-content" onClick={avancerManuel}>
           <div className="diapo-chapitre-tag">{nomChapitre(question.chapitre_id)}</div>
           <div className="diapo-enonce"><MathText inline={false}>{question.enonce}</MathText></div>
+          <FigureSVG figure={question.figure} />
           {etape === "reponse" && (
             <>
               <div className="diapo-reponse-divider" />
@@ -2435,6 +2621,7 @@ function DiapoViewer({ questions, mode, delai, nomChapitre, onFermer }) {
             <div key={q.id} className="diapo-recap-item">
               <div className="diapo-recap-num">Question {i + 1} · {nomChapitre(q.chapitre_id)}</div>
               <div className="diapo-recap-enonce"><MathText inline={false}>{q.enonce}</MathText></div>
+              <FigureSVG figure={q.figure} />
               <div className="diapo-recap-reponse"><MathText inline={false}>{q.reponse}</MathText></div>
             </div>
           ))}
@@ -2592,6 +2779,7 @@ function DiapoViewerQcm({ questions, mode, delai, nomChapitre, onFermer }) {
         <div className="diapo-content" onClick={avancerManuel}>
           <div className="diapo-chapitre-tag">{nomChapitre(question.chapitre_id)}</div>
           <div className="diapo-enonce"><MathText inline={false}>{question.enonce}</MathText></div>
+          <FigureSVG figure={question.figure} />
           <div className="diapo-qcm-choix-liste">
             {question.choix.map((c, i) => (
               <ChoixQcm key={i} texte={c} lettre={lettres[i]} correcte={etape === "reponse" && i === question.bonne_reponse} />
@@ -2606,6 +2794,7 @@ function DiapoViewerQcm({ questions, mode, delai, nomChapitre, onFermer }) {
             <div key={q.id} className="diapo-recap-item">
               <div className="diapo-recap-num">QCM {i + 1} · {nomChapitre(q.chapitre_id)}</div>
               <div className="diapo-recap-enonce"><MathText inline={false}>{q.enonce}</MathText></div>
+              <FigureSVG figure={q.figure} />
               <div className="diapo-recap-reponse">{lettres[q.bonne_reponse]}) <MathText>{q.choix[q.bonne_reponse]}</MathText></div>
             </div>
           ))}
@@ -2797,18 +2986,20 @@ function ImportQuestions({ currentUser, currentProfile, chapitres, niveauScolair
       ...analyse.valides.map(q => ({
         id: q.id, chapitre_id: q._chapitreId, type: q.type,
         enonce: q.enonce, reponse: q.reponse, niveau: q.niveau || 2,
-        prof_id: currentUser.id,
+        figure: q.figure || null, prof_id: currentUser.id,
       })),
       ...analyse.corrections.map(q => ({
         id: q._idCorrige, chapitre_id: q._chapitreId, type: q.type,
         enonce: q.enonce, reponse: q.reponse, niveau: q.niveau || 2,
-        prof_id: currentUser.id,
+        figure: q.figure || null, prof_id: currentUser.id,
       })),
     ];
     // Aléatoire → table exercices_application (id généré à l'analyse)
     // type_calcul est omis quand il n'est pas fourni (plutôt qu'envoyé à null) :
     // comme CreerQuestion ne l'envoie jamais non plus pour la création manuelle,
     // ça laisse une éventuelle valeur par défaut Supabase s'appliquer.
+    // figure : idem, omis si absent (les coordonnées peuvent contenir des
+    // placeholders "{x1}" résolus au tirage par resoudreFigure).
     const exercicesAInserer = analyse.valideesAleatoire.map(q => {
       const ligne = {
         id: q._idGenere, chapitre_id: q._chapitreId,
@@ -2816,6 +3007,7 @@ function ImportQuestions({ currentUser, currentProfile, chapitres, niveauScolair
         parametres: q.parametres, niveau: q.niveau || 2, prof_id: currentUser.id,
       };
       if (q.type_calcul) ligne.type_calcul = q.type_calcul;
+      if (q.figure) ligne.figure = q.figure;
       return ligne;
     });
 
@@ -3128,7 +3320,7 @@ function ImportQcm({ currentUser, chapitres, niveauScolaire, onFermer, onImportT
       const mode = q.mode === "aleatoire" ? "aleatoire" : "fixe";
       const base = {
         chapitre_id: q._chapitreId, mode, bonne_reponse: q.bonne_reponse,
-        niveau: q.niveau || 1, prof_id: currentUser.id,
+        niveau: q.niveau || 1, figure: q.figure || null, prof_id: currentUser.id,
       };
       const donnees = mode === "fixe"
         ? { ...base, enonce: q.enonce, choix: q.choix, enonce_modele: null, choix_modele: null, parametres: null }
@@ -3580,6 +3772,18 @@ function CreerQuestion({ chapitres, currentUser, currentProfile, niveauScolaire,
   const [testResultat, setTestResultat] = useState(null);
   const [testErreur, setTestErreur] = useState(null);
   const [enregistrement, setEnregistrement] = useState(false);
+  // Figure géométrique optionnelle, saisie en JSON brut (voir guide des figures).
+  // Phase 1 : pas d'éditeur graphique, uniquement du JSON manuel + aperçu.
+  const [figureTexte, setFigureTexte] = useState(
+    questionAEditer?.figure ? JSON.stringify(questionAEditer.figure, null, 2) : ""
+  );
+
+  // Aperçu de la figure en mode fixe (aucun tirage nécessaire, contrairement
+  // au mode aléatoire où l'aperçu passe par lancerTest ci-dessous).
+  const figureApercuFixe = useMemo(() => {
+    if (mode !== "fixe" || !figureTexte.trim()) return null;
+    try { return JSON.parse(figureTexte); } catch { return null; }
+  }, [figureTexte, mode]);
 
   const variablesDetectees = useMemo(() => {
     // Normalise \{var\} → {var} avant d'analyser
@@ -3630,7 +3834,9 @@ function CreerQuestion({ chapitres, currentUser, currentProfile, niveauScolaire,
       Object.entries(parametres).forEach(([nom, def]) => { valeurs[nom] = tirerValeurParametre(def); });
       const enonceGenere = substituerPlaceholders(enonce, valeurs);
       const reponseGeneree = substituerPlaceholders(reponse, valeurs);
-      setTestResultat({ enonce: enonceGenere, reponse: reponseGeneree, valeurs });
+      const figureBrute = figureTexte.trim() ? JSON.parse(figureTexte) : null;
+      const figureResolue = figureBrute ? resoudreFigure(figureBrute, valeurs) : null;
+      setTestResultat({ enonce: enonceGenere, reponse: reponseGeneree, valeurs, figure: figureResolue });
     } catch (e) {
       setTestErreur(e.message);
       setTestResultat(null);
@@ -3639,12 +3845,23 @@ function CreerQuestion({ chapitres, currentUser, currentProfile, niveauScolaire,
 
   async function enregistrer() {
     if (!enonce.trim() || !reponse.trim() || !chapitreId) return;
+
+    let figureAEnregistrer = null;
+    if (figureTexte.trim()) {
+      try {
+        figureAEnregistrer = JSON.parse(figureTexte);
+      } catch (e) {
+        alert("Le JSON de la figure est invalide : " + e.message);
+        return;
+      }
+    }
+
     setEnregistrement(true);
 
     if (mode === "fixe") {
       const donnees = {
         chapitre_id: chapitreId, type, enonce: enonce.trim(),
-        reponse: reponse.trim(), niveau,
+        reponse: reponse.trim(), niveau, figure: figureAEnregistrer,
       };
       let error;
       if (estEdition && questionAEditer._source === "base_fixe") {
@@ -3668,7 +3885,7 @@ function CreerQuestion({ chapitres, currentUser, currentProfile, niveauScolaire,
       if (estEdition && questionAEditer._source === "base_aleatoire") {
         const { error } = await supabase.from("exercices_application").update({
           chapitre_id: chapitreId, enonce_modele: enonce.trim(),
-          reponse_modele: reponse.trim(), parametres, niveau,
+          reponse_modele: reponse.trim(), parametres, niveau, figure: figureAEnregistrer,
         }).eq("id", questionAEditer.id);
         setEnregistrement(false);
         if (error) { alert("Erreur : " + error.message); return; }
@@ -3683,7 +3900,7 @@ function CreerQuestion({ chapitres, currentUser, currentProfile, niveauScolaire,
         const id = `${prefixe}_${initiales}_EX${nn}`;
         const { error } = await supabase.from("exercices_application").insert({
           id, chapitre_id: chapitreId, enonce_modele: enonce.trim(),
-          reponse_modele: reponse.trim(), parametres, niveau, prof_id: currentUser.id,
+          reponse_modele: reponse.trim(), parametres, niveau, figure: figureAEnregistrer, prof_id: currentUser.id,
         });
         setEnregistrement(false);
         if (error) { alert("Erreur : " + error.message); return; }
@@ -3747,6 +3964,20 @@ function CreerQuestion({ chapitres, currentUser, currentProfile, niveauScolaire,
             <textarea className="creer-textarea" value={reponse} onChange={e => setReponse(e.target.value)}
               placeholder={mode === "aleatoire" ? "Ex : $x = {-b/a}$" : "Ex : Une suite arithmétique est..."} />
           </div>
+          <div className="creer-field">
+            <label>Figure (JSON, optionnel)</label>
+            <textarea className="creer-textarea" value={figureTexte} onChange={e => setFigureTexte(e.target.value)}
+              placeholder={'{\n  "points": { "A": [0, 0], "B": [3, 0], "C": [2, 2.5] },\n  "segments": [["A","B"],["B","C"],["C","A"]]\n}'} />
+            <div className="creer-hint">
+              Clés possibles : <code>points</code>, <code>segments</code>, <code>vecteurs</code>, <code>pointilles</code>, <code>cercles</code>, <code>marques_egalite</code>, <code>quadrillage</code>, <code>labels</code>.
+              {mode === "aleatoire" && <> En mode aléatoire, une coordonnée peut être une chaîne à placeholder, ex. <code>"{"{x1}"}"</code>.</>}
+            </div>
+            {mode === "fixe" && figureTexte.trim() && (
+              figureApercuFixe
+                ? <FigureSVG figure={figureApercuFixe} />
+                : <div className="creer-test-err">JSON de la figure invalide — l'aperçu s'affichera une fois corrigé.</div>
+            )}
+          </div>
           {mode === "aleatoire" && (
             <>
               <div className="creer-field">
@@ -3787,6 +4018,7 @@ function CreerQuestion({ chapitres, currentUser, currentProfile, niveauScolaire,
                 {testResultat ? (
                   <div className="creer-test-result">
                     <MathText inline={false}>{testResultat.enonce}</MathText>
+                    <FigureSVG figure={testResultat.figure} />
                     <div className="creer-test-reponse"><MathText inline={false}>{testResultat.reponse}</MathText></div>
                     <div className="creer-test-vals">Valeurs : {JSON.stringify(testResultat.valeurs)}</div>
                   </div>
@@ -3830,6 +4062,13 @@ function CreerQcm({ chapitres, currentUser, niveauScolaire, onFermer, onCree, qc
   const [testResultat, setTestResultat] = useState(null);
   const [testErreur, setTestErreur] = useState(null);
   const [enregistrement, setEnregistrement] = useState(false);
+  const [figureTexte, setFigureTexte] = useState(
+    qcmAEditer?.figure ? JSON.stringify(qcmAEditer.figure, null, 2) : ""
+  );
+  const figureApercuFixe = useMemo(() => {
+    if (mode !== "fixe" || !figureTexte.trim()) return null;
+    try { return JSON.parse(figureTexte); } catch { return null; }
+  }, [figureTexte, mode]);
 
   function mettreAJourChoix(index, valeur) {
     setChoix(prev => prev.map((c, i) => i === index ? valeur : c));
@@ -3885,7 +4124,9 @@ function CreerQcm({ chapitres, currentUser, niveauScolaire, onFermer, onCree, qc
       Object.entries(parametres).forEach(([nom, def]) => { valeurs[nom] = tirerValeurParametre(def); });
       const enonceGenere = substituerPlaceholders(enonce, valeurs);
       const choixGeneres = choix.map(c => substituerPlaceholders(c, valeurs));
-      setTestResultat({ enonce: enonceGenere, choix: choixGeneres, valeurs });
+      const figureBrute = figureTexte.trim() ? JSON.parse(figureTexte) : null;
+      const figureResolue = figureBrute ? resoudreFigure(figureBrute, valeurs) : null;
+      setTestResultat({ enonce: enonceGenere, choix: choixGeneres, valeurs, figure: figureResolue });
     } catch (e) {
       setTestErreur(e.message);
       setTestResultat(null);
@@ -3894,6 +4135,17 @@ function CreerQcm({ chapitres, currentUser, niveauScolaire, onFermer, onCree, qc
 
   async function enregistrer() {
     if (!enonce.trim() || !choixValides || !chapitreId) return;
+
+    let figureAEnregistrer = null;
+    if (figureTexte.trim()) {
+      try {
+        figureAEnregistrer = JSON.parse(figureTexte);
+      } catch (e) {
+        alert("Le JSON de la figure est invalide : " + e.message);
+        return;
+      }
+    }
+
     setEnregistrement(true);
 
     let donnees;
@@ -3901,7 +4153,7 @@ function CreerQcm({ chapitres, currentUser, niveauScolaire, onFermer, onCree, qc
       donnees = {
         chapitre_id: chapitreId, mode: "fixe",
         enonce: enonce.trim(), choix: choix.map(c => c.trim()),
-        bonne_reponse: bonneReponse, niveau,
+        bonne_reponse: bonneReponse, niveau, figure: figureAEnregistrer,
         enonce_modele: null, choix_modele: null, parametres: null,
       };
     } else {
@@ -3909,7 +4161,7 @@ function CreerQcm({ chapitres, currentUser, niveauScolaire, onFermer, onCree, qc
       donnees = {
         chapitre_id: chapitreId, mode: "aleatoire",
         enonce_modele: enonce.trim(), choix_modele: choix.map(c => c.trim()),
-        bonne_reponse: bonneReponse, niveau, parametres,
+        bonne_reponse: bonneReponse, niveau, parametres, figure: figureAEnregistrer,
         enonce: null, choix: null,
       };
     }
@@ -3981,6 +4233,20 @@ function CreerQcm({ chapitres, currentUser, niveauScolaire, onFermer, onCree, qc
               ))}
             </div>
           </div>
+          <div className="creer-field">
+            <label>Figure (JSON, optionnel)</label>
+            <textarea className="creer-textarea" value={figureTexte} onChange={e => setFigureTexte(e.target.value)}
+              placeholder={'{\n  "points": { "A": [0, 0], "B": [3, 0], "C": [2, 2.5] },\n  "segments": [["A","B"],["B","C"],["C","A"]]\n}'} />
+            <div className="creer-hint">
+              Clés possibles : <code>points</code>, <code>segments</code>, <code>vecteurs</code>, <code>pointilles</code>, <code>cercles</code>, <code>marques_egalite</code>, <code>quadrillage</code>, <code>labels</code>.
+              {mode === "aleatoire" && <> En mode aléatoire, une coordonnée peut être une chaîne à placeholder, ex. <code>"{"{x1}"}"</code>.</>}
+            </div>
+            {mode === "fixe" && figureTexte.trim() && (
+              figureApercuFixe
+                ? <FigureSVG figure={figureApercuFixe} />
+                : <div className="creer-test-err">JSON de la figure invalide — l'aperçu s'affichera une fois corrigé.</div>
+            )}
+          </div>
           {mode === "aleatoire" && (
             <>
               <div className="creer-field">
@@ -4021,6 +4287,7 @@ function CreerQcm({ chapitres, currentUser, niveauScolaire, onFermer, onCree, qc
                 {testResultat ? (
                   <div className="creer-test-result">
                     <MathText inline={false}>{testResultat.enonce}</MathText>
+                    <FigureSVG figure={testResultat.figure} />
                     <div className="creer-test-reponse">
                       {testResultat.choix.map((c, i) => (
                         <div key={i}>{lettres[i]}) <MathText>{c}</MathText>{i === bonneReponse ? " ✓" : ""}</div>
@@ -4127,7 +4394,7 @@ function TirageAleatoire({ chapitres, onAnnuler, onTirer, niveauScolaire }) {
         const tirage = tirerExercice(ex);
         pool.push({
           id: ex.id, chapitre_id: ex.chapitre_id, type: "exercice", niveau: ex.niveau,
-          enonce: tirage.enonce, reponse: tirage.reponse,
+          enonce: tirage.enonce, reponse: tirage.reponse, figure: tirage.figure,
           _cle: ex.id, _aleatoire: true,
         });
       });
@@ -4336,7 +4603,8 @@ function TirageAleatoireQcm({ chapitres, onAnnuler, onTirer }) {
     const tires = resultat.map(q => {
       const tirage = tirerQcm(q);
       return { id: q.id, chapitre_id: q.chapitre_id, niveau: q.niveau, mode: q.mode,
-        enonce: tirage.enonce, choix: tirage.choix, bonne_reponse: tirage.bonne_reponse, _cle: q.id };
+        enonce: tirage.enonce, choix: tirage.choix, bonne_reponse: tirage.bonne_reponse,
+        figure: tirage.figure, _cle: q.id };
     });
 
     if (tires.length < nombre) {
@@ -5019,6 +5287,8 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
     lignes.push("\\usepackage{tcolorbox}");
     lignes.push("\\usepackage{fancyhdr}");
     lignes.push("\\usepackage{forloop}");
+    lignes.push("\\usepackage{tikz}");
+    lignes.push("\\usetikzlibrary{arrows.meta, calc}");
     lignes.push(`\\usepackage[margin=${margeCm}]{geometry}`);
     lignes.push("\\pagestyle{fancy}");
     lignes.push("\\fancyhf{}");
@@ -5049,6 +5319,10 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
       lignes.push(`\\stepcounter{qnum}`);
       lignes.push(`\\noindent\\textbf{Question \\theqnum.} ${echapperLatex(q.enonce)}`);
       lignes.push("");
+      if (q.figure) {
+        lignes.push(genererTikZ(q.figure));
+        lignes.push("");
+      }
       if (avecCorrige) {
         lignes.push("\\begin{tcolorbox}[colback=gray!10]");
         lignes.push(echapperLatex(q.reponse));
@@ -5844,7 +6118,8 @@ function QcmZone({ currentUser, currentProfile, qcmSessionARecharger, onSessionC
           const q = parId[id];
           const tirage = tirerQcm(q);
           return { id: q.id, chapitre_id: q.chapitre_id, niveau: q.niveau, mode: q.mode,
-            enonce: tirage.enonce, choix: tirage.choix, bonne_reponse: tirage.bonne_reponse };
+            enonce: tirage.enonce, choix: tirage.choix, bonne_reponse: tirage.bonne_reponse,
+            figure: tirage.figure };
         });
       setSelection(nouvelleSelection);
       onSessionChargee();
@@ -5859,7 +6134,8 @@ function QcmZone({ currentUser, currentProfile, qcmSessionARecharger, onSessionC
       const nouveaux = (data || []).map(q => {
         const tirage = tirerQcm(q);
         return { id: q.id, chapitre_id: q.chapitre_id, niveau: q.niveau, mode: q.mode,
-          enonce: tirage.enonce, choix: tirage.choix, bonne_reponse: tirage.bonne_reponse };
+          enonce: tirage.enonce, choix: tirage.choix, bonne_reponse: tirage.bonne_reponse,
+          figure: tirage.figure };
       });
       setSelection(prev => {
         const idsExistants = new Set(prev.map(s => s.id));
@@ -5902,7 +6178,7 @@ function QcmZone({ currentUser, currentProfile, qcmSessionARecharger, onSessionC
   function retirerAuSort(q) {
     const tirage = tirerQcm(q);
     setTiragesQcm(prev => ({ ...prev, [q.id]: tirage }));
-    setSelection(prev => prev.map(s => s.id === q.id ? { ...s, enonce: tirage.enonce, choix: tirage.choix, bonne_reponse: tirage.bonne_reponse } : s));
+    setSelection(prev => prev.map(s => s.id === q.id ? { ...s, enonce: tirage.enonce, choix: tirage.choix, bonne_reponse: tirage.bonne_reponse, figure: tirage.figure } : s));
   }
 
   function estSelectionne(qcmId) { return selection.some(s => s.id === qcmId); }
@@ -5919,7 +6195,7 @@ function QcmZone({ currentUser, currentProfile, qcmSessionARecharger, onSessionC
     setSelection(prev => [...prev, {
       id: q.id, chapitre_id: q.chapitre_id, niveau: q.niveau, mode: q.mode,
       enonce: tirage.enonce, choix: tirage.choix, bonne_reponse: tirage.bonne_reponse,
-      _cle: q.id,
+      figure: tirage.figure, _cle: q.id,
     }]);
   }
 
@@ -5955,6 +6231,7 @@ function QcmZone({ currentUser, currentProfile, qcmSessionARecharger, onSessionC
           enonce: tirage.enonce,
           choix: tirage.choix,
           bonne_reponse: tirage.bonne_reponse,
+          figure: tirage.figure,
           _cle: `${item.id}__${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}_${i}`,
         });
       }
@@ -6104,6 +6381,8 @@ function QcmZone({ currentUser, currentProfile, qcmSessionARecharger, onSessionC
     lignes.push("\\usepackage{enumitem}");
     lignes.push("\\usepackage{multicol}");
     lignes.push("\\usepackage{fancyhdr}");
+    lignes.push("\\usepackage{tikz}");
+    lignes.push("\\usetikzlibrary{arrows.meta, calc}");
     lignes.push(`\\usepackage[margin=${margeCm}]{geometry}`);
     lignes.push("\\setlength{\\parindent}{0pt}");
     lignes.push("\\setlength{\\parskip}{0pt}");
@@ -6131,6 +6410,10 @@ function QcmZone({ currentUser, currentProfile, qcmSessionARecharger, onSessionC
       lignes.push(`\\stepcounter{qnum}`);
       lignes.push(`\\noindent\\textbf{Question \\theqnum.} ${echapperLatex(q.enonce)}`);
       lignes.push("");
+      if (q.figure) {
+        lignes.push(genererTikZ(q.figure));
+        lignes.push("");
+      }
       lignes.push("\\vspace{4mm}");
       lignes.push("");
       lignes.push("\\small");
