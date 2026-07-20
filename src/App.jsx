@@ -1495,6 +1495,12 @@ function FigureSVG({ figure }) {
   const pt = nom => figure.points[nom];
   const xs = noms.map(n => pt(n)[0]);
   const ys = noms.map(n => pt(n)[1]);
+  // Les cercles peuvent dépasser des points seuls (rayon) : sans ça, un cercle
+  // large se retrouvait tronqué par le viewBox calculé sur les seuls points.
+  (figure.cercles || []).forEach(c => {
+    const C = pt(c.centre);
+    if (C) { xs.push(C[0] - c.rayon, C[0] + c.rayon); ys.push(C[1] - c.rayon, C[1] + c.rayon); }
+  });
   const grille = figure.quadrillage;
   if (grille) {
     xs.push(grille.xMin ?? Math.min(...xs), grille.xMax ?? Math.max(...xs));
@@ -1514,14 +1520,21 @@ function FigureSVG({ figure }) {
   const versY = y => hauteurPx - (y - minY + marge) * echelle;
 
   const lignesQuadrillage = [];
+  const xMinG = grille ? (grille.xMin ?? minX) : null;
+  const xMaxG = grille ? (grille.xMax ?? maxX) : null;
+  const yMinG = grille ? (grille.yMin ?? minY) : null;
+  const yMaxG = grille ? (grille.yMax ?? maxY) : null;
+  const pasG = grille ? (grille.pas || 1) : 1;
+  // Un quadrillage sans les axes gradués ne "lit" pas comme un vrai repère :
+  // on trace les axes (x=0 et y=0) avec flèche + graduations dès qu'ils
+  // traversent effectivement la zone affichée.
+  const axeXVisible = !!grille && yMinG <= 0 && yMaxG >= 0;
+  const axeYVisible = !!grille && xMinG <= 0 && xMaxG >= 0;
   if (grille) {
-    const xMin = grille.xMin ?? minX, xMax = grille.xMax ?? maxX;
-    const yMin = grille.yMin ?? minY, yMax = grille.yMax ?? maxY;
-    const pas = grille.pas || 1;
-    for (let x = Math.ceil(xMin / pas) * pas; x <= xMax + 1e-9; x += pas) {
+    for (let x = Math.ceil(xMinG / pasG) * pasG; x <= xMaxG + 1e-9; x += pasG) {
       lignesQuadrillage.push(["v", x]);
     }
-    for (let y = Math.ceil(yMin / pas) * pas; y <= yMax + 1e-9; y += pas) {
+    for (let y = Math.ceil(yMinG / pasG) * pasG; y <= yMaxG + 1e-9; y += pasG) {
       lignesQuadrillage.push(["h", y]);
     }
   }
@@ -1536,8 +1549,34 @@ function FigureSVG({ figure }) {
       </defs>
 
       {grille && lignesQuadrillage.map(([sens, v], i) => sens === "v"
-        ? <line key={"gx" + i} x1={versX(v)} y1={versY(grille.yMin ?? minY)} x2={versX(v)} y2={versY(grille.yMax ?? maxY)} stroke="var(--border)" strokeWidth="0.5" />
-        : <line key={"gy" + i} x1={versX(grille.xMin ?? minX)} y1={versY(v)} x2={versX(grille.xMax ?? maxX)} y2={versY(v)} stroke="var(--border)" strokeWidth="0.5" />
+        ? <line key={"gx" + i} x1={versX(v)} y1={versY(yMinG)} x2={versX(v)} y2={versY(yMaxG)} stroke="var(--border)" strokeWidth="0.5" />
+        : <line key={"gy" + i} x1={versX(xMinG)} y1={versY(v)} x2={versX(xMaxG)} y2={versY(v)} stroke="var(--border)" strokeWidth="0.5" />
+      )}
+
+      {axeXVisible && (
+        <line x1={versX(xMinG)} y1={versY(0)} x2={versX(xMaxG)} y2={versY(0)} stroke="var(--text)" strokeWidth="1.2" markerEnd="url(#figure-fleche)" />
+      )}
+      {axeYVisible && (
+        <line x1={versX(0)} y1={versY(yMinG)} x2={versX(0)} y2={versY(yMaxG)} stroke="var(--text)" strokeWidth="1.2" markerEnd="url(#figure-fleche)" />
+      )}
+      {axeXVisible && (() => {
+        const ticks = [];
+        for (let x = Math.ceil(xMinG / pasG) * pasG; x <= xMaxG + 1e-9; x += pasG) {
+          if (Math.abs(x) < 1e-9) continue;
+          ticks.push(<text key={"tx" + x} x={versX(x)} y={versY(0) + 14} fontSize="10" fill="var(--text-muted)" textAnchor="middle">{formatNombre(Math.round(x * 1000) / 1000)}</text>);
+        }
+        return ticks;
+      })()}
+      {axeYVisible && (() => {
+        const ticks = [];
+        for (let y = Math.ceil(yMinG / pasG) * pasG; y <= yMaxG + 1e-9; y += pasG) {
+          if (Math.abs(y) < 1e-9) continue;
+          ticks.push(<text key={"ty" + y} x={versX(0) - 6} y={versY(y) + 4} fontSize="10" fill="var(--text-muted)" textAnchor="end">{formatNombre(Math.round(y * 1000) / 1000)}</text>);
+        }
+        return ticks;
+      })()}
+      {axeXVisible && axeYVisible && (
+        <text x={versX(0) - 6} y={versY(0) + 14} fontSize="10" fill="var(--text-muted)" textAnchor="end">0</text>
       )}
 
       {(figure.segments || []).map(([a, b], i) => {
@@ -1603,7 +1642,25 @@ function genererTikZ(figure) {
   if (figure.quadrillage) {
     const g = figure.quadrillage;
     const pas = g.pas || 1;
-    L.push(`\\draw[step=${pas}cm, very thin, color=gray!30] (${g.xMin ?? 0},${g.yMin ?? 0}) grid (${g.xMax ?? 5},${g.yMax ?? 5});`);
+    const xMin = g.xMin ?? 0, xMax = g.xMax ?? 5, yMin = g.yMin ?? 0, yMax = g.yMax ?? 5;
+    L.push(`\\draw[step=${pas}cm, very thin, color=gray!30] (${xMin},${yMin}) grid (${xMax},${yMax});`);
+    // Axes gradués (comme le rendu web) : uniquement si l'axe traverse
+    // effectivement la zone affichée.
+    if (yMin <= 0 && yMax >= 0) {
+      L.push(`\\draw[-{Latex}] (${xMin},0) -- (${xMax},0);`);
+      for (let x = Math.ceil(xMin / pas) * pas; x <= xMax + 1e-9; x += pas) {
+        if (Math.abs(x) > 1e-9) L.push(`\\node[below] at (${x},0) {\\tiny ${x}};`);
+      }
+    }
+    if (xMin <= 0 && xMax >= 0) {
+      L.push(`\\draw[-{Latex}] (0,${yMin}) -- (0,${yMax});`);
+      for (let y = Math.ceil(yMin / pas) * pas; y <= yMax + 1e-9; y += pas) {
+        if (Math.abs(y) > 1e-9) L.push(`\\node[left] at (0,${y}) {\\tiny ${y}};`);
+      }
+    }
+    if (xMin <= 0 && xMax >= 0 && yMin <= 0 && yMax >= 0) {
+      L.push(`\\node[below left] at (0,0) {\\tiny 0};`);
+    }
   }
 
   Object.entries(figure.points).forEach(([nom, coord]) => {
