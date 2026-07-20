@@ -1542,6 +1542,7 @@ function FigureSVG({ figure }) {
 
   return (
     <svg className="figure-svg" viewBox={`0 0 ${largeurPx} ${hauteurPx}`}
+      width={largeurPx} height={hauteurPx} preserveAspectRatio="xMidYMid meet"
       style={{ width: "100%", maxWidth: 360, display: "block", margin: "10px auto" }}>
       <defs>
         <marker id="figure-fleche" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
