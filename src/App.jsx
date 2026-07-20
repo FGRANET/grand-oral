@@ -5110,10 +5110,11 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
         enonce: substituerPlaceholders(exoBase.enonce_modele, valeurs),
         reponse: substituerPlaceholders(exoBase.reponse_modele, valeurs),
         valeurs,
+        figure: exoBase.figure ? resoudreFigure(exoBase.figure, valeurs) : null,
       };
       setTiragesExercices(prev => ({ ...prev, [idExercice]: tirage }));
       setSelection(prev => prev.map(q =>
-        q.id === idExercice ? { ...q, enonce: tirage.enonce, reponse: tirage.reponse } : q
+        q.id === idExercice ? { ...q, enonce: tirage.enonce, reponse: tirage.reponse, figure: tirage.figure } : q
       ));
     }
   }
@@ -5139,6 +5140,7 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
       return {
         enonce: substituerPlaceholders(exoBase.enonce_modele, valeurs),
         reponse: substituerPlaceholders(exoBase.reponse_modele, valeurs),
+        figure: exoBase.figure ? resoudreFigure(exoBase.figure, valeurs) : null,
       };
     }
 
@@ -5162,6 +5164,7 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
           ...item,
           enonce: tirage.enonce,
           reponse: tirage.reponse,
+          figure: tirage.figure,
           _cle: `${item.id}__${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}_${i}`,
         });
       }
@@ -5201,9 +5204,10 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
         enonce: substituerPlaceholders(exoBase.enonce_modele, valeurs),
         reponse: substituerPlaceholders(exoBase.reponse_modele, valeurs),
         valeurs,
+        figure: exoBase.figure ? resoudreFigure(exoBase.figure, valeurs) : null,
       };
       setTiragesExercices(prev => ({ ...prev, [idExercice]: tirage }));
-      setSelection(prev => [...prev, { id: idExercice, chapitre_id: chapitreId, type: "exercice", enonce: tirage.enonce, reponse: tirage.reponse, niveau, _cle: idExercice, _aleatoire: true }]);
+      setSelection(prev => [...prev, { id: idExercice, chapitre_id: chapitreId, type: "exercice", enonce: tirage.enonce, reponse: tirage.reponse, figure: tirage.figure, niveau, _cle: idExercice, _aleatoire: true }]);
     }
   }
 
@@ -5262,10 +5266,11 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
           enonce: substituerPlaceholders(exoBase.enonce_modele, valeurs),
           reponse: substituerPlaceholders(exoBase.reponse_modele, valeurs),
           valeurs,
+          figure: exoBase.figure ? resoudreFigure(exoBase.figure, valeurs) : null,
         };
       }
       nouveauxTirages[ex.id] = tirage;
-      exercicesAAjouter.push({ id: ex.id, chapitre_id: ch.id, type: "exercice", enonce: tirage.enonce, reponse: tirage.reponse, niveau: ex.niveau, _cle: ex.id, _aleatoire: true });
+      exercicesAAjouter.push({ id: ex.id, chapitre_id: ch.id, type: "exercice", enonce: tirage.enonce, reponse: tirage.reponse, figure: tirage.figure, niveau: ex.niveau, _cle: ex.id, _aleatoire: true });
     });
 
     if (Object.keys(nouveauxTirages).length > 0) setTiragesExercices(prev => ({ ...prev, ...nouveauxTirages }));
@@ -5764,6 +5769,7 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
                           <div className="gen-exercice-detail">
                             <div className="gen-question-detail-label">Exemple de tirage</div>
                             <MathText inline={false}>{tirage.enonce}</MathText>
+                            <FigureSVG figure={tirage.figure} />
                             <div className="gen-question-detail-reponse">
                               <div className="gen-question-detail-label">Réponse</div>
                               <MathText inline={false}>{tirage.reponse}</MathText>
