@@ -1489,7 +1489,7 @@ const POSITIONS_LABEL = {
 
 // Rendu web/diaporama d'une figure déjà résolue (coordonnées numériques).
 // N'affiche rien si la figure est absente ou ne contient aucun point.
-function FigureSVG({ figure }) {
+function FigureSVG({ figure, grand = false }) {
   if (!figure || !figure.points || Object.keys(figure.points).length === 0) return null;
 
   const noms = Object.keys(figure.points);
@@ -1517,7 +1517,7 @@ function FigureSVG({ figure }) {
   // la largeur) : une figure très haute (ex. quadrillage vertical) reste
   // ainsi toujours compacte, sans jamais dépasser le carré maxDimPx×maxDimPx —
   // important pour tenir dans le diaporama sans avoir besoin de défiler.
-  const maxDimPx = 260;
+  const maxDimPx = grand ? 600 : 260;
   const echelle = maxDimPx / Math.max(largeurMath, hauteurMath);
   const largeurPx = largeurMath * echelle;
   const hauteurPx = hauteurMath * echelle;
@@ -1548,7 +1548,10 @@ function FigureSVG({ figure }) {
   return (
     <svg className="figure-svg" viewBox={`0 0 ${largeurPx} ${hauteurPx}`}
       width={Math.round(largeurPx)} height={Math.round(hauteurPx)}
-      style={{ width: "auto", height: "auto", maxWidth: "100%", maxHeight: 260, display: "block", margin: "10px auto" }}>
+      style={grand
+        ? { width: "auto", height: "auto", maxWidth: "min(90%, 640px)", maxHeight: "55vh", display: "block", margin: "16px auto" }
+        : { width: "auto", height: "auto", maxWidth: "100%", maxHeight: 260, display: "block", margin: "10px auto" }
+      }>
       <defs>
         <marker id="figure-fleche" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
           <path d="M2 1L8 5L2 9" fill="none" stroke="var(--text)" strokeWidth="1.5" />
@@ -2669,7 +2672,7 @@ function DiapoViewer({ questions, mode, delai, nomChapitre, onFermer }) {
         <div className="diapo-content" onClick={avancerManuel}>
           <div className="diapo-chapitre-tag">{nomChapitre(question.chapitre_id)}</div>
           <div className="diapo-enonce"><MathText inline={false}>{question.enonce}</MathText></div>
-          <FigureSVG figure={question.figure} />
+          <FigureSVG figure={question.figure} grand />
           {etape === "reponse" && (
             <>
               <div className="diapo-reponse-divider" />
@@ -2843,7 +2846,7 @@ function DiapoViewerQcm({ questions, mode, delai, nomChapitre, onFermer }) {
         <div className="diapo-content" onClick={avancerManuel}>
           <div className="diapo-chapitre-tag">{nomChapitre(question.chapitre_id)}</div>
           <div className="diapo-enonce"><MathText inline={false}>{question.enonce}</MathText></div>
-          <FigureSVG figure={question.figure} />
+          <FigureSVG figure={question.figure} grand />
           <div className="diapo-qcm-choix-liste">
             {question.choix.map((c, i) => (
               <ChoixQcm key={i} texte={c} lettre={lettres[i]} correcte={etape === "reponse" && i === question.bonne_reponse} />
