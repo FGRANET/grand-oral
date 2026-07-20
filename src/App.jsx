@@ -1513,8 +1513,13 @@ function FigureSVG({ figure }) {
   const marge = 1;
   const largeurMath = Math.max(maxX - minX, 1) + 2 * marge;
   const hauteurMath = Math.max(maxY - minY, 1) + 2 * marge;
-  const largeurPx = 340;
-  const echelle = largeurPx / largeurMath;
+  // Taille bornée sur la plus grande dimension (et non systématiquement sur
+  // la largeur) : une figure très haute (ex. quadrillage vertical) reste
+  // ainsi toujours compacte, sans jamais dépasser le carré maxDimPx×maxDimPx —
+  // important pour tenir dans le diaporama sans avoir besoin de défiler.
+  const maxDimPx = 260;
+  const echelle = maxDimPx / Math.max(largeurMath, hauteurMath);
+  const largeurPx = largeurMath * echelle;
   const hauteurPx = hauteurMath * echelle;
 
   const versX = x => (x - minX + marge) * echelle;
@@ -1542,8 +1547,8 @@ function FigureSVG({ figure }) {
 
   return (
     <svg className="figure-svg" viewBox={`0 0 ${largeurPx} ${hauteurPx}`}
-      width={largeurPx} height={hauteurPx} preserveAspectRatio="xMidYMid meet"
-      style={{ width: "100%", maxWidth: 360, display: "block", margin: "10px auto" }}>
+      width={Math.round(largeurPx)} height={Math.round(hauteurPx)}
+      style={{ width: "auto", height: "auto", maxWidth: "100%", maxHeight: 260, display: "block", margin: "10px auto" }}>
       <defs>
         <marker id="figure-fleche" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
           <path d="M2 1L8 5L2 9" fill="none" stroke="var(--text)" strokeWidth="1.5" />
