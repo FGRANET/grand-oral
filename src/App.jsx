@@ -763,6 +763,21 @@ const CSS = `
   .diapo-recap-num { font-size: 11px; color: var(--text-muted); font-weight: 600; margin-bottom: 6px; }
   .diapo-recap-enonce { font-size: 15px; margin-bottom: 10px; }
   .figure-svg { color: var(--text); flex-shrink: 0; }
+  .figure-hover-wrap { position: relative; display: inline-flex; margin-left: 8px; vertical-align: middle; }
+  .figure-hover-badge {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 20px; height: 20px; border-radius: 5px; background: var(--surface2);
+    font-size: 12px; cursor: help;
+  }
+  .figure-hover-popover {
+    position: absolute; z-index: 50; top: 50%; left: calc(100% + 8px); transform: translateY(-50%);
+    background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+    padding: 8px; box-shadow: 0 4px 16px rgba(0,0,0,.25);
+    opacity: 0; pointer-events: none; transition: opacity .12s ease;
+    width: 220px;
+  }
+  .figure-hover-wrap:hover .figure-hover-popover { opacity: 1; pointer-events: auto; }
+  .figure-hover-popover .figure-svg { max-height: 200px; margin: 0 auto; }
   .diapo-recap-reponse { font-size: 15px; color: var(--accent-light); }
 
   /* ── Import JSON de questions ── */
@@ -5955,6 +5970,12 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
                 <div className="gen-selected-content">
                   <div className="gen-selected-chapitre">{nomChapitre(q.chapitre_id)}</div>
                   <div className="gen-selected-enonce"><MathText>{q.enonce}</MathText></div>
+                  {q.figure && (
+                    <span className="figure-hover-wrap" onClick={e => e.stopPropagation()}>
+                      <span className="figure-hover-badge" title="Cette question a une figure">📐</span>
+                      <span className="figure-hover-popover"><FigureSVG figure={q.figure} /></span>
+                    </span>
+                  )}
                 </div>
                 {q._aleatoire && (
                   <>
@@ -6801,6 +6822,12 @@ function QcmZone({ currentUser, currentProfile, qcmSessionARecharger, onSessionC
                 <div className="gen-selected-content">
                   <div className="gen-selected-chapitre">{nomChapitre(q.chapitre_id)}</div>
                   <div className="gen-selected-enonce"><MathText>{q.enonce}</MathText></div>
+                  {q.figure && (
+                    <span className="figure-hover-wrap" onClick={e => e.stopPropagation()}>
+                      <span className="figure-hover-badge" title="Ce QCM a une figure">📐</span>
+                      <span className="figure-hover-popover"><FigureSVG figure={q.figure} /></span>
+                    </span>
+                  )}
                 </div>
                 {q.mode === "aleatoire" && (
                   <>
@@ -7497,6 +7524,12 @@ function RechercheZone({ onEnvoyerAutomatismes, onEnvoyerQcm }) {
                       </button>
                     </div>
                     <div className="recherche-item-enonce" onClick={() => toggle("q_" + q.id)}><MathText>{q.enonce}</MathText></div>
+                    {q.figure && (
+                      <span className="figure-hover-wrap">
+                        <span className="figure-hover-badge" title="Cette question a une figure">📐</span>
+                        <span className="figure-hover-popover"><FigureSVG figure={q.figure} /></span>
+                      </span>
+                    )}
                     {ouverts.has("q_" + q.id) && <div className="recherche-item-reponse"><MathText inline={false}>{q.reponse}</MathText></div>}
                   </div>
                 );
@@ -7539,6 +7572,12 @@ function RechercheZone({ onEnvoyerAutomatismes, onEnvoyerQcm }) {
                       </button>
                     </div>
                     <div className="recherche-item-enonce" onClick={() => toggle("c_" + q.id)}><MathText>{q.enonce || q.enonce_modele}</MathText></div>
+                    {q.mode === "fixe" && q.figure && (
+                      <span className="figure-hover-wrap">
+                        <span className="figure-hover-badge" title="Ce QCM a une figure">📐</span>
+                        <span className="figure-hover-popover"><FigureSVG figure={q.figure} /></span>
+                      </span>
+                    )}
                     {ouverts.has("c_" + q.id) && (
                       <div className="recherche-item-reponse">
                         {(q.choix || q.choix_modele || []).map((c, i) => (
