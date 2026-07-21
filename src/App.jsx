@@ -734,6 +734,7 @@ const CSS = `
     letter-spacing: .06em; margin-bottom: 28px;
   }
   .diapo-enonce { font-size: 28px; line-height: 1.5; max-width: 900px; }
+  .diapo-enonce.diapo-avec-figure { font-size: 20px; line-height: 1.35; }
   .diapo-enonce .katex { font-size: 1.15em; }
   .diapo-reponse-divider { width: 80px; height: 2px; background: var(--accent); margin: 32px 0; }
   .diapo-reponse { font-size: 24px; line-height: 1.6; max-width: 900px; color: var(--accent-light); }
@@ -756,7 +757,7 @@ const CSS = `
   .diapo-recap-item { margin-bottom: 24px; padding-bottom: 20px; border-bottom: 1px solid var(--border); }
   .diapo-recap-num { font-size: 11px; color: var(--text-muted); font-weight: 600; margin-bottom: 6px; }
   .diapo-recap-enonce { font-size: 15px; margin-bottom: 10px; }
-  .figure-svg { color: var(--text); }
+  .figure-svg { color: var(--text); flex-shrink: 0; }
   .diapo-recap-reponse { font-size: 15px; color: var(--accent-light); }
 
   /* ── Import JSON de questions ── */
@@ -2671,7 +2672,7 @@ function DiapoViewer({ questions, mode, delai, nomChapitre, onFermer }) {
       {etape !== "recap" ? (
         <div className="diapo-content" onClick={avancerManuel}>
           <div className="diapo-chapitre-tag">{nomChapitre(question.chapitre_id)}</div>
-          <div className="diapo-enonce"><MathText inline={false}>{question.enonce}</MathText></div>
+          <div className={`diapo-enonce${question.figure ? " diapo-avec-figure" : ""}`}><MathText inline={false}>{question.enonce}</MathText></div>
           <FigureSVG figure={question.figure} grand />
           {etape === "reponse" && (
             <>
@@ -2845,7 +2846,7 @@ function DiapoViewerQcm({ questions, mode, delai, nomChapitre, onFermer }) {
       {etape !== "recap" ? (
         <div className="diapo-content" onClick={avancerManuel}>
           <div className="diapo-chapitre-tag">{nomChapitre(question.chapitre_id)}</div>
-          <div className="diapo-enonce"><MathText inline={false}>{question.enonce}</MathText></div>
+          <div className={`diapo-enonce${question.figure ? " diapo-avec-figure" : ""}`}><MathText inline={false}>{question.enonce}</MathText></div>
           <FigureSVG figure={question.figure} grand />
           <div className="diapo-qcm-choix-liste">
             {question.choix.map((c, i) => (
