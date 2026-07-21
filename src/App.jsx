@@ -740,6 +740,11 @@ const CSS = `
   .diapo-reponse { font-size: 24px; line-height: 1.6; max-width: 900px; color: var(--accent-light); }
   .diapo-hint { font-size: 12px; color: var(--text-muted); margin-top: 40px; }
   .diapo-qcm-choix-liste { display: flex; flex-direction: column; gap: 14px; width: 100%; max-width: 720px; margin-top: 20px; }
+  .diapo-qcm-figure-row {
+    display: flex; flex-direction: row; align-items: center; justify-content: center;
+    gap: 40px; flex-wrap: wrap; width: 100%; margin-top: 10px;
+  }
+  .diapo-qcm-choix-liste-cote { max-width: 420px; margin-top: 0; text-align: left; }
   .diapo-qcm-choix {
     display: flex; align-items: center; gap: 14px; padding: 16px 20px; border-radius: 12px;
     border: 1.5px solid var(--border); background: var(--surface); font-size: 18px; text-align: left;
@@ -1550,7 +1555,7 @@ function FigureSVG({ figure, grand = false }) {
     <svg className="figure-svg" viewBox={`0 0 ${largeurPx} ${hauteurPx}`}
       width={Math.round(largeurPx)} height={Math.round(hauteurPx)}
       style={grand
-        ? { width: "auto", height: "auto", maxWidth: "min(90%, 640px)", maxHeight: "55vh", display: "block", margin: "16px auto" }
+        ? { width: "auto", height: "auto", maxWidth: "min(55vw, 520px)", maxHeight: "55vh", display: "block", margin: "16px auto" }
         : { width: "auto", height: "auto", maxWidth: "100%", maxHeight: 260, display: "block", margin: "10px auto" }
       }>
       <defs>
@@ -1572,22 +1577,24 @@ function FigureSVG({ figure, grand = false }) {
       )}
       {axeXVisible && (() => {
         const ticks = [];
+        const taille = grand ? 17 : 10;
         for (let x = Math.ceil(xMinG / pasG) * pasG; x <= xMaxG + 1e-9; x += pasG) {
           if (Math.abs(x) < 1e-9) continue;
-          ticks.push(<text key={"tx" + x} x={versX(x)} y={versY(0) + 14} fontSize="10" fill="var(--text-muted)" textAnchor="middle">{formatNombre(Math.round(x * 1000) / 1000)}</text>);
+          ticks.push(<text key={"tx" + x} x={versX(x)} y={versY(0) + (grand ? 20 : 14)} fontSize={taille} fill="var(--text-muted)" textAnchor="middle">{formatNombre(Math.round(x * 1000) / 1000)}</text>);
         }
         return ticks;
       })()}
       {axeYVisible && (() => {
         const ticks = [];
+        const taille = grand ? 17 : 10;
         for (let y = Math.ceil(yMinG / pasG) * pasG; y <= yMaxG + 1e-9; y += pasG) {
           if (Math.abs(y) < 1e-9) continue;
-          ticks.push(<text key={"ty" + y} x={versX(0) - 6} y={versY(y) + 4} fontSize="10" fill="var(--text-muted)" textAnchor="end">{formatNombre(Math.round(y * 1000) / 1000)}</text>);
+          ticks.push(<text key={"ty" + y} x={versX(0) - (grand ? 8 : 6)} y={versY(y) + 5} fontSize={taille} fill="var(--text-muted)" textAnchor="end">{formatNombre(Math.round(y * 1000) / 1000)}</text>);
         }
         return ticks;
       })()}
       {axeXVisible && axeYVisible && (
-        <text x={versX(0) - 6} y={versY(0) + 14} fontSize="10" fill="var(--text-muted)" textAnchor="end">0</text>
+        <text x={versX(0) - (grand ? 8 : 6)} y={versY(0) + (grand ? 20 : 14)} fontSize={grand ? 17 : 10} fill="var(--text-muted)" textAnchor="end">0</text>
       )}
 
       {(figure.segments || []).map(([a, b], i) => {
@@ -2847,12 +2854,22 @@ function DiapoViewerQcm({ questions, mode, delai, nomChapitre, onFermer }) {
         <div className="diapo-content" onClick={avancerManuel}>
           <div className="diapo-chapitre-tag">{nomChapitre(question.chapitre_id)}</div>
           <div className={`diapo-enonce${question.figure ? " diapo-avec-figure" : ""}`}><MathText inline={false}>{question.enonce}</MathText></div>
-          <FigureSVG figure={question.figure} grand />
-          <div className="diapo-qcm-choix-liste">
-            {question.choix.map((c, i) => (
-              <ChoixQcm key={i} texte={c} lettre={lettres[i]} correcte={etape === "reponse" && i === question.bonne_reponse} />
-            ))}
-          </div>
+          {question.figure ? (
+            <div className="diapo-qcm-figure-row">
+              <FigureSVG figure={question.figure} grand />
+              <div className="diapo-qcm-choix-liste diapo-qcm-choix-liste-cote">
+                {question.choix.map((c, i) => (
+                  <ChoixQcm key={i} texte={c} lettre={lettres[i]} correcte={etape === "reponse" && i === question.bonne_reponse} />
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div className="diapo-qcm-choix-liste">
+              {question.choix.map((c, i) => (
+                <ChoixQcm key={i} texte={c} lettre={lettres[i]} correcte={etape === "reponse" && i === question.bonne_reponse} />
+              ))}
+            </div>
+          )}
           <div className="diapo-hint">Clic, Espace ou → pour avancer · Échap pour fermer</div>
         </div>
       ) : (
