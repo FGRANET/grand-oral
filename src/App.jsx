@@ -1472,13 +1472,32 @@ async function compilerEtTelechargerPdf(contenuTex, nomFichier) {
 
 // ─── Figures géométriques (schéma déclaratif → SVG web + TikZ export) ──
 // Une figure est un objet jsonb : { points, segments, vecteurs, pointilles,
-// quadrillage, cercles, marques_egalite, labels }. Les coordonnées des points
-// sont exprimées en repère mathématique classique (y vers le haut) ; c'est le
-// composant SVG qui inverse l'axe y pour l'écran, TikZ utilisant la même
-// convention que les données stockées.
+// quadrillage, cercles, marques_egalite, labels, courbes, droites_horizontales }.
+// Les coordonnées des points sont exprimées en repère mathématique classique
+// (y vers le haut) ; c'est le composant SVG qui inverse l'axe y pour l'écran,
+// TikZ utilisant la même convention que les données stockées.
 // En mode aléatoire, une coordonnée peut être une chaîne à placeholders
 // ("{x1}") au lieu d'un nombre littéral : resoudreFigure la fait passer par
 // le même moteur de substitution que enonce_modele avant de rendre la figure.
+//
+// Courbes (clé "courbes", tableau) — deux types :
+//   - par expression : { "expression": "x^2 - 1", "xMin": -2, "xMax": 2, "label": "C_f" }
+//     Syntaxe : + - * / ^ ( ), sqrt(...), abs(...), variable x. Rendu SVG par
+//     échantillonnage dense, export TikZ par plot (\x, {expr}) avec domain.
+//     ⚠️ Pour une expression à domaine restreint (racine, quotient), fournir
+//     xMin/xMax adaptés : TikZ ne filtre pas les valeurs interdites.
+//   - par points lissés : { "points_courbe": [[-3, 2], [-1, -1], [1, 2]], "label": "C_f" }
+//     Rendu SVG en spline Catmull-Rom, export TikZ en plot[smooth, tension=0.7]
+//     — l'équivalent exact des courbes "à main levée" des fiches papier.
+// Options communes : label ("C_f" → 𝒞ᶠ / $\mathcal{C}_{f}$), label_position
+// (mêmes mots-clés que labels de points, défaut "droite"), couleur
+// ("bleu" | "rouge" | "vert" | "orange", défaut : cycle dans cet ordre).
+// En mode aléatoire, expression / xMin / xMax / points_courbe acceptent des
+// placeholders ({k}...), résolus par substituerPlaceholders au tirage.
+//
+// Droites horizontales (clé "droites_horizontales", tableau) :
+//   { "y": 3, "style": "pointille" | "plein", "label": "y = 3" } — matérialise
+// la droite y = k des résolutions graphiques. y accepte un placeholder.
 function resoudreCoordonnee(valeur, valeurs) {
   if (typeof valeur === "number") return valeur;
   const texte = substituerPlaceholders(String(valeur), valeurs);
@@ -1486,13 +1505,92 @@ function resoudreCoordonnee(valeur, valeurs) {
   return isNaN(nombre) ? 0 : nombre;
 }
 
+// Normalise une expression de courbe pour la rendre exploitable à la fois par
+// le compilateur JS (SVG) et par pgfmath (TikZ) : virgules décimales → points,
+// multiplications implicites explicitées (2x → 2*x, 2( → 2*(, )x → )*x,
+// x( → x*(, 2sqrt → 2*sqrt), signes doublés issus de la substitution de
+// placeholders nettoyés (+ - → -, - - → +). L'exposant reste noté ^ (natif en
+// pgfmath ; converti en ** juste avant compilation JS).
+function normaliserExpressionCourbe(expr) {
+  let e = String(expr).replace(/,/g, ".").replace(/\s+/g, " ").trim();
+  e = e.replace(/(\d)\s*([a-zA-Z(])/g, "$1*$2");
+  e = e.replace(/\)\s*([\da-zA-Z(])/g, ")*$1");
+  e = e.replace(/x\s*\(/g, "x*(");
+  e = e.replace(/\+\s*-\s*/g, "- ").replace(/-\s*-\s*/g, "+ ");
+  return e;
+}
+
+// Compile une expression de courbe en fonction JS x → y, sans eval libre :
+// seuls sqrt/abs/x et les opérateurs arithmétiques passent la validation de
+// caractères, tout le reste renvoie null (courbe ignorée silencieusement,
+// comme un nom de point inconnu dans segments).
+function compilerExpressionCourbe(expression) {
+  let e = normaliserExpressionCourbe(expression)
+    .replace(/sqrt\s*\(/g, "Math.sqrt(")
+    .replace(/abs\s*\(/g, "Math.abs(")
+    .replace(/\^/g, "**");
+  const verification = e.replace(/Math\.sqrt\(/g, "(").replace(/Math\.abs\(/g, "(");
+  if (!/^[\dx+\-*/().\s]*$/.test(verification) || verification.trim() === "") return null;
+  try {
+    const f = new Function("x", `return (${e});`);
+    f(1);
+    return f;
+  } catch {
+    return null;
+  }
+}
+
+// Palette partagée SVG/TikZ, dans l'ordre des fiches papier (bleu, rouge,
+// teal, orange). Une courbe sans clé "couleur" prend la couleur de son rang.
+const COULEURS_COURBES = [
+  { svg: "#2563eb", tikz: "blue" },
+  { svg: "#dc2626", tikz: "red" },
+  { svg: "#0d9488", tikz: "teal" },
+  { svg: "#d97706", tikz: "orange" },
+];
+const NOMS_COULEURS_COURBES = { bleu: 0, rouge: 1, vert: 2, orange: 3 };
+
+function couleurCourbe(courbe, index) {
+  const i = NOMS_COULEURS_COURBES[courbe.couleur] ?? (index % COULEURS_COURBES.length);
+  return COULEURS_COURBES[i];
+}
+
+// Décompose un label de courbe "C_f" en { principal: "C", indice: "f" } pour
+// le rendu SVG (tspan en indice) et TikZ ($\mathcal{C}_{f}$). Sans underscore,
+// le label est rendu tel quel.
+function decomposerLabelCourbe(label) {
+  const m = /^([A-Za-z])_(.+)$/.exec(label || "");
+  return m ? { principal: m[1], indice: m[2] } : { principal: label || "", indice: "" };
+}
+
 function resoudreFigure(figure, valeurs) {
-  if (!figure || !figure.points) return null;
-  const points = {};
-  Object.entries(figure.points).forEach(([nom, coord]) => {
-    points[nom] = [resoudreCoordonnee(coord[0], valeurs), resoudreCoordonnee(coord[1], valeurs)];
-  });
-  return { ...figure, points };
+  if (!figure) return null;
+  const resolu = { ...figure };
+  if (figure.points) {
+    const points = {};
+    Object.entries(figure.points).forEach(([nom, coord]) => {
+      points[nom] = [resoudreCoordonnee(coord[0], valeurs), resoudreCoordonnee(coord[1], valeurs)];
+    });
+    resolu.points = points;
+  }
+  if (Array.isArray(figure.courbes)) {
+    resolu.courbes = figure.courbes.map(c => {
+      const cr = { ...c };
+      if (typeof c.expression === "string") {
+        cr.expression = normaliserExpressionCourbe(substituerPlaceholders(c.expression, valeurs));
+      }
+      if (c.xMin !== undefined) cr.xMin = resoudreCoordonnee(c.xMin, valeurs);
+      if (c.xMax !== undefined) cr.xMax = resoudreCoordonnee(c.xMax, valeurs);
+      if (Array.isArray(c.points_courbe)) {
+        cr.points_courbe = c.points_courbe.map(p => [resoudreCoordonnee(p[0], valeurs), resoudreCoordonnee(p[1], valeurs)]);
+      }
+      return cr;
+    });
+  }
+  if (Array.isArray(figure.droites_horizontales)) {
+    resolu.droites_horizontales = figure.droites_horizontales.map(d => ({ ...d, y: resoudreCoordonnee(d.y, valeurs) }));
+  }
+  return resolu;
 }
 
 // Positions de label disponibles pour un point, partagées entre le rendu SVG
@@ -1508,13 +1606,37 @@ const POSITIONS_LABEL = {
   "bas-droite": { svg: [8, 15], tikz: "below right" },
 };
 
-// Rendu web/diaporama d'une figure déjà résolue (coordonnées numériques).
-// N'affiche rien si la figure est absente ou ne contient aucun point.
-function FigureSVG({ figure, grand = false }) {
-  if (!figure || !figure.points || Object.keys(figure.points).length === 0) return null;
+// Construit l'attribut d d'un <path> à partir de points déjà convertis en
+// pixels : polyligne pour un échantillonnage dense (courbe par expression),
+// spline Catmull-Rom convertie en Béziers cubiques pour des points de contrôle
+// espacés — l'équivalent visuel du plot[smooth, tension=0.7] de TikZ.
+function cheminCourbe(pts, lisse) {
+  if (pts.length === 0) return "";
+  const arr = n => Math.round(n * 100) / 100;
+  if (!lisse || pts.length < 3) {
+    return "M " + pts.map(([x, y]) => `${arr(x)} ${arr(y)}`).join(" L ");
+  }
+  let d = `M ${arr(pts[0][0])} ${arr(pts[0][1])}`;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p0 = pts[Math.max(0, i - 1)], p1 = pts[i], p2 = pts[i + 1], p3 = pts[Math.min(pts.length - 1, i + 2)];
+    const c1x = p1[0] + (p2[0] - p0[0]) / 6, c1y = p1[1] + (p2[1] - p0[1]) / 6;
+    const c2x = p2[0] - (p3[0] - p1[0]) / 6, c2y = p2[1] - (p3[1] - p1[1]) / 6;
+    d += ` C ${arr(c1x)} ${arr(c1y)}, ${arr(c2x)} ${arr(c2y)}, ${arr(p2[0])} ${arr(p2[1])}`;
+  }
+  return d;
+}
 
-  const noms = Object.keys(figure.points);
-  const pt = nom => figure.points[nom];
+// Rendu web/diaporama d'une figure déjà résolue (coordonnées numériques).
+// N'affiche rien si la figure est absente ou entièrement vide (ni point
+// nommé, ni courbe, ni droite horizontale).
+function FigureSVG({ figure, grand = false }) {
+  const pointsFig = (figure && figure.points) || {};
+  const aCourbes = !!figure && Array.isArray(figure.courbes) && figure.courbes.length > 0;
+  const aDroites = !!figure && Array.isArray(figure.droites_horizontales) && figure.droites_horizontales.length > 0;
+  if (!figure || (Object.keys(pointsFig).length === 0 && !aCourbes && !aDroites)) return null;
+
+  const noms = Object.keys(pointsFig);
+  const pt = nom => pointsFig[nom];
   const xs = noms.map(n => pt(n)[0]);
   const ys = noms.map(n => pt(n)[1]);
   // Les cercles peuvent dépasser des points seuls (rayon) : sans ça, un cercle
@@ -1523,13 +1645,65 @@ function FigureSVG({ figure, grand = false }) {
     const C = pt(c.centre);
     if (C) { xs.push(C[0] - c.rayon, C[0] + c.rayon); ys.push(C[1] - c.rayon, C[1] + c.rayon); }
   });
+
+  // Échantillonne les courbes en coordonnées mathématiques AVANT le calcul des
+  // bornes : leurs points participent au cadrage du viewBox (une courbe seule
+  // sur quadrillage doit suffire à définir la fenêtre affichée).
+  const versNombre = v => (typeof v === "number" ? v : parseFloat(String(v).replace(",", ".")));
+  const grilleBrute = figure.quadrillage;
+  const traces = [];
+  (figure.courbes || []).forEach((c, index) => {
+    let echantillons = [];
+    let estExpression = false;
+    if (typeof c.expression === "string") {
+      estExpression = true;
+      const f = compilerExpressionCourbe(c.expression);
+      const x0 = versNombre(c.xMin ?? (grilleBrute ? (grilleBrute.xMin ?? -5) : -5));
+      const x1 = versNombre(c.xMax ?? (grilleBrute ? (grilleBrute.xMax ?? 5) : 5));
+      if (f && isFinite(x0) && isFinite(x1) && x1 > x0) {
+        const N = 150;
+        for (let i = 0; i <= N; i++) {
+          const x = x0 + ((x1 - x0) * i) / N;
+          let y = NaN;
+          try { y = f(x); } catch { y = NaN; }
+          echantillons.push([x, y]);
+        }
+      }
+    } else if (Array.isArray(c.points_courbe)) {
+      echantillons = c.points_courbe
+        .map(p => [versNombre(p[0]), versNombre(p[1])])
+        .filter(p => isFinite(p[0]) && isFinite(p[1]));
+    }
+    // Découpe en tronçons continus : les NaN (valeur interdite, ex. racine d'un
+    // négatif) et, pour les expressions, la sortie de la fenêtre verticale du
+    // quadrillage (asymptote, parabole qui file vers le haut) coupent le tracé —
+    // même rôle que le domain= restreint des fiches TikZ. Les courbes par
+    // points lissés ne sont volontairement pas rognées (points choisis à la main).
+    const clipMin = estExpression && grilleBrute ? (grilleBrute.yMin ?? -Infinity) : -Infinity;
+    const clipMax = estExpression && grilleBrute ? (grilleBrute.yMax ?? Infinity) : Infinity;
+    const troncons = [];
+    let tron = [];
+    echantillons.forEach(([x, y]) => {
+      if (Number.isFinite(y) && y >= clipMin - 1e-9 && y <= clipMax + 1e-9) tron.push([x, y]);
+      else { if (tron.length > 1) troncons.push(tron); tron = []; }
+    });
+    if (tron.length > 1) troncons.push(tron);
+    troncons.forEach(t => t.forEach(([x, y]) => { xs.push(x); ys.push(y); }));
+    traces.push({ troncons, lisse: !estExpression, label: c.label, position: c.label_position, couleur: couleurCourbe(c, index).svg });
+  });
+
+  const droites = (figure.droites_horizontales || [])
+    .map(d => ({ ...d, y: versNombre(d.y) }))
+    .filter(d => isFinite(d.y));
+  droites.forEach(d => ys.push(d.y));
+
   const grille = figure.quadrillage;
   if (grille) {
     xs.push(grille.xMin ?? Math.min(...xs), grille.xMax ?? Math.max(...xs));
     ys.push(grille.yMin ?? Math.min(...ys), grille.yMax ?? Math.max(...ys));
   }
-  const minX = Math.min(...xs), maxX = Math.max(...xs);
-  const minY = Math.min(...ys), maxY = Math.max(...ys);
+  const minX = xs.length ? Math.min(...xs) : 0, maxX = xs.length ? Math.max(...xs) : 5;
+  const minY = ys.length ? Math.min(...ys) : 0, maxY = ys.length ? Math.max(...ys) : 5;
 
   const marge = 1;
   const largeurMath = Math.max(maxX - minX, 1) + 2 * marge;
@@ -1612,6 +1786,43 @@ function FigureSVG({ figure, grand = false }) {
         <text x={versX(0) - (grand ? 8 : 6)} y={versY(0) + (grand ? 20 : 14)} fontSize={grand ? 17 : 10} fill="var(--text-muted)" textAnchor="end">0</text>
       )}
 
+      {droites.map((d, i) => {
+        const x0 = grille ? xMinG : minX;
+        const x1 = grille ? xMaxG : maxX;
+        const plein = d.style === "plein";
+        return (
+          <g key={"dh" + i}>
+            <line x1={versX(x0)} y1={versY(d.y)} x2={versX(x1)} y2={versY(d.y)}
+              stroke={plein ? "var(--text)" : "var(--text-muted)"} strokeWidth={plein ? 1.3 : 1}
+              strokeDasharray={plein ? undefined : "5 4"} />
+            {d.label && (
+              <text x={versX(x1)} y={versY(d.y) - 5} fontSize={grand ? 15 : 11} fill="var(--text-muted)" textAnchor="end">{d.label}</text>
+            )}
+          </g>
+        );
+      })}
+
+      {traces.map((t, i) => (
+        <g key={"crb" + i}>
+          {t.troncons.map((tron, j) => (
+            <path key={"tr" + j} d={cheminCourbe(tron.map(([x, y]) => [versX(x), versY(y)]), t.lisse)}
+              fill="none" stroke={t.couleur} strokeWidth={grand ? 2.4 : 1.8} strokeLinejoin="round" strokeLinecap="round" />
+          ))}
+          {t.label && t.troncons.length > 0 && (() => {
+            const dernier = t.troncons[t.troncons.length - 1];
+            const [ax, ay] = dernier[dernier.length - 1];
+            const [ox, oy] = (POSITIONS_LABEL[t.position] || POSITIONS_LABEL["droite"]).svg;
+            const { principal, indice } = decomposerLabelCourbe(t.label);
+            return (
+              <text x={versX(ax) + ox} y={versY(ay) + oy} fontSize={grand ? 18 : 13} fontStyle="italic" fill={t.couleur}>
+                {principal}
+                {indice ? <tspan fontSize={grand ? 13 : 10} dy="4">{indice}</tspan> : null}
+              </text>
+            );
+          })()}
+        </g>
+      ))}
+
       {(figure.segments || []).map(([a, b], i) => {
         const A = pt(a), B = pt(b);
         if (!A || !B) return null;
@@ -1667,7 +1878,26 @@ function FigureSVG({ figure, grand = false }) {
 // genererTex/genererTexQcm. Même repère que les données stockées (y vers le
 // haut) : contrairement au SVG web, aucune inversion d'axe n'est nécessaire.
 function genererTikZ(figure) {
-  if (!figure || !figure.points || Object.keys(figure.points).length === 0) return "";
+  const pointsTikz = (figure && figure.points) || {};
+  const aCourbesTikz = !!figure && Array.isArray(figure.courbes) && figure.courbes.length > 0;
+  const aDroitesTikz = !!figure && Array.isArray(figure.droites_horizontales) && figure.droites_horizontales.length > 0;
+  if (!figure || (Object.keys(pointsTikz).length === 0 && !aCourbesTikz && !aDroitesTikz)) return "";
+  const versNum = v => (typeof v === "number" ? v : parseFloat(String(v).replace(",", ".")));
+  // Bornes horizontales de référence pour les droites horizontales et les
+  // domaines par défaut des courbes : quadrillage prioritaire, sinon étendue
+  // des points nommés et des courbes.
+  const bornesX = (() => {
+    if (figure.quadrillage) return [figure.quadrillage.xMin ?? 0, figure.quadrillage.xMax ?? 5];
+    const xsTous = [];
+    Object.values(pointsTikz).forEach(c => xsTous.push(versNum(c[0])));
+    (figure.courbes || []).forEach(c => {
+      if (c.xMin !== undefined) xsTous.push(versNum(c.xMin));
+      if (c.xMax !== undefined) xsTous.push(versNum(c.xMax));
+      (c.points_courbe || []).forEach(p => xsTous.push(versNum(p[0])));
+    });
+    const valides = xsTous.filter(x => isFinite(x));
+    return valides.length ? [Math.min(...valides), Math.max(...valides)] : [0, 5];
+  })();
   const L = [];
   L.push("\\begin{center}");
   L.push("\\begin{tikzpicture}[scale=0.8]");
@@ -1696,8 +1926,70 @@ function genererTikZ(figure) {
     }
   }
 
-  Object.entries(figure.points).forEach(([nom, coord]) => {
+  Object.entries(pointsTikz).forEach(([nom, coord]) => {
     L.push(`\\coordinate (${nom}) at (${coord[0]},${coord[1]});`);
+  });
+
+  (figure.droites_horizontales || []).forEach(d => {
+    const y = versNum(d.y);
+    if (!isFinite(y)) return;
+    const style = d.style === "plein" ? "thick" : "dashed, gray";
+    L.push(`\\draw[${style}] (${bornesX[0]},${y}) -- (${bornesX[1]},${y});`);
+    if (d.label) L.push(`\\node[right, gray, font=\\small] at (${bornesX[1]},${y}) {$${d.label}$};`);
+  });
+
+  (figure.courbes || []).forEach((c, index) => {
+    const couleur = couleurCourbe(c, index).tikz;
+    let ancre = null; // point d'ancrage du label de la courbe
+    if (typeof c.expression === "string") {
+      // Normalisation partagée avec le rendu SVG (virgules, multiplications
+      // implicites) ; ^ / sqrt() / abs() sont natifs en pgfmath, seul x
+      // devient \x. Le domaine doit exclure les valeurs interdites : pgfmath
+      // ne filtre pas (contrairement à l'échantillonneur SVG).
+      const expr = normaliserExpressionCourbe(c.expression);
+      const x0 = c.xMin !== undefined ? versNum(c.xMin) : bornesX[0];
+      const x1 = c.xMax !== undefined ? versNum(c.xMax) : bornesX[1];
+      const exprTikz = expr.replace(/x/g, "\\x");
+      const trace = `\\draw[thick, ${couleur}, smooth, samples=100, domain=${x0}:${x1}] plot (\\x, {${exprTikz}});`;
+      // Parité avec le rendu SVG : en présence d'un quadrillage, la courbe est
+      // rognée à sa fenêtre (une parabole qui file vers le haut ne déborde pas
+      // du repère). Le label, lui, reste hors du \clip.
+      if (figure.quadrillage) {
+        const g2 = figure.quadrillage;
+        L.push(`\\begin{scope}\\clip (${g2.xMin ?? 0},${g2.yMin ?? 0}) rectangle (${g2.xMax ?? 5},${g2.yMax ?? 5});`);
+        L.push(trace);
+        L.push(`\\end{scope}`);
+      } else {
+        L.push(trace);
+      }
+      // Ancre du label : dernier point de la courbe encore visible dans la
+      // fenêtre du quadrillage (balayage de droite à gauche), sinon f(x1).
+      const f = compilerExpressionCourbe(expr);
+      if (f) {
+        const yMinF = figure.quadrillage ? (figure.quadrillage.yMin ?? -Infinity) : -Infinity;
+        const yMaxF = figure.quadrillage ? (figure.quadrillage.yMax ?? Infinity) : Infinity;
+        const N = 60;
+        for (let i = N; i >= 0 && !ancre; i--) {
+          const x = x0 + ((x1 - x0) * i) / N;
+          let y = NaN;
+          try { y = f(x); } catch { y = NaN; }
+          if (Number.isFinite(y) && y >= yMinF - 1e-9 && y <= yMaxF + 1e-9) {
+            ancre = [Math.round(x * 100) / 100, Math.round(y * 100) / 100];
+          }
+        }
+      }
+    } else if (Array.isArray(c.points_courbe) && c.points_courbe.length > 1) {
+      const coords = c.points_courbe.map(p => `(${versNum(p[0])},${versNum(p[1])})`).join(" ");
+      L.push(`\\draw[thick, ${couleur}] plot[smooth, tension=0.7] coordinates {${coords}};`);
+      const dernier = c.points_courbe[c.points_courbe.length - 1];
+      ancre = [versNum(dernier[0]), versNum(dernier[1])];
+    }
+    if (c.label && ancre) {
+      const motTikz = (POSITIONS_LABEL[c.label_position] || POSITIONS_LABEL["droite"]).tikz;
+      const { principal, indice } = decomposerLabelCourbe(c.label);
+      const latex = indice ? `$\\mathcal{${principal}}_{${indice}}$` : `$${principal}$`;
+      L.push(`\\node[${motTikz}, ${couleur}] at (${ancre[0]},${ancre[1]}) {${latex}};`);
+    }
   });
 
   (figure.segments || []).forEach(([a, b]) => L.push(`\\draw[thick] (${a}) -- (${b});`));
@@ -1708,7 +2000,7 @@ function genererTikZ(figure) {
     L.push(`\\draw ($(${a})!0.5!(${b})+(-0.05,-0.08)$) -- ($(${a})!0.5!(${b})+(0.05,0.08)$);`);
   });
 
-  Object.keys(figure.points).forEach(nom => {
+  Object.keys(pointsTikz).forEach(nom => {
     const position = (figure.labels && figure.labels[nom]) || "haut-droite";
     const motTikz = (POSITIONS_LABEL[position] || POSITIONS_LABEL["haut-droite"]).tikz;
     L.push(`\\fill (${nom}) circle (1.6pt);`);
@@ -2698,7 +2990,7 @@ function DiapoViewer({ questions, mode, delai, nomChapitre, onFermer }) {
           <FigureSVG figure={question.figure} grand />
           {etape === "reponse" && (
             <>
-              <div className="diapo-reponse-divider" />
+              <div className="diapo-reponse-divider"></div>
               <div className="diapo-reponse"><MathText inline={false}>{question.reponse}</MathText></div>
             </>
           )}
@@ -4069,7 +4361,7 @@ function CreerQuestion({ chapitres, currentUser, currentProfile, niveauScolaire,
             <textarea className="creer-textarea" value={figureTexte} onChange={e => setFigureTexte(e.target.value)}
               placeholder={'{\n  "points": { "A": [0, 0], "B": [3, 0], "C": [2, 2.5] },\n  "segments": [["A","B"],["B","C"],["C","A"]]\n}'} />
             <div className="creer-hint">
-              Clés possibles : <code>points</code>, <code>segments</code>, <code>vecteurs</code>, <code>pointilles</code>, <code>cercles</code>, <code>marques_egalite</code>, <code>quadrillage</code>, <code>labels</code>.
+              Clés possibles : <code>points</code>, <code>segments</code>, <code>vecteurs</code>, <code>pointilles</code>, <code>cercles</code>, <code>marques_egalite</code>, <code>quadrillage</code>, <code>labels</code>, <code>courbes</code> (expression ou points lissés), <code>droites_horizontales</code>.
               {mode === "aleatoire" && <> En mode aléatoire, une coordonnée peut être une chaîne à placeholder, ex. <code>"{"{x1}"}"</code>.</>}
             </div>
             {mode === "fixe" && figureTexte.trim() && (
@@ -4338,7 +4630,7 @@ function CreerQcm({ chapitres, currentUser, niveauScolaire, onFermer, onCree, qc
             <textarea className="creer-textarea" value={figureTexte} onChange={e => setFigureTexte(e.target.value)}
               placeholder={'{\n  "points": { "A": [0, 0], "B": [3, 0], "C": [2, 2.5] },\n  "segments": [["A","B"],["B","C"],["C","A"]]\n}'} />
             <div className="creer-hint">
-              Clés possibles : <code>points</code>, <code>segments</code>, <code>vecteurs</code>, <code>pointilles</code>, <code>cercles</code>, <code>marques_egalite</code>, <code>quadrillage</code>, <code>labels</code>.
+              Clés possibles : <code>points</code>, <code>segments</code>, <code>vecteurs</code>, <code>pointilles</code>, <code>cercles</code>, <code>marques_egalite</code>, <code>quadrillage</code>, <code>labels</code>, <code>courbes</code> (expression ou points lissés), <code>droites_horizontales</code>.
               {mode === "aleatoire" && <> En mode aléatoire, une coordonnée peut être une chaîne à placeholder, ex. <code>"{"{x1}"}"</code>.</>}
             </div>
             {mode === "fixe" && figureTexte.trim() && (
@@ -7363,7 +7655,7 @@ function ChatZone({ eleveId, currentUser, currentProfile, allProfiles }) {
             {currentProfile?.role === "eleve" && "Envoyez votre première question sur le Grand Oral !"}
           </div>
         )}
-        <div ref={bottomRef} />
+        <div ref={bottomRef}></div>
       </div>
 
       <div className="input-zone">
@@ -7376,7 +7668,7 @@ function ChatZone({ eleveId, currentUser, currentProfile, allProfiles }) {
         )}
         {uploading && (
           <div className="upload-bar" style={{ marginBottom: 8 }}>
-            <div className="upload-bar-fill" style={{ width: `${uploadProgress}%` }} />
+            <div className="upload-bar-fill" style={{ width: `${uploadProgress}%` }}></div>
           </div>
         )}
         <div className="input-row">
@@ -7999,7 +8291,7 @@ export default function App() {
                     </button>
                     {menuOutilsOuvert && (
                       <>
-                        <div className="menu-outils-overlay" onClick={() => setMenuOutilsOuvert(false)} />
+                        <div className="menu-outils-overlay" onClick={() => setMenuOutilsOuvert(false)}></div>
                         <div className="menu-outils-dropdown">
                           <button className="menu-outils-item" onClick={() => { setActiveTab("recherche"); setMenuOutilsOuvert(false); }}>
                             🔍 Recherche
