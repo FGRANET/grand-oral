@@ -6765,6 +6765,45 @@ function QcmZone({ currentUser, currentProfile, qcmSessionARecharger, onSessionC
 
   function estSelectionne(qcmId) { return selection.some(s => s.id === qcmId); }
 
+  // ── Sélection groupée d'un chapitre entier (case de l'en-tête) ──
+  // Basée sur les QCM visibles selon les filtres actifs. Si tout est déjà
+  // sélectionné, tout est retiré ; sinon les manquants sont ajoutés, chacun
+  // avec un nouveau tirage (mélange des choix inclus), exactement comme la
+  // sélection individuelle. Un chapitre jamais ouvert est chargé à la volée.
+  async function toggleSelectionChapitre(ch) {
+    let liste = qcmParChapitre[ch.id];
+    if (!liste) {
+      const { data } = await supabase.from("qcm").select("*").eq("chapitre_id", ch.id).order("created_at");
+      liste = data || [];
+      setQcmParChapitre(prev => ({ ...prev, [ch.id]: liste }));
+    }
+    const visibles = liste.filter(qcmVisible);
+    if (visibles.length === 0) return;
+
+    const toutSelectionne = visibles.every(q => estSelectionne(q.id));
+    if (toutSelectionne) {
+      const ids = new Set(visibles.map(q => q.id));
+      setSelection(prev => prev.filter(s => !ids.has(s.id)));
+      return;
+    }
+
+    // Ajoute les manquants ; tirages accumulés puis stockés en une seule
+    // mise à jour d'état.
+    const nouveauxTirages = {};
+    const aAjouter = [];
+    visibles.filter(q => !estSelectionne(q.id)).forEach(q => {
+      const tirage = tirerQcm(q);
+      nouveauxTirages[q.id] = tirage;
+      aAjouter.push({
+        id: q.id, chapitre_id: q.chapitre_id, niveau: q.niveau, mode: q.mode,
+        enonce: tirage.enonce, choix: tirage.choix, bonne_reponse: tirage.bonne_reponse,
+        figure: tirage.figure, _cle: q.id,
+      });
+    });
+    setTiragesQcm(prev => ({ ...prev, ...nouveauxTirages }));
+    setSelection(prev => [...prev, ...aAjouter]);
+  }
+
   function toggleSelection(q) {
     if (estSelectionne(q.id)) {
       setSelection(prev => prev.filter(s => s.id !== q.id));
@@ -7202,10 +7241,18 @@ function QcmZone({ currentUser, currentProfile, qcmSessionARecharger, onSessionC
           const qcmFiltres = qcmDuChapitre.filter(qcmVisible);
           const nbMasques = qcmDuChapitre.length - qcmFiltres.length;
           const nbSelectionnes = qcmDuChapitre.filter(q => estSelectionne(q.id)).length;
+          const nbSelVisibles = qcmFiltres.filter(q => estSelectionne(q.id)).length;
           const enGestion = chapitreEnGestion === ch.id;
           return (
             <div key={ch.id} className="gen-chapitre-block">
               <div className="gen-chapitre-row" onClick={() => toggleChapitre(ch.id)}>
+                <input type="checkbox"
+                  checked={qcmFiltres.length > 0 && nbSelVisibles === qcmFiltres.length}
+                  ref={el => { if (el) el.indeterminate = nbSelVisibles > 0 && nbSelVisibles < qcmFiltres.length; }}
+                  onChange={() => toggleSelectionChapitre(ch)}
+                  onClick={e => e.stopPropagation()}
+                  disabled={enGestion}
+                  title={enGestion ? "Indisponible pendant la suppression groupée" : "Sélectionner / désélectionner tout le chapitre"} />
                 <span className={`gen-chevron${ouvert ? " open" : ""}`}>▶</span>
                 <span aria-hidden="true" title={ch.niveau_scolaire === "seconde" ? "Seconde" : "Première"}
                   style={{ display: "inline-block", width: 8, height: 8, borderRadius: "50%", background: couleurOrigine(ch.niveau_scolaire), marginRight: 8, flexShrink: 0 }} />
