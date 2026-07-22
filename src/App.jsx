@@ -5962,7 +5962,7 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
   // (chapitre_id, prof_id, created_at) et remet le nom de chapitre en texte,
   // exactement le format attendu pour un futur réimport.
   function questionVersJson(q, nomCh) {
-    return {
+    const ligne = {
       chapitre: nomCh,
       mode: "fixe",
       id: q.id,
@@ -5971,10 +5971,14 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
       reponse: q.reponse,
       niveau: q.niveau,
     };
+    // Clés omises si absentes (plutôt que null) : mêmes conventions que le
+    // guide d'import, et l'aller-retour export → import ne perd rien.
+    if (q.figure) ligne.figure = q.figure;
+    return ligne;
   }
 
   function exerciceVersJson(ex, nomCh) {
-    return {
+    const ligne = {
       chapitre: nomCh,
       mode: "aleatoire",
       enonce_modele: ex.enonce_modele,
@@ -5982,6 +5986,9 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
       parametres: ex.parametres,
       niveau: ex.niveau,
     };
+    if (ex.type_calcul) ligne.type_calcul = ex.type_calcul;
+    if (ex.figure) ligne.figure = ex.figure;
+    return ligne;
   }
 
   function telechargerJson(contenu, nomFichier) {
@@ -7171,6 +7178,7 @@ function QcmZone({ currentUser, currentProfile, qcmSessionARecharger, onSessionC
         bonne_reponse: q.bonne_reponse,
         niveau: q.niveau,
       };
+      if (q.figure) base.figure = q.figure; // sans elle, l'aller-retour perdait les QCM graphiques
       return q.mode === "aleatoire"
         ? { ...base, enonce_modele: q.enonce_modele, choix_modele: q.choix_modele, parametres: q.parametres }
         : { ...base, enonce: q.enonce, choix: q.choix };
