@@ -962,6 +962,23 @@ const CSS = `
   }
   .gen-chapitre-export-btn:hover { color: var(--accent-light); background: var(--surface2); }
 
+  /* Mode gestion : suppression groupée dans un chapitre */
+  .gen-gestion-bar {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    padding: 8px 12px; margin: 6px 0 10px; border: 1px solid var(--red);
+    border-radius: 8px; background: var(--surface2); font-size: 13px;
+  }
+  .gen-gestion-count { color: var(--text-muted); flex: 1; min-width: 120px; }
+  .gen-gestion-btn {
+    background: none; border: 1px solid var(--border); color: var(--text); cursor: pointer;
+    font-size: 13px; padding: 5px 10px; border-radius: 6px; transition: all .15s; flex-shrink: 0;
+  }
+  .gen-gestion-btn:hover { background: var(--surface); }
+  .gen-gestion-btn-danger { border-color: var(--red); color: var(--red); }
+  .gen-gestion-btn-danger:hover:not(:disabled) { background: var(--red); color: #fff; }
+  .gen-gestion-btn-danger:disabled { opacity: .45; cursor: not-allowed; }
+  .gen-gestion-checkbox { accent-color: var(--red); }
+
   .import-overlay {
     position: fixed; inset: 0; background: #000000cc; z-index: 200;
     display: flex; align-items: center; justify-content: center; padding: 20px;
@@ -1629,7 +1646,12 @@ function cheminCourbe(pts, lisse) {
 // Rendu web/diaporama d'une figure déjà résolue (coordonnées numériques).
 // N'affiche rien si la figure est absente ou entièrement vide (ni point
 // nommé, ni courbe, ni droite horizontale).
-function FigureSVG({ figure, grand = false }) {
+// Les éléments marqués "correction": true (droites horizontales, courbes) ne
+// sont dessinés que si la prop correction est vraie — l'élève trace lui-même
+// la droite pendant l'énoncé, elle apparaît avec la réponse. Ils comptent
+// néanmoins toujours dans le cadrage, pour que la figure ne change pas de
+// taille entre l'énoncé et la correction.
+function FigureSVG({ figure, grand = false, correction = false }) {
   const pointsFig = (figure && figure.points) || {};
   const aCourbes = !!figure && Array.isArray(figure.courbes) && figure.courbes.length > 0;
   const aDroites = !!figure && Array.isArray(figure.droites_horizontales) && figure.droites_horizontales.length > 0;
@@ -1689,11 +1711,11 @@ function FigureSVG({ figure, grand = false }) {
     });
     if (tron.length > 1) troncons.push(tron);
     troncons.forEach(t => t.forEach(([x, y]) => { xs.push(x); ys.push(y); }));
-    traces.push({ troncons, lisse: !estExpression, label: c.label, position: c.label_position, couleur: couleurCourbe(c, index).svg });
+    traces.push({ troncons, lisse: !estExpression, label: c.label, position: c.label_position, couleur: couleurCourbe(c, index).svg, visible: !c.correction || correction });
   });
 
   const droites = (figure.droites_horizontales || [])
-    .map(d => ({ ...d, y: versNombre(d.y) }))
+    .map(d => ({ ...d, y: versNombre(d.y), visible: !d.correction || correction }))
     .filter(d => isFinite(d.y));
   droites.forEach(d => ys.push(d.y));
 
@@ -1787,6 +1809,7 @@ function FigureSVG({ figure, grand = false }) {
       )}
 
       {droites.map((d, i) => {
+        if (!d.visible) return null;
         const x0 = grille ? xMinG : minX;
         const x1 = grille ? xMaxG : maxX;
         const plein = d.style === "plein";
@@ -1802,7 +1825,7 @@ function FigureSVG({ figure, grand = false }) {
         );
       })}
 
-      {traces.map((t, i) => (
+      {traces.map((t, i) => t.visible && (
         <g key={"crb" + i}>
           {t.troncons.map((tron, j) => (
             <path key={"tr" + j} d={cheminCourbe(tron.map(([x, y]) => [versX(x), versY(y)]), t.lisse)}
@@ -1877,7 +1900,7 @@ function FigureSVG({ figure, grand = false }) {
 // numériques), destiné à être inséré tel quel dans le .tex produit par
 // genererTex/genererTexQcm. Même repère que les données stockées (y vers le
 // haut) : contrairement au SVG web, aucune inversion d'axe n'est nécessaire.
-function genererTikZ(figure) {
+function genererTikZ(figure, avecCorrection = false) {
   const pointsTikz = (figure && figure.points) || {};
   const aCourbesTikz = !!figure && Array.isArray(figure.courbes) && figure.courbes.length > 0;
   const aDroitesTikz = !!figure && Array.isArray(figure.droites_horizontales) && figure.droites_horizontales.length > 0;
@@ -1931,6 +1954,7 @@ function genererTikZ(figure) {
   });
 
   (figure.droites_horizontales || []).forEach(d => {
+    if (d.correction && !avecCorrection) return; // réservé au corrigé
     const y = versNum(d.y);
     if (!isFinite(y)) return;
     const style = d.style === "plein" ? "thick" : "dashed, gray";
@@ -1939,6 +1963,7 @@ function genererTikZ(figure) {
   });
 
   (figure.courbes || []).forEach((c, index) => {
+    if (c.correction && !avecCorrection) return; // réservé au corrigé
     const couleur = couleurCourbe(c, index).tikz;
     let ancre = null; // point d'ancrage du label de la courbe
     if (typeof c.expression === "string") {
@@ -2987,7 +3012,7 @@ function DiapoViewer({ questions, mode, delai, nomChapitre, onFermer }) {
         <div className="diapo-content" onClick={avancerManuel}>
           <div className="diapo-chapitre-tag">{nomChapitre(question.chapitre_id)}</div>
           <div className={`diapo-enonce${question.figure ? " diapo-avec-figure" : ""}`}><MathText inline={false}>{question.enonce}</MathText></div>
-          <FigureSVG figure={question.figure} grand />
+          <FigureSVG figure={question.figure} grand correction={etape === "reponse"} />
           {etape === "reponse" && (
             <>
               <div className="diapo-reponse-divider"></div>
@@ -3003,7 +3028,7 @@ function DiapoViewer({ questions, mode, delai, nomChapitre, onFermer }) {
             <div key={q.id} className="diapo-recap-item">
               <div className="diapo-recap-num">Question {i + 1} · {nomChapitre(q.chapitre_id)}</div>
               <div className="diapo-recap-enonce"><MathText inline={false}>{q.enonce}</MathText></div>
-              <FigureSVG figure={q.figure} />
+              <FigureSVG figure={q.figure} correction />
               <div className="diapo-recap-reponse"><MathText inline={false}>{q.reponse}</MathText></div>
             </div>
           ))}
@@ -3163,7 +3188,7 @@ function DiapoViewerQcm({ questions, mode, delai, nomChapitre, onFermer }) {
           <div className={`diapo-enonce${question.figure ? " diapo-avec-figure" : ""}`}><MathText inline={false}>{question.enonce}</MathText></div>
           {question.figure ? (
             <div className="diapo-qcm-figure-row">
-              <FigureSVG figure={question.figure} grand />
+              <FigureSVG figure={question.figure} grand correction={etape === "reponse"} />
               <div className="diapo-qcm-choix-liste diapo-qcm-choix-liste-cote">
                 {question.choix.map((c, i) => (
                   <ChoixQcm key={i} texte={c} lettre={lettres[i]} correcte={etape === "reponse" && i === question.bonne_reponse} />
@@ -3186,7 +3211,7 @@ function DiapoViewerQcm({ questions, mode, delai, nomChapitre, onFermer }) {
             <div key={q.id} className="diapo-recap-item">
               <div className="diapo-recap-num">QCM {i + 1} · {nomChapitre(q.chapitre_id)}</div>
               <div className="diapo-recap-enonce"><MathText inline={false}>{q.enonce}</MathText></div>
-              <FigureSVG figure={q.figure} />
+              <FigureSVG figure={q.figure} correction />
               <div className="diapo-recap-reponse">{lettres[q.bonne_reponse]}) <MathText>{q.choix[q.bonne_reponse]}</MathText></div>
             </div>
           ))}
@@ -4366,7 +4391,7 @@ function CreerQuestion({ chapitres, currentUser, currentProfile, niveauScolaire,
             </div>
             {mode === "fixe" && figureTexte.trim() && (
               figureApercuFixe
-                ? <FigureSVG figure={figureApercuFixe} />
+                ? <FigureSVG figure={figureApercuFixe} correction />
                 : <div className="creer-test-err">JSON de la figure invalide — l'aperçu s'affichera une fois corrigé.</div>
             )}
           </div>
@@ -4410,7 +4435,7 @@ function CreerQuestion({ chapitres, currentUser, currentProfile, niveauScolaire,
                 {testResultat ? (
                   <div className="creer-test-result">
                     <MathText inline={false}>{testResultat.enonce}</MathText>
-                    <FigureSVG figure={testResultat.figure} />
+                    <FigureSVG figure={testResultat.figure} correction />
                     <div className="creer-test-reponse"><MathText inline={false}>{testResultat.reponse}</MathText></div>
                     <div className="creer-test-vals">Valeurs : {JSON.stringify(testResultat.valeurs)}</div>
                   </div>
@@ -4635,7 +4660,7 @@ function CreerQcm({ chapitres, currentUser, niveauScolaire, onFermer, onCree, qc
             </div>
             {mode === "fixe" && figureTexte.trim() && (
               figureApercuFixe
-                ? <FigureSVG figure={figureApercuFixe} />
+                ? <FigureSVG figure={figureApercuFixe} correction />
                 : <div className="creer-test-err">JSON de la figure invalide — l'aperçu s'affichera une fois corrigé.</div>
             )}
           </div>
@@ -4679,7 +4704,7 @@ function CreerQcm({ chapitres, currentUser, niveauScolaire, onFermer, onCree, qc
                 {testResultat ? (
                   <div className="creer-test-result">
                     <MathText inline={false}>{testResultat.enonce}</MathText>
-                    <FigureSVG figure={testResultat.figure} />
+                    <FigureSVG figure={testResultat.figure} correction />
                     <div className="creer-test-reponse">
                       {testResultat.choix.map((c, i) => (
                         <div key={i}>{lettres[i]}) <MathText>{c}</MathText>{i === bonneReponse ? " ✓" : ""}</div>
@@ -5115,6 +5140,11 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
     });
   }
   const [elementsCoches, setElementsCoches] = useState(new Set());      // ids cochés dans la colonne de droite pour suppression groupée
+  // ── Mode gestion (suppression groupée en base, un chapitre à la fois) ──
+  const [chapitreEnGestion, setChapitreEnGestion] = useState(null);     // chapitre_id en mode gestion, ou null
+  const [cochesGestion, setCochesGestion] = useState(new Set());        // ids cochés pour suppression (questions fixes + exercices en base)
+  const [suppressionGroupee, setSuppressionGroupee] = useState(null);   // { idsQuestions, idsExercices, chapitreId } en attente de confirmation
+  const [suppressionEnCours, setSuppressionEnCours] = useState(false);
   const [nbCopiesParItem, setNbCopiesParItem] = useState({});           // _cle -> nombre de copies à dupliquer
   const [tiragesExercices, setTiragesExercices] = useState({});         // { id_exercice: {enonce, reponse, valeurs} } - dernier tirage affiché
   const [detailExerciceOuvert, setDetailExerciceOuvert] = useState({}); // { id_exercice: bool }
@@ -5303,6 +5333,75 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
 
   function demanderSuppressionQuestion(question) {
     setQuestionASupprimer(question);
+  }
+
+  // ── Mode gestion : suppression groupée dans un chapitre ──
+  // Un seul chapitre en gestion à la fois : entrer dans un autre chapitre (ou
+  // recliquer sur le même) sort du mode et vide les coches.
+  function basculerGestion(chapitreId) {
+    setChapitreEnGestion(prev => (prev === chapitreId ? null : chapitreId));
+    setCochesGestion(new Set());
+  }
+
+  function toggleCocheGestion(id) {
+    setCochesGestion(prev => {
+      const c = new Set(prev);
+      c.has(id) ? c.delete(id) : c.add(id);
+      return c;
+    });
+  }
+
+  // Éléments supprimables d'un chapitre : questions fixes et exercices en base
+  // dont on est propriétaire. La bibliothèque codée en dur et les éléments des
+  // collègues restent hors d'atteinte (cases désactivées).
+  function supprimablesDuChapitre(ch) {
+    const questionsSup = (questionsParChapitre[ch.id] || []).filter(q => q.prof_id === currentUser.id).map(q => q.id);
+    const exercicesSup = exercicesEnBase.filter(ex => ex.chapitre_id === ch.id && ex.prof_id === currentUser.id).map(ex => ex.id);
+    return { questionsSup, exercicesSup };
+  }
+
+  function toutCocherGestion(ch) {
+    const { questionsSup, exercicesSup } = supprimablesDuChapitre(ch);
+    const tous = [...questionsSup, ...exercicesSup];
+    setCochesGestion(prev => (prev.size === tous.length ? new Set() : new Set(tous)));
+  }
+
+  function demanderSuppressionGroupee(ch) {
+    const { questionsSup, exercicesSup } = supprimablesDuChapitre(ch);
+    const idsQuestions = questionsSup.filter(id => cochesGestion.has(id));
+    const idsExercices = exercicesSup.filter(id => cochesGestion.has(id));
+    if (idsQuestions.length + idsExercices.length === 0) return;
+    setSuppressionGroupee({ idsQuestions, idsExercices, chapitreId: ch.id });
+  }
+
+  async function confirmerSuppressionGroupee() {
+    const lot = suppressionGroupee;
+    if (!lot || suppressionEnCours) return;
+    setSuppressionEnCours(true);
+    // Deux tables donc deux appels ; .eq("prof_id") en ceinture-bretelles en
+    // plus du RLS, pour qu'un id étranger glissé dans le lot soit simplement
+    // ignoré au lieu de faire échouer l'opération.
+    if (lot.idsQuestions.length > 0) {
+      const { error } = await supabase.from("questions").delete().in("id", lot.idsQuestions).eq("prof_id", currentUser.id);
+      if (error) { alert("Erreur lors de la suppression des questions : " + error.message); setSuppressionEnCours(false); return; }
+    }
+    if (lot.idsExercices.length > 0) {
+      const { error } = await supabase.from("exercices_application").delete().in("id", lot.idsExercices).eq("prof_id", currentUser.id);
+      if (error) { alert("Erreur lors de la suppression des exercices : " + error.message); setSuppressionEnCours(false); return; }
+    }
+    const supprimes = new Set([...lot.idsQuestions, ...lot.idsExercices]);
+    setQuestionsParChapitre(prev => ({
+      ...prev,
+      [lot.chapitreId]: (prev[lot.chapitreId] || []).filter(q => !supprimes.has(q.id)),
+    }));
+    setExercicesEnBase(prev => prev.filter(e => !supprimes.has(e.id)));
+    // Le panier stocke les tirages d'exercices sous l'id du modèle : le même
+    // filtre retire questions fixes et tirages issus des modèles supprimés.
+    setSelection(prev => prev.filter(q => !supprimes.has(q.id)));
+    setSuppressionGroupee(null);
+    setSuppressionEnCours(false);
+    setCochesGestion(new Set());
+    setChapitreEnGestion(null);
   }
 
   async function confirmerSuppressionQuestion() {
@@ -5717,7 +5816,7 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
       lignes.push(`\\noindent\\textbf{Question \\theqnum.} ${echapperLatex(q.enonce)}`);
       lignes.push("");
       if (q.figure) {
-        lignes.push(genererTikZ(q.figure));
+        lignes.push(genererTikZ(q.figure, avecCorrige));
         lignes.push("");
       }
       if (avecCorrige) {
@@ -6022,6 +6121,7 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
           // États de la case "tout le chapitre" : basés sur les éléments VISIBLES (filtres actifs)
           const nbItemsVisibles = questionsFiltrees.length + exercicesChapitre.length;
           const nbSelVisibles = questionsFiltrees.filter(q => estSelectionnee(q.id)).length + nbExercicesSelectionnes;
+          const enGestion = chapitreEnGestion === ch.id;
           return (
             <div key={ch.id} className="gen-chapitre-block">
               <div className="gen-chapitre-row" onClick={() => toggleChapitre(ch.id)}>
@@ -6030,7 +6130,8 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
                   ref={el => { if (el) el.indeterminate = nbSelVisibles > 0 && nbSelVisibles < nbItemsVisibles; }}
                   onChange={() => toggleSelectionChapitre(ch)}
                   onClick={e => e.stopPropagation()}
-                  title="Sélectionner / désélectionner tout le chapitre" />
+                  disabled={enGestion}
+                  title={enGestion ? "Indisponible pendant la suppression groupée" : "Sélectionner / désélectionner tout le chapitre"} />
                 <span className={`gen-chevron${ouvert ? " open" : ""}`}>▶</span>
                 <span className="gen-chapitre-nom">{ch.nom}</span>
                 {nbSelectionnees > 0 && <span className="gen-chapitre-count">{nbSelectionnees} sélectionnée{nbSelectionnees > 1 ? "s" : ""}</span>}
@@ -6045,9 +6146,40 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
                     ⬇️
                   </button>
                 )}
+                {ouvert && (
+                  <button className="gen-chapitre-export-btn"
+                    title={enGestion ? "Quitter la suppression groupée" : "Suppression groupée dans ce chapitre"}
+                    onClick={e => { e.stopPropagation(); basculerGestion(ch.id); }}>
+                    {enGestion ? "✖️" : "🗑️"}
+                  </button>
+                )}
               </div>
               {ouvert && (
                 <div className="gen-questions-list">
+                  {enGestion && (() => {
+                    const { questionsSup, exercicesSup } = supprimablesDuChapitre(ch);
+                    const totalSup = questionsSup.length + exercicesSup.length;
+                    const nbCochesIci = [...questionsSup, ...exercicesSup].filter(id => cochesGestion.has(id)).length;
+                    return (
+                      <div className="gen-gestion-bar">
+                        <span className="gen-gestion-count">
+                          {totalSup === 0
+                            ? "Aucun élément supprimable ici (seuls tes propres questions et exercices le sont)."
+                            : `${nbCochesIci} coché${nbCochesIci > 1 ? "s" : ""} sur ${totalSup} supprimable${totalSup > 1 ? "s" : ""}`}
+                        </span>
+                        {totalSup > 0 && (
+                          <button className="gen-gestion-btn" onClick={() => toutCocherGestion(ch)}>
+                            {nbCochesIci === totalSup ? "Tout décocher" : "Tout cocher"}
+                          </button>
+                        )}
+                        <button className="gen-gestion-btn gen-gestion-btn-danger" disabled={nbCochesIci === 0}
+                          onClick={() => demanderSuppressionGroupee(ch)}>
+                          🗑️ Supprimer ({nbCochesIci})
+                        </button>
+                        <button className="gen-gestion-btn" onClick={() => basculerGestion(ch.id)}>Annuler</button>
+                      </div>
+                    );
+                  })()}
                   {chargementChapitre[ch.id] && (
                     <div className="gen-empty-chapitre">Chargement…</div>
                   )}
@@ -6060,8 +6192,18 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
                   {questionsFiltrees.map(q => (
                     <div key={q.id}>
                       <div className="gen-question-row">
-                        <input type="checkbox" checked={estSelectionnee(q.id)}
-                          onChange={() => toggleSelection(q)} onClick={e => e.stopPropagation()} />
+                        {enGestion ? (
+                          q.prof_id === currentUser.id ? (
+                            <input type="checkbox" className="gen-gestion-checkbox" checked={cochesGestion.has(q.id)}
+                              onChange={() => toggleCocheGestion(q.id)} onClick={e => e.stopPropagation()} />
+                          ) : (
+                            <input type="checkbox" disabled title="Question d'un autre professeur"
+                              onClick={e => e.stopPropagation()} />
+                          )
+                        ) : (
+                          <input type="checkbox" checked={estSelectionnee(q.id)}
+                            onChange={() => toggleSelection(q)} onClick={e => e.stopPropagation()} />
+                        )}
                         <div className="gen-question-summary" onClick={() => toggleDetailQuestion(q.id)}>
                           <div className="gen-question-type">{q.type} · niveau {q.niveau} · <span className="gen-question-id">{q.id}</span></div>
                           <div className="gen-question-apercu"><MathText>{q.enonce}</MathText></div>
@@ -6146,12 +6288,24 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
 
                   {exercicesChapitre.map(ex => {
                     const tirage = tiragesExercices[ex.id];
+                    const exSupprimable = ex.source === "base" && ex.data?.prof_id === currentUser.id;
                     return (
                       <div key={ex.id}>
                         <div className="gen-exercice-row">
-                          <input type="checkbox" checked={estExerciceSelectionne(ex.id)}
-                            onChange={() => toggleSelectionExercice(ex.id, ch.id, ex.niveau)}
-                            onClick={e => e.stopPropagation()} />
+                          {enGestion ? (
+                            exSupprimable ? (
+                              <input type="checkbox" className="gen-gestion-checkbox" checked={cochesGestion.has(ex.id)}
+                                onChange={() => toggleCocheGestion(ex.id)} onClick={e => e.stopPropagation()} />
+                            ) : (
+                              <input type="checkbox" disabled
+                                title={ex.source === "bibliotheque" ? "Exercice de la bibliothèque intégrée" : "Exercice d'un autre professeur"}
+                                onClick={e => e.stopPropagation()} />
+                            )
+                          ) : (
+                            <input type="checkbox" checked={estExerciceSelectionne(ex.id)}
+                              onChange={() => toggleSelectionExercice(ex.id, ch.id, ex.niveau)}
+                              onClick={e => e.stopPropagation()} />
+                          )}
                           <div className="gen-question-summary" onClick={() => toggleDetailExercice(ex.id)}>
                             <div className="gen-exercice-badge">🎲 Aléatoire · niveau {ex.niveau} · <span className="gen-question-id">{ex.id}</span></div>
                             <div className="gen-question-apercu">{ex.titre}</div>
@@ -6161,7 +6315,7 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
                           <div className="gen-exercice-detail">
                             <div className="gen-question-detail-label">Exemple de tirage</div>
                             <MathText inline={false}>{tirage.enonce}</MathText>
-                            <FigureSVG figure={tirage.figure} />
+                            <FigureSVG figure={tirage.figure} correction />
                             <div className="gen-question-detail-reponse">
                               <div className="gen-question-detail-label">Réponse</div>
                               <MathText inline={false}>{tirage.reponse}</MathText>
@@ -6265,7 +6419,7 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
                   {q.figure && (
                     <span className="figure-hover-wrap" onClick={e => e.stopPropagation()}>
                       <span className="figure-hover-badge" title="Cette question a une figure">📐</span>
-                      <span className="figure-hover-popover"><FigureSVG figure={q.figure} /></span>
+                      <span className="figure-hover-popover"><FigureSVG figure={q.figure} correction /></span>
                     </span>
                   )}
                 </div>
@@ -6409,6 +6563,25 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
           onAnnuler={() => setQuestionASupprimer(null)}
         />
       )}
+      {suppressionGroupee && (
+        <ConfirmModal
+          titre={`Supprimer ${suppressionGroupee.idsQuestions.length + suppressionGroupee.idsExercices.length} élément${suppressionGroupee.idsQuestions.length + suppressionGroupee.idsExercices.length > 1 ? "s" : ""} ?`}
+          message={[
+            suppressionGroupee.idsQuestions.length > 0
+              ? `${suppressionGroupee.idsQuestions.length} question${suppressionGroupee.idsQuestions.length > 1 ? "s" : ""} fixe${suppressionGroupee.idsQuestions.length > 1 ? "s" : ""}`
+              : null,
+            suppressionGroupee.idsExercices.length > 0
+              ? `${suppressionGroupee.idsExercices.length} exercice${suppressionGroupee.idsExercices.length > 1 ? "s" : ""} aléatoire${suppressionGroupee.idsExercices.length > 1 ? "s" : ""}`
+              : null,
+          ].filter(Boolean).join(" et ") + " :\n" + [...suppressionGroupee.idsQuestions, ...suppressionGroupee.idsExercices].slice(0, 8).join(", ")
+            + (suppressionGroupee.idsQuestions.length + suppressionGroupee.idsExercices.length > 8 ? "…" : "")
+            + "\n\nSupprimés de la banque commune, définitivement."}
+          texteConfirmer={suppressionEnCours ? "Suppression…" : "Supprimer définitivement"}
+          danger
+          onConfirm={confirmerSuppressionGroupee}
+          onAnnuler={() => setSuppressionGroupee(null)}
+        />
+      )}
       {exerciceASupprimer && (
         <ConfirmModal
           titre="Supprimer cet exercice ?"
@@ -6447,6 +6620,11 @@ function QcmZone({ currentUser, currentProfile, qcmSessionARecharger, onSessionC
   const [tiragesQcm, setTiragesQcm] = useState({});                 // { qcm_id: {enonce, choix, valeurs} } dernier tirage
   const [selection, setSelection] = useState([]);
   const [elementsCoches, setElementsCoches] = useState(new Set());
+  // ── Mode gestion (suppression groupée de QCM, un chapitre à la fois) ──
+  const [chapitreEnGestion, setChapitreEnGestion] = useState(null);
+  const [cochesGestion, setCochesGestion] = useState(new Set());
+  const [suppressionGroupee, setSuppressionGroupee] = useState(null);   // { ids, chapitreId }
+  const [suppressionEnCours, setSuppressionEnCours] = useState(false);
   const [nbCopiesParItem, setNbCopiesParItem] = useState({});           // _cle -> nombre de copies à dupliquer
   const NIVEAUX_DISPONIBLES = [1, 2, 3];
   const [niveauxActifs, setNiveauxActifs] = useState(new Set(NIVEAUX_DISPONIBLES));
@@ -6694,6 +6872,57 @@ function QcmZone({ currentUser, currentProfile, qcmSessionARecharger, onSessionC
     setSelection(prev => prev.filter(s => s.id !== q.id));
   }
 
+  // ── Mode gestion : suppression groupée de QCM dans un chapitre ──
+  function basculerGestion(chapitreId) {
+    setChapitreEnGestion(prev => (prev === chapitreId ? null : chapitreId));
+    setCochesGestion(new Set());
+  }
+
+  function toggleCocheGestion(id) {
+    setCochesGestion(prev => {
+      const c = new Set(prev);
+      c.has(id) ? c.delete(id) : c.add(id);
+      return c;
+    });
+  }
+
+  // Seuls les QCM dont on est propriétaire sont supprimables.
+  function supprimablesDuChapitre(ch) {
+    return (qcmParChapitre[ch.id] || []).filter(q => q.prof_id === currentUser.id).map(q => q.id);
+  }
+
+  function toutCocherGestion(ch) {
+    const tous = supprimablesDuChapitre(ch);
+    setCochesGestion(prev => (prev.size === tous.length ? new Set() : new Set(tous)));
+  }
+
+  function demanderSuppressionGroupee(ch) {
+    const ids = supprimablesDuChapitre(ch).filter(id => cochesGestion.has(id));
+    if (ids.length === 0) return;
+    setSuppressionGroupee({ ids, chapitreId: ch.id });
+  }
+
+  async function confirmerSuppressionGroupee() {
+    const lot = suppressionGroupee;
+    if (!lot || suppressionEnCours) return;
+    setSuppressionEnCours(true);
+    // .eq("prof_id") en ceinture-bretelles en plus du RLS.
+    const { error } = await supabase.from("qcm").delete().in("id", lot.ids).eq("prof_id", currentUser.id);
+    if (error) { alert("Erreur lors de la suppression : " + error.message); setSuppressionEnCours(false); return; }
+    const supprimes = new Set(lot.ids);
+    setQcmParChapitre(prev => ({
+      ...prev,
+      [lot.chapitreId]: (prev[lot.chapitreId] || []).filter(q => !supprimes.has(q.id)),
+    }));
+    // Retire aussi du panier tous les tirages issus des QCM supprimés
+    // (les copies dupliquées partagent l'id du modèle).
+    setSelection(prev => prev.filter(s => !supprimes.has(s.id)));
+    setSuppressionGroupee(null);
+    setSuppressionEnCours(false);
+    setCochesGestion(new Set());
+    setChapitreEnGestion(null);
+  }
+
   // ── Historique (partagé avec les sessions classiques, différencié par type_session) ──
   // Signature de famille (ids), comme pour les sessions classiques.
   function calculerSignature(qcmSelection) {
@@ -6815,7 +7044,7 @@ function QcmZone({ currentUser, currentProfile, qcmSessionARecharger, onSessionC
       lignes.push(`\\noindent\\textbf{Question \\theqnum.} ${echapperLatex(q.enonce)}`);
       lignes.push("");
       if (q.figure) {
-        lignes.push(genererTikZ(q.figure));
+        lignes.push(genererTikZ(q.figure, avecCorrige));
         lignes.push("");
       }
       lignes.push("\\vspace{4mm}");
@@ -6973,6 +7202,7 @@ function QcmZone({ currentUser, currentProfile, qcmSessionARecharger, onSessionC
           const qcmFiltres = qcmDuChapitre.filter(qcmVisible);
           const nbMasques = qcmDuChapitre.length - qcmFiltres.length;
           const nbSelectionnes = qcmDuChapitre.filter(q => estSelectionne(q.id)).length;
+          const enGestion = chapitreEnGestion === ch.id;
           return (
             <div key={ch.id} className="gen-chapitre-block">
               <div className="gen-chapitre-row" onClick={() => toggleChapitre(ch.id)}>
@@ -6986,9 +7216,39 @@ function QcmZone({ currentUser, currentProfile, qcmSessionARecharger, onSessionC
                     {nbMasques} masqué{nbMasques > 1 ? "s" : ""}
                   </span>
                 )}
+                {ouvert && (
+                  <button className="gen-chapitre-export-btn"
+                    title={enGestion ? "Quitter la suppression groupée" : "Suppression groupée dans ce chapitre"}
+                    onClick={e => { e.stopPropagation(); basculerGestion(ch.id); }}>
+                    {enGestion ? "✖️" : "🗑️"}
+                  </button>
+                )}
               </div>
               {ouvert && (
                 <div className="gen-questions-list">
+                  {enGestion && (() => {
+                    const supprimables = supprimablesDuChapitre(ch);
+                    const nbCochesIci = supprimables.filter(id => cochesGestion.has(id)).length;
+                    return (
+                      <div className="gen-gestion-bar">
+                        <span className="gen-gestion-count">
+                          {supprimables.length === 0
+                            ? "Aucun QCM supprimable ici (seuls les tiens le sont)."
+                            : `${nbCochesIci} coché${nbCochesIci > 1 ? "s" : ""} sur ${supprimables.length} supprimable${supprimables.length > 1 ? "s" : ""}`}
+                        </span>
+                        {supprimables.length > 0 && (
+                          <button className="gen-gestion-btn" onClick={() => toutCocherGestion(ch)}>
+                            {nbCochesIci === supprimables.length ? "Tout décocher" : "Tout cocher"}
+                          </button>
+                        )}
+                        <button className="gen-gestion-btn gen-gestion-btn-danger" disabled={nbCochesIci === 0}
+                          onClick={() => demanderSuppressionGroupee(ch)}>
+                          🗑️ Supprimer ({nbCochesIci})
+                        </button>
+                        <button className="gen-gestion-btn" onClick={() => basculerGestion(ch.id)}>Annuler</button>
+                      </div>
+                    );
+                  })()}
                   {chargementChapitre[ch.id] && <div className="gen-empty-chapitre">Chargement…</div>}
                   {!chargementChapitre[ch.id] && qcmDuChapitre.length === 0 && (
                     <div className="gen-empty-chapitre">Aucun QCM dans ce chapitre pour l'instant.</div>
@@ -7002,8 +7262,18 @@ function QcmZone({ currentUser, currentProfile, qcmSessionARecharger, onSessionC
                     return (
                       <div key={q.id}>
                         <div className="gen-exercice-row">
-                          <input type="checkbox" checked={estSelectionne(q.id)}
-                            onChange={() => toggleSelection(q)} onClick={e => e.stopPropagation()} />
+                          {enGestion ? (
+                            q.prof_id === currentUser.id ? (
+                              <input type="checkbox" className="gen-gestion-checkbox" checked={cochesGestion.has(q.id)}
+                                onChange={() => toggleCocheGestion(q.id)} onClick={e => e.stopPropagation()} />
+                            ) : (
+                              <input type="checkbox" disabled title="QCM d'un autre professeur"
+                                onClick={e => e.stopPropagation()} />
+                            )
+                          ) : (
+                            <input type="checkbox" checked={estSelectionne(q.id)}
+                              onChange={() => toggleSelection(q)} onClick={e => e.stopPropagation()} />
+                          )}
                           <div style={{ flex: 1, minWidth: 0 }} onClick={() => toggleDetail(q.id)}>
                             <div className="gen-question-type">
                               {q.mode === "aleatoire" ? "🎲 aléatoire" : "📝 fixe"} · niveau {q.niveau}
@@ -7117,7 +7387,7 @@ function QcmZone({ currentUser, currentProfile, qcmSessionARecharger, onSessionC
                   {q.figure && (
                     <span className="figure-hover-wrap" onClick={e => e.stopPropagation()}>
                       <span className="figure-hover-badge" title="Ce QCM a une figure">📐</span>
-                      <span className="figure-hover-popover"><FigureSVG figure={q.figure} /></span>
+                      <span className="figure-hover-popover"><FigureSVG figure={q.figure} correction /></span>
                     </span>
                   )}
                 </div>
@@ -7230,6 +7500,16 @@ function QcmZone({ currentUser, currentProfile, qcmSessionARecharger, onSessionC
           danger
           onConfirm={confirmerSuppressionQcm}
           onAnnuler={() => setQcmASupprimer(null)}
+        />
+      )}
+      {suppressionGroupee && (
+        <ConfirmModal
+          titre={`Supprimer ${suppressionGroupee.ids.length} QCM ?`}
+          message={"Ces QCM seront supprimés de la banque commune, définitivement.\nLes tirages correspondants seront aussi retirés de la sélection en cours."}
+          texteConfirmer={suppressionEnCours ? "Suppression…" : "Supprimer définitivement"}
+          danger
+          onConfirm={confirmerSuppressionGroupee}
+          onAnnuler={() => setSuppressionGroupee(null)}
         />
       )}
       {confirmerToutRetirer && (
@@ -7819,7 +8099,7 @@ function RechercheZone({ onEnvoyerAutomatismes, onEnvoyerQcm }) {
                     {q.figure && (
                       <span className="figure-hover-wrap">
                         <span className="figure-hover-badge" title="Cette question a une figure">📐</span>
-                        <span className="figure-hover-popover"><FigureSVG figure={q.figure} /></span>
+                        <span className="figure-hover-popover"><FigureSVG figure={q.figure} correction /></span>
                       </span>
                     )}
                     {ouverts.has("q_" + q.id) && <div className="recherche-item-reponse"><MathText inline={false}>{q.reponse}</MathText></div>}
@@ -7867,7 +8147,7 @@ function RechercheZone({ onEnvoyerAutomatismes, onEnvoyerQcm }) {
                     {q.mode === "fixe" && q.figure && (
                       <span className="figure-hover-wrap">
                         <span className="figure-hover-badge" title="Ce QCM a une figure">📐</span>
-                        <span className="figure-hover-popover"><FigureSVG figure={q.figure} /></span>
+                        <span className="figure-hover-popover"><FigureSVG figure={q.figure} correction /></span>
                       </span>
                     )}
                     {ouverts.has("c_" + q.id) && (
