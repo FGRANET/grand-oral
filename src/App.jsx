@@ -1515,6 +1515,15 @@ async function compilerEtTelechargerPdf(contenuTex, nomFichier) {
 // Droites horizontales (clé "droites_horizontales", tableau) :
 //   { "y": 3, "style": "pointille" | "plein", "label": "y = 3" } — matérialise
 // la droite y = k des résolutions graphiques. y accepte un placeholder.
+//
+// Tableau de variations (clé "tableau_variations", objet) :
+//   { "variable": "x", "nom": "f",
+//     "abscisses": ["-5", "-2", "3", "6"],
+//     "sens": ["croissant", "decroissant", "croissant"],
+//     "images": ["1", "-4", "5", "0"] }
+// abscisses contient n+1 bornes, sens n intervalles, images n+1 valeurs
+// (facultatif ; "" laisse la case vide, à compléter par l'élève). abscisses
+// et images acceptent des placeholders en mode aléatoire.
 function resoudreCoordonnee(valeur, valeurs) {
   if (typeof valeur === "number") return valeur;
   const texte = substituerPlaceholders(String(valeur), valeurs);
@@ -1607,6 +1616,18 @@ function resoudreFigure(figure, valeurs) {
   if (Array.isArray(figure.droites_horizontales)) {
     resolu.droites_horizontales = figure.droites_horizontales.map(d => ({ ...d, y: resoudreCoordonnee(d.y, valeurs) }));
   }
+  // Un tableau de variations contient du texte affiché (bornes et images) et
+  // non des coordonnées : ses champs passent par substituerPlaceholders sans
+  // conversion en nombre, pour accepter aussi bien "{a}" que "\\ldots".
+  if (figure.tableau_variations) {
+    const tv = figure.tableau_variations;
+    const resoudreTexte = v => substituerPlaceholders(String(v === undefined || v === null ? "" : v), valeurs);
+    resolu.tableau_variations = {
+      ...tv,
+      abscisses: (tv.abscisses || []).map(resoudreTexte),
+      images: (tv.images || []).map(resoudreTexte),
+    };
+  }
   return resolu;
 }
 
@@ -1651,7 +1672,7 @@ function cheminCourbe(pts, lisse) {
 // la droite pendant l'énoncé, elle apparaît avec la réponse. Ils comptent
 // néanmoins toujours dans le cadrage, pour que la figure ne change pas de
 // taille entre l'énoncé et la correction.
-function FigureSVG({ figure, grand = false, correction = false }) {
+function FigureGeoSVG({ figure, grand = false, correction = false }) {
   const pointsFig = (figure && figure.points) || {};
   const aCourbes = !!figure && Array.isArray(figure.courbes) && figure.courbes.length > 0;
   const aDroites = !!figure && Array.isArray(figure.droites_horizontales) && figure.droites_horizontales.length > 0;
@@ -1896,6 +1917,158 @@ function FigureSVG({ figure, grand = false, correction = false }) {
   );
 }
 
+// ─── Tableaux de variations (clé "tableau_variations") ─────────────────
+// Traduit un mot-clé de sens en variation de niveau. Le "croissant" est la
+// valeur par défaut : un sens absent ou mal orthographié donne une flèche
+// montante plutôt qu'un tableau vide.
+function sensVariationDelta(s) {
+  const t = String(s === undefined || s === null ? "" : s)
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+  if (t === "constant" || t === "constante" || t === "=" || t === "0") return 0;
+  if (t === "decroissant" || t === "decroissante" || t === "-" || t === "descend") return -1;
+  return 1;
+}
+
+// Géométrie logique commune aux deux rendus (SVG web et TikZ export) : la
+// hauteur de chaque valeur est obtenue par cumul des sens (+1 / -1 / 0) et
+// non par simple alternance haut/bas. Deux flèches consécutives de même sens
+// produisent ainsi un escalier correct, là où un haut/bas alterné serait
+// contradictoire ; l'alternance classique reste le cas particulier à deux
+// niveaux.
+function geometrieTableauVariations(tv) {
+  const brutes = tv && Array.isArray(tv.abscisses) ? tv.abscisses : [];
+  const abscisses = brutes.map(v => String(v === undefined || v === null ? "" : v));
+  const n = abscisses.length;
+  if (n < 2) return null;
+  const images = ((tv && tv.images) || []).map(v => String(v === undefined || v === null ? "" : v));
+  const sens = (tv && tv.sens) || [];
+  const niveaux = [0];
+  for (let i = 0; i < n - 1; i++) niveaux.push(niveaux[i] + sensVariationDelta(sens[i]));
+  const bas = Math.min(...niveaux), haut = Math.max(...niveaux);
+  const fractions = niveaux.map(v => (haut === bas ? 0.5 : (v - bas) / (haut - bas)));
+  return {
+    n, abscisses, images, fractions,
+    variable: (tv && tv.variable) || "x",
+    nom: (tv && tv.nom) || "f",
+  };
+}
+
+// Rendu web d'un tableau de variations : cadre, colonne de titres, ligne des
+// abscisses, flèches obliques et valeurs placées à leurs extrémités.
+function TableauVariationsSVG({ tableau, grand = false }) {
+  const g = geometrieTableauVariations(tableau);
+  if (!g) return null;
+  const lab = grand ? 108 : 76;
+  const pas = grand ? 128 : 92;
+  const bord = grand ? 30 : 22;
+  const h1 = grand ? 42 : 30;
+  const h2 = grand ? 116 : 84;
+  const inset = grand ? 26 : 20;
+  const largeur = lab + 2 * bord + (g.n - 1) * pas;
+  const hauteur = h1 + h2;
+  const police = grand ? 19 : 13;
+  const recul = grand ? 25 : 19;
+  const xDe = i => lab + bord + i * pas;
+  const yDe = f => h1 + h2 - inset - f * (h2 - 2 * inset);
+  const yTexte = y => y + police / 3;
+  const fleches = [];
+  for (let i = 0; i < g.n - 1; i++) {
+    const x1 = xDe(i), y1 = yDe(g.fractions[i]);
+    const x2 = xDe(i + 1), y2 = yDe(g.fractions[i + 1]);
+    const dx = x2 - x1, dy = y2 - y1;
+    const d = Math.sqrt(dx * dx + dy * dy) || 1;
+    fleches.push([x1 + (dx / d) * recul, y1 + (dy / d) * recul, x2 - (dx / d) * recul, y2 - (dy / d) * recul]);
+  }
+  return (
+    <svg className="figure-svg" viewBox={`0 0 ${largeur} ${hauteur}`}
+      width={largeur} height={hauteur}
+      style={{ width: "auto", height: "auto", maxWidth: "100%", maxHeight: grand ? 300 : 200, display: "block", margin: grand ? "16px auto" : "10px auto" }}>
+      <defs>
+        <marker id="tabvar-fleche" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M2 1L8 5L2 9" fill="none" stroke="var(--text)" strokeWidth="1.5" />
+        </marker>
+      </defs>
+      <rect x="0.6" y="0.6" width={largeur - 1.2} height={hauteur - 1.2} fill="none" stroke="var(--text)" strokeWidth="1.2" />
+      <line x1={lab} y1="0" x2={lab} y2={hauteur} stroke="var(--text)" strokeWidth="1.2" />
+      <line x1="0" y1={h1} x2={largeur} y2={h1} stroke="var(--text)" strokeWidth="1.2" />
+      <text x={lab / 2} y={yTexte(h1 / 2)} fontSize={police} fontStyle="italic" fill="var(--text)" textAnchor="middle">{g.variable}</text>
+      <text x={lab / 2} y={yTexte(h1 + h2 / 2)} fontSize={police} fontStyle="italic" fill="var(--text)" textAnchor="middle">{g.nom}</text>
+      {g.abscisses.map((a, i) => (
+        <text key={"abs" + i} x={xDe(i)} y={yTexte(h1 / 2)} fontSize={police} fill="var(--text)" textAnchor="middle">{a}</text>
+      ))}
+      {fleches.map((f, i) => (
+        <line key={"fle" + i} x1={f[0]} y1={f[1]} x2={f[2]} y2={f[3]} stroke="var(--text)" strokeWidth="1.4" markerEnd="url(#tabvar-fleche)" />
+      ))}
+      {g.images.map((v, i) => (v === "" || i >= g.n ? null : (
+        <text key={"img" + i} x={xDe(i)} y={yTexte(yDe(g.fractions[i]))} fontSize={police} fill="var(--text)" textAnchor="middle">{v}</text>
+      )))}
+    </svg>
+  );
+}
+
+// Génère le bloc TikZ d'un tableau de variations (mêmes proportions que le
+// rendu web, en centimètres). Volontairement écrit avec les primitives de
+// base : le préambule d'export ne charge que tikz + arrows.meta + calc, pas
+// tkz-tab.
+function tikzTableauVariations(g) {
+  const r = n => Math.round(n * 100) / 100;
+  const lab = 1.7, bord = 0.55, h1 = 0.8, h2 = 2.6, inset = 0.55;
+  // Espacement adaptatif : un tableau à beaucoup de colonnes se resserre
+  // plutôt que de déborder de la largeur utile de la page (~15 cm).
+  const pas = Math.max(1.4, Math.min(2.4, (15 - lab - 2 * bord) / Math.max(1, g.n - 1)));
+  const largeur = lab + 2 * bord + (g.n - 1) * pas;
+  const hauteur = h1 + h2;
+  const xDe = i => r(lab + bord + i * pas);
+  const yDe = f => r(inset + f * (h2 - 2 * inset));
+  const L = [];
+  L.push("\\begin{center}");
+  L.push("\\begin{tikzpicture}");
+  L.push(`\\draw (0,0) rectangle (${r(largeur)},${r(hauteur)});`);
+  L.push(`\\draw (${lab},0) -- (${lab},${r(hauteur)});`);
+  L.push(`\\draw (0,${h2}) -- (${r(largeur)},${h2});`);
+  L.push(`\\node at (${r(lab / 2)},${r(h2 + h1 / 2)}) {$${g.variable}$};`);
+  L.push(`\\node at (${r(lab / 2)},${r(h2 / 2)}) {$${g.nom}$};`);
+  g.abscisses.forEach((a, i) => {
+    if (a === "") return;
+    L.push(`\\node at (${xDe(i)},${r(h2 + h1 / 2)}) {$${a}$};`);
+  });
+  for (let i = 0; i < g.n - 1; i++) {
+    L.push(`\\draw[-{Latex}, shorten <=10pt, shorten >=10pt] (${xDe(i)},${yDe(g.fractions[i])}) -- (${xDe(i + 1)},${yDe(g.fractions[i + 1])});`);
+  }
+  g.images.forEach((v, i) => {
+    if (v === "" || i >= g.n) return;
+    L.push(`\\node at (${xDe(i)},${yDe(g.fractions[i])}) {$${v}$};`);
+  });
+  L.push("\\end{tikzpicture}");
+  L.push("\\end{center}");
+  return L.join("\n");
+}
+
+// Enveloppe publique : une figure peut porter un tableau de variations, une
+// partie géométrique (points / courbes / droites), ou les deux — auquel cas
+// le tableau est empilé au-dessus. La signature reste celle utilisée partout
+// ailleurs dans l'appli.
+function FigureSVG({ figure, grand = false, correction = false }) {
+  const tv = figure && figure.tableau_variations;
+  const gTv = tv ? geometrieTableauVariations(tv) : null;
+  const afficheTv = !!gTv && (!tv.correction || correction);
+  const pointsFig = (figure && figure.points) || {};
+  const aGeo = !!figure && (
+    Object.keys(pointsFig).length > 0
+    || (Array.isArray(figure.courbes) && figure.courbes.length > 0)
+    || (Array.isArray(figure.droites_horizontales) && figure.droites_horizontales.length > 0)
+  );
+  if (!afficheTv && !aGeo) return null;
+  if (!afficheTv) return <FigureGeoSVG figure={figure} grand={grand} correction={correction} />;
+  if (!aGeo) return <TableauVariationsSVG tableau={tv} grand={grand} />;
+  return (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "4px" }}>
+      <TableauVariationsSVG tableau={tv} grand={grand} />
+      <FigureGeoSVG figure={figure} grand={grand} correction={correction} />
+    </div>
+  );
+}
+
 // Génère un bloc TikZ à partir d'une figure déjà résolue (coordonnées
 // numériques), destiné à être inséré tel quel dans le .tex produit par
 // genererTex/genererTexQcm. Même repère que les données stockées (y vers le
@@ -1904,7 +2077,12 @@ function genererTikZ(figure, avecCorrection = false) {
   const pointsTikz = (figure && figure.points) || {};
   const aCourbesTikz = !!figure && Array.isArray(figure.courbes) && figure.courbes.length > 0;
   const aDroitesTikz = !!figure && Array.isArray(figure.droites_horizontales) && figure.droites_horizontales.length > 0;
-  if (!figure || (Object.keys(pointsTikz).length === 0 && !aCourbesTikz && !aDroitesTikz)) return "";
+  // Le tableau de variations est un bloc autonome, placé avant la partie
+  // géométrique quand les deux coexistent.
+  const tvTikz = figure && figure.tableau_variations;
+  const gTvTikz = tvTikz && (!tvTikz.correction || avecCorrection) ? geometrieTableauVariations(tvTikz) : null;
+  const blocTableau = gTvTikz ? tikzTableauVariations(gTvTikz) : "";
+  if (!figure || (Object.keys(pointsTikz).length === 0 && !aCourbesTikz && !aDroitesTikz)) return blocTableau;
   const versNum = v => (typeof v === "number" ? v : parseFloat(String(v).replace(",", ".")));
   // Bornes horizontales de référence pour les droites horizontales et les
   // domaines par défaut des courbes : quadrillage prioritaire, sinon étendue
@@ -2034,7 +2212,8 @@ function genererTikZ(figure, avecCorrection = false) {
 
   L.push("\\end{tikzpicture}");
   L.push("\\end{center}");
-  return L.join("\n");
+  const blocGeo = L.join("\n");
+  return blocTableau ? blocTableau + "\n\n" + blocGeo : blocGeo;
 }
 // ─── Moteur de tirage des exercices d'application ──────────────────────
 // Formate un nombre avec virgule décimale (notation française)
