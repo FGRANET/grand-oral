@@ -1946,10 +1946,16 @@ function geometrieTableauVariations(tv) {
   for (let i = 0; i < n - 1; i++) niveaux.push(niveaux[i] + sensVariationDelta(sens[i]));
   const bas = Math.min(...niveaux), haut = Math.max(...niveaux);
   const fractions = niveaux.map(v => (haut === bas ? 0.5 : (v - bas) / (haut - bas)));
+  const nom = (tv && tv.nom) || "f";
+  // Libellé de la deuxième ligne : "Variations de f" par défaut, la clé
+  // facultative "titre" permettant de le remplacer entièrement (le nom seul,
+  // une grandeur, une unité...). "" supprime le libellé.
+  const titrePersonnalise = tv && typeof tv.titre === "string";
   return {
-    n, abscisses, images, fractions,
+    n, abscisses, images, fractions, nom,
     variable: (tv && tv.variable) || "x",
-    nom: (tv && tv.nom) || "f",
+    titre: titrePersonnalise ? tv.titre : null,
+    libelle: titrePersonnalise ? tv.titre : "Variations de " + nom,
   };
 }
 
@@ -1958,7 +1964,11 @@ function geometrieTableauVariations(tv) {
 function TableauVariationsSVG({ tableau, grand = false }) {
   const g = geometrieTableauVariations(tableau);
   if (!g) return null;
-  const lab = grand ? 108 : 76;
+  const police = grand ? 19 : 13;
+  const policeLibelle = Math.round(police * 0.82);
+  // Colonne de titres dimensionnée sur le libellé ("Variations de f" est
+  // nettement plus large que "f") : sans ça, le texte débordait du cadre.
+  const lab = Math.max(grand ? 108 : 76, Math.round(g.libelle.length * policeLibelle * 0.55) + (grand ? 28 : 20));
   const pas = grand ? 128 : 92;
   const bord = grand ? 30 : 22;
   const h1 = grand ? 42 : 30;
@@ -1966,7 +1976,6 @@ function TableauVariationsSVG({ tableau, grand = false }) {
   const inset = grand ? 26 : 20;
   const largeur = lab + 2 * bord + (g.n - 1) * pas;
   const hauteur = h1 + h2;
-  const police = grand ? 19 : 13;
   const recul = grand ? 25 : 19;
   const xDe = i => lab + bord + i * pas;
   const yDe = f => h1 + h2 - inset - f * (h2 - 2 * inset);
@@ -1992,7 +2001,14 @@ function TableauVariationsSVG({ tableau, grand = false }) {
       <line x1={lab} y1="0" x2={lab} y2={hauteur} stroke="var(--text)" strokeWidth="1.2" />
       <line x1="0" y1={h1} x2={largeur} y2={h1} stroke="var(--text)" strokeWidth="1.2" />
       <text x={lab / 2} y={yTexte(h1 / 2)} fontSize={police} fontStyle="italic" fill="var(--text)" textAnchor="middle">{g.variable}</text>
-      <text x={lab / 2} y={yTexte(h1 + h2 / 2)} fontSize={police} fontStyle="italic" fill="var(--text)" textAnchor="middle">{g.nom}</text>
+      {g.libelle !== "" && (
+        <text x={lab / 2} y={yTexte(h1 + h2 / 2)} fontSize={policeLibelle} fill="var(--text)" textAnchor="middle">
+          {g.titre === null ? <tspan>Variations de </tspan> : null}
+          {g.titre === null
+            ? <tspan fontStyle="italic">{g.nom}</tspan>
+            : <tspan>{g.titre}</tspan>}
+        </text>
+      )}
       {g.abscisses.map((a, i) => (
         <text key={"abs" + i} x={xDe(i)} y={yTexte(h1 / 2)} fontSize={police} fill="var(--text)" textAnchor="middle">{a}</text>
       ))}
@@ -2012,7 +2028,11 @@ function TableauVariationsSVG({ tableau, grand = false }) {
 // tkz-tab.
 function tikzTableauVariations(g) {
   const r = n => Math.round(n * 100) / 100;
-  const lab = 1.7, bord = 0.55, h1 = 0.8, h2 = 2.6, inset = 0.55;
+  const bord = 0.55, h1 = 0.8, h2 = 2.6, inset = 0.55;
+  // Même logique qu'en SVG : la colonne de titres suit la longueur du libellé.
+  // Coefficient calé sur la largeur mesurée de "\small Variations de $f$"
+  // (67 pt ≈ 2,36 cm pour 15 caractères), plus 0,7 cm de marge intérieure.
+  const lab = Math.max(1.7, r(g.libelle.length * 0.16 + 0.7));
   // Espacement adaptatif : un tableau à beaucoup de colonnes se resserre
   // plutôt que de déborder de la largeur utile de la page (~15 cm).
   const pas = Math.max(1.4, Math.min(2.4, (15 - lab - 2 * bord) / Math.max(1, g.n - 1)));
@@ -2027,7 +2047,10 @@ function tikzTableauVariations(g) {
   L.push(`\\draw (${lab},0) -- (${lab},${r(hauteur)});`);
   L.push(`\\draw (0,${h2}) -- (${r(largeur)},${h2});`);
   L.push(`\\node at (${r(lab / 2)},${r(h2 + h1 / 2)}) {$${g.variable}$};`);
-  L.push(`\\node at (${r(lab / 2)},${r(h2 / 2)}) {$${g.nom}$};`);
+  if (g.libelle !== "") {
+    const libelleTex = g.titre === null ? `Variations de $${g.nom}$` : g.titre;
+    L.push(`\\node at (${r(lab / 2)},${r(h2 / 2)}) {\\small ${libelleTex}};`);
+  }
   g.abscisses.forEach((a, i) => {
     if (a === "") return;
     L.push(`\\node at (${xDe(i)},${r(h2 + h1 / 2)}) {$${a}$};`);
