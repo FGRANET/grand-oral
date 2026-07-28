@@ -1489,7 +1489,8 @@ async function compilerEtTelechargerPdf(contenuTex, nomFichier) {
 
 // ─── Figures géométriques (schéma déclaratif → SVG web + TikZ export) ──
 // Une figure est un objet jsonb : { points, segments, vecteurs, pointilles,
-// quadrillage, cercles, marques_egalite, labels, courbes, droites_horizontales }.
+// quadrillage, cercles, marques_egalite, labels, courbes, droites_horizontales,
+// tableau_variations, tableau_signes }.
 // Les coordonnées des points sont exprimées en repère mathématique classique
 // (y vers le haut) ; c'est le composant SVG qui inverse l'axe y pour l'écran,
 // TikZ utilisant la même convention que les données stockées.
@@ -1524,6 +1525,30 @@ async function compilerEtTelechargerPdf(contenuTex, nomFichier) {
 // abscisses contient n+1 bornes, sens n intervalles, images n+1 valeurs
 // (facultatif ; "" laisse la case vide, à compléter par l'élève). abscisses
 // et images acceptent des placeholders en mode aléatoire.
+//
+// Tableau de signes (clé "tableau_signes", objet) :
+//   { "variable": "x",
+//     "bornes": ["-\\infty", "2", "5", "+\\infty"],
+//     "lignes": [
+//       { "libelle": "x - 2", "signes": ["-", "+", "+"], "marques": ["0", ""] },
+//       { "libelle": "x - 5", "signes": ["-", "-", "+"], "marques": ["", "||"] },
+//       { "libelle": "R(x)",  "signes": ["+", "-", "+"], "marques": ["0", "||"] }
+//     ] }
+// n bornes délimitent n-1 intervalles : chaque ligne porte n-1 signes ("+",
+// "-", ou "" pour une case vide) et n-2 marques posées sur les bornes
+// intérieures ("0" ou "z" pour un zéro sur pointillé, "||" ou "d" pour une
+// double barre de valeur interdite, "" pour rien).
+// Deux clés pilotent le couple énoncé / correction :
+//   - "correction": true  → le tableau entier n'apparaît qu'avec la réponse
+//     (même sémantique que tableau_variations) ;
+//   - "a_completer": true → le cadre, les bornes et les libellés sont visibles
+//     dans l'énoncé, seuls les signes et les marques attendent la correction.
+//     Disponible sur le tableau entier ou ligne par ligne, ce qui permet de
+//     donner les lignes des facteurs et de ne masquer que celle du produit.
+//   - "bornes_a_completer": true → les bornes intérieures sont masquées dans
+//     l'énoncé (l'élève place lui-même les racines), les extrémités restent.
+// bornes et libelle acceptent des placeholders en mode aléatoire ; les signes
+// et les marques, qui ne dépendent pas du tirage, restent littéraux.
 function resoudreCoordonnee(valeur, valeurs) {
   if (typeof valeur === "number") return valeur;
   const texte = substituerPlaceholders(String(valeur), valeurs);
@@ -1626,6 +1651,18 @@ function resoudreFigure(figure, valeurs) {
       ...tv,
       abscisses: (tv.abscisses || []).map(resoudreTexte),
       images: (tv.images || []).map(resoudreTexte),
+    };
+  }
+  // Même principe pour un tableau de signes : les bornes et les libellés de
+  // ligne sont du texte affiché, les signes et les marques sont littéraux
+  // (ils ne dépendent jamais du tirage) et ne passent donc pas par le moteur.
+  if (figure.tableau_signes) {
+    const ts = figure.tableau_signes;
+    const resoudreTexte = v => substituerPlaceholders(String(v === undefined || v === null ? "" : v), valeurs);
+    resolu.tableau_signes = {
+      ...ts,
+      bornes: (ts.bornes || []).map(resoudreTexte),
+      lignes: (ts.lignes || []).map(l => ({ ...l, libelle: resoudreTexte(l && l.libelle) })),
     };
   }
   return resolu;
@@ -2067,6 +2104,207 @@ function tikzTableauVariations(g) {
   return L.join("\n");
 }
 
+// ─── Tableaux de signes (clé "tableau_signes") ─────────────────────────
+// Le rendu SVG ne passe pas par KaTeX : les quelques commandes LaTeX qu'on ne
+// peut pas éviter dans un tableau de signes (les infinis, surtout) sont
+// traduites en Unicode pour l'écran, et retraduites en LaTeX à l'export.
+function texteTableauVersEcran(v) {
+  return String(v === undefined || v === null ? "" : v)
+    .replace(/\\infty/g, "∞")
+    .replace(/\\ldots|\\dots|\\cdots/g, "…")
+    .replace(/\\,|\\;|\\!|\\:/g, "")
+    .replace(/\$/g, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
+// Retour vers LaTeX pour le bloc TikZ (le contenu est inséré entre $...$).
+function texteTableauVersTikz(v) {
+  return String(v === undefined || v === null ? "" : v)
+    .replace(/∞/g, "\\infty")
+    .replace(/…/g, "\\ldots")
+    .replace(/−/g, "-")
+    .replace(/\$/g, "")
+    .trim();
+}
+
+// Signe d'une case : "+", "-" (ou "−"), "0", ou "" pour une case vide.
+// Toute autre valeur est conservée telle quelle (permet un "…" de consigne).
+function normaliserSigneCase(s) {
+  const t = String(s === undefined || s === null ? "" : s).trim();
+  if (t === "-" || t === "−" || t === "–" || t === "—") return "−";
+  return t;
+}
+
+// Marque posée sur une borne intérieure. On accepte les mots-clés tkz-tab
+// ("z" et "d") que les fiches papier utilisent déjà, en plus de "0" et "||".
+function normaliserMarqueBorne(m) {
+  const t = String(m === undefined || m === null ? "" : m).trim().toLowerCase();
+  if (t === "0" || t === "z") return "0";
+  if (t === "||" || t === "‖" || t === "d") return "||";
+  return "";
+}
+
+// Géométrie logique commune aux deux rendus. n bornes délimitent n-1
+// intervalles : chaque ligne porte donc n-1 signes et n-2 marques (une par
+// borne intérieure). Les tableaux sont normalisés à ces longueurs, un JSON
+// incomplet donnant des cases vides plutôt qu'un tableau cassé.
+function geometrieTableauSignes(ts) {
+  const brutes = ts && Array.isArray(ts.bornes) ? ts.bornes : [];
+  const bornes = brutes.map(texteTableauVersEcran);
+  const n = bornes.length;
+  if (n < 2) return null;
+  const lignesBrutes = ts && Array.isArray(ts.lignes) ? ts.lignes : [];
+  if (lignesBrutes.length === 0) return null;
+  const aCompleterTable = !!(ts && ts.a_completer);
+  const lignes = lignesBrutes.map(l => {
+    const signesBruts = (l && l.signes) || [];
+    const marquesBrutes = (l && l.marques) || [];
+    return {
+      libelle: texteTableauVersEcran(l && l.libelle),
+      signes: Array.from({ length: n - 1 }, (unused, i) => normaliserSigneCase(signesBruts[i])),
+      marques: Array.from({ length: Math.max(0, n - 2) }, (unused, i) => normaliserMarqueBorne(marquesBrutes[i])),
+      aCompleter: aCompleterTable || !!(l && l.a_completer),
+    };
+  });
+  return {
+    n, bornes, lignes,
+    variable: texteTableauVersEcran((ts && ts.variable) || "x"),
+    bornesACompleter: !!(ts && ts.bornes_a_completer),
+  };
+}
+
+// Rendu web d'un tableau de signes : cadre, colonne de libellés, ligne des
+// bornes, puis une ligne par expression étudiée. Une borne annulant une
+// expression porte un 0 sur un trait pointillé vertical ; une valeur
+// interdite porte une double barre pleine (jamais un 0).
+// correction=false masque le contenu des lignes marquées "a_completer" :
+// le cadre garde exactement la même taille, l'élève complète, la correction
+// révèle. Les lignes non marquées restent visibles dans les deux cas.
+function TableauSignesSVG({ tableau, grand = false, correction = false }) {
+  const g = geometrieTableauSignes(tableau);
+  if (!g) return null;
+  const police = grand ? 19 : 13;
+  const longueurs = g.lignes.map(l => l.libelle.length);
+  longueurs.push(g.variable.length);
+  const lab = Math.max(grand ? 100 : 70, Math.round(Math.max.apply(null, longueurs) * police * 0.62) + (grand ? 28 : 20));
+  const pas = grand ? 118 : 86;
+  const bord = grand ? 30 : 22;
+  const hLigne = grand ? 52 : 38;
+  const largeur = lab + 2 * bord + (g.n - 1) * pas;
+  const nbLignes = g.lignes.length;
+  const hauteur = hLigne * (nbLignes + 1);
+  const xDe = i => lab + bord + i * pas;
+  const xIntervalle = i => (xDe(i) + xDe(i + 1)) / 2;
+  const hautDe = k => k * hLigne;
+  const centreDe = k => k * hLigne + hLigne / 2;
+  const yTexte = y => y + police / 3;
+  const trou = Math.round(police * 0.75);
+  const cases = [];
+  g.lignes.forEach((ligne, k) => {
+    const rang = k + 1;
+    const visible = !ligne.aCompleter || correction;
+    if (!visible) return;
+    const yHaut = hautDe(rang), yBas = hautDe(rang + 1), yc = centreDe(rang);
+    ligne.marques.forEach((marque, i) => {
+      const x = xDe(i + 1);
+      if (marque === "0") {
+        cases.push(<line key={`p${k}-${i}-a`} x1={x} y1={yHaut + 3} x2={x} y2={yc - trou} stroke="var(--text)" strokeWidth="0.8" strokeDasharray="3 3" opacity="0.55" />);
+        cases.push(<line key={`p${k}-${i}-b`} x1={x} y1={yc + trou} x2={x} y2={yBas - 3} stroke="var(--text)" strokeWidth="0.8" strokeDasharray="3 3" opacity="0.55" />);
+        cases.push(<text key={`z${k}-${i}`} x={x} y={yTexte(yc)} fontSize={police} fill="var(--text)" textAnchor="middle">0</text>);
+      } else if (marque === "||") {
+        cases.push(<line key={`d${k}-${i}-a`} x1={x - 3} y1={yHaut} x2={x - 3} y2={yBas} stroke="var(--text)" strokeWidth="1.2" />);
+        cases.push(<line key={`d${k}-${i}-b`} x1={x + 3} y1={yHaut} x2={x + 3} y2={yBas} stroke="var(--text)" strokeWidth="1.2" />);
+      }
+    });
+    ligne.signes.forEach((signe, i) => {
+      if (signe === "") return;
+      cases.push(<text key={`s${k}-${i}`} x={xIntervalle(i)} y={yTexte(yc)} fontSize={police} fill="var(--text)" textAnchor="middle">{signe}</text>);
+    });
+  });
+  return (
+    <svg className="figure-svg" viewBox={`0 0 ${largeur} ${hauteur}`}
+      width={largeur} height={hauteur}
+      style={{ width: "auto", height: "auto", maxWidth: "100%", maxHeight: grand ? 320 : 220, display: "block", margin: grand ? "16px auto" : "10px auto" }}>
+      <rect x="0.6" y="0.6" width={largeur - 1.2} height={hauteur - 1.2} fill="none" stroke="var(--text)" strokeWidth="1.2" />
+      <line x1={lab} y1="0" x2={lab} y2={hauteur} stroke="var(--text)" strokeWidth="1.2" />
+      {g.lignes.map((ligne, k) => (
+        <line key={`h${k}`} x1="0" y1={hautDe(k + 1)} x2={largeur} y2={hautDe(k + 1)} stroke="var(--text)" strokeWidth="1.2" />
+      ))}
+      <text x={lab / 2} y={yTexte(centreDe(0))} fontSize={police} fontStyle="italic" fill="var(--text)" textAnchor="middle">{g.variable}</text>
+      {g.bornes.map((b, i) => {
+        const interieure = i > 0 && i < g.n - 1;
+        if (b === "" || (interieure && g.bornesACompleter && !correction)) return null;
+        return <text key={`b${i}`} x={xDe(i)} y={yTexte(centreDe(0))} fontSize={police} fill="var(--text)" textAnchor="middle">{b}</text>;
+      })}
+      {g.lignes.map((ligne, k) => (ligne.libelle === "" ? null : (
+        <text key={`l${k}`} x={lab / 2} y={yTexte(centreDe(k + 1))} fontSize={police} fill="var(--text)" textAnchor="middle">{ligne.libelle}</text>
+      )))}
+      {cases}
+    </svg>
+  );
+}
+
+// Génère le bloc TikZ d'un tableau de signes, avec les mêmes conventions que
+// le rendu web et les mêmes primitives de base que tikzTableauVariations
+// (le préambule d'export ne charge pas tkz-tab).
+function tikzTableauSignes(g, correction = false) {
+  const r = n => Math.round(n * 100) / 100;
+  const bord = 0.55, hLigne = 0.85;
+  const longueurs = g.lignes.map(l => l.libelle.length);
+  longueurs.push(g.variable.length);
+  const lab = Math.max(1.7, r(Math.max.apply(null, longueurs) * 0.22 + 0.7));
+  const pas = Math.max(1.4, Math.min(2.4, (15 - lab - 2 * bord) / Math.max(1, g.n - 1)));
+  const largeur = r(lab + 2 * bord + (g.n - 1) * pas);
+  const nbLignes = g.lignes.length;
+  const hauteur = r(hLigne * (nbLignes + 1));
+  const xDe = i => r(lab + bord + i * pas);
+  const xIntervalle = i => r((lab + bord + i * pas) + pas / 2);
+  // Repère TikZ orienté vers le haut : la ligne des bornes occupe le haut du
+  // cadre, les lignes de signes descendent ensuite.
+  const hautDe = k => r(hauteur - k * hLigne);
+  const centreDe = k => r(hauteur - k * hLigne - hLigne / 2);
+  const L = [];
+  L.push("\\begin{center}");
+  L.push("\\begin{tikzpicture}");
+  L.push(`\\draw (0,0) rectangle (${largeur},${hauteur});`);
+  L.push(`\\draw (${lab},0) -- (${lab},${hauteur});`);
+  for (let k = 1; k <= nbLignes; k++) {
+    L.push(`\\draw (0,${hautDe(k)}) -- (${largeur},${hautDe(k)});`);
+  }
+  L.push(`\\node at (${r(lab / 2)},${centreDe(0)}) {$${texteTableauVersTikz(g.variable)}$};`);
+  g.bornes.forEach((b, i) => {
+    const interieure = i > 0 && i < g.n - 1;
+    if (b === "" || (interieure && g.bornesACompleter && !correction)) return;
+    L.push(`\\node at (${xDe(i)},${centreDe(0)}) {$${texteTableauVersTikz(b)}$};`);
+  });
+  g.lignes.forEach((ligne, k) => {
+    const rang = k + 1;
+    if (ligne.libelle !== "") {
+      L.push(`\\node at (${r(lab / 2)},${centreDe(rang)}) {$${texteTableauVersTikz(ligne.libelle)}$};`);
+    }
+    if (ligne.aCompleter && !correction) return;
+    ligne.marques.forEach((marque, i) => {
+      const x = xDe(i + 1);
+      if (marque === "0") {
+        L.push(`\\draw[dashed, gray!60] (${x},${hautDe(rang + 1)}) -- (${x},${r(centreDe(rang) - 0.18)});`);
+        L.push(`\\draw[dashed, gray!60] (${x},${r(centreDe(rang) + 0.18)}) -- (${x},${hautDe(rang)});`);
+        L.push(`\\node at (${x},${centreDe(rang)}) {$0$};`);
+      } else if (marque === "||") {
+        L.push(`\\draw (${r(x - 0.05)},${hautDe(rang + 1)}) -- (${r(x - 0.05)},${hautDe(rang)});`);
+        L.push(`\\draw (${r(x + 0.05)},${hautDe(rang + 1)}) -- (${r(x + 0.05)},${hautDe(rang)});`);
+      }
+    });
+    ligne.signes.forEach((signe, i) => {
+      if (signe === "") return;
+      L.push(`\\node at (${xIntervalle(i)},${centreDe(rang)}) {$${texteTableauVersTikz(signe)}$};`);
+    });
+  });
+  L.push("\\end{tikzpicture}");
+  L.push("\\end{center}");
+  return L.join("\n");
+}
+
 // Enveloppe publique : une figure peut porter un tableau de variations, une
 // partie géométrique (points / courbes / droites), ou les deux — auquel cas
 // le tableau est empilé au-dessus. La signature reste celle utilisée partout
@@ -2075,19 +2313,26 @@ function FigureSVG({ figure, grand = false, correction = false }) {
   const tv = figure && figure.tableau_variations;
   const gTv = tv ? geometrieTableauVariations(tv) : null;
   const afficheTv = !!gTv && (!tv.correction || correction);
+  const ts = figure && figure.tableau_signes;
+  const gTs = ts ? geometrieTableauSignes(ts) : null;
+  const afficheTs = !!gTs && (!ts.correction || correction);
   const pointsFig = (figure && figure.points) || {};
   const aGeo = !!figure && (
     Object.keys(pointsFig).length > 0
     || (Array.isArray(figure.courbes) && figure.courbes.length > 0)
     || (Array.isArray(figure.droites_horizontales) && figure.droites_horizontales.length > 0)
   );
-  if (!afficheTv && !aGeo) return null;
-  if (!afficheTv) return <FigureGeoSVG figure={figure} grand={grand} correction={correction} />;
-  if (!aGeo) return <TableauVariationsSVG tableau={tv} grand={grand} />;
+  if (!afficheTv && !afficheTs && !aGeo) return null;
+  // Empilement dans l'ordre variations → signes → partie géométrique, pour
+  // que le tableau de signes suive celui dont il est déduit.
+  const blocs = [];
+  if (afficheTv) blocs.push(<TableauVariationsSVG key="tv" tableau={tv} grand={grand} />);
+  if (afficheTs) blocs.push(<TableauSignesSVG key="ts" tableau={ts} grand={grand} correction={correction} />);
+  if (aGeo) blocs.push(<FigureGeoSVG key="geo" figure={figure} grand={grand} correction={correction} />);
+  if (blocs.length === 1) return blocs[0];
   return (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "4px" }}>
-      <TableauVariationsSVG tableau={tv} grand={grand} />
-      <FigureGeoSVG figure={figure} grand={grand} correction={correction} />
+      {blocs}
     </div>
   );
 }
@@ -2104,7 +2349,12 @@ function genererTikZ(figure, avecCorrection = false) {
   // géométrique quand les deux coexistent.
   const tvTikz = figure && figure.tableau_variations;
   const gTvTikz = tvTikz && (!tvTikz.correction || avecCorrection) ? geometrieTableauVariations(tvTikz) : null;
-  const blocTableau = gTvTikz ? tikzTableauVariations(gTvTikz) : "";
+  const tsTikz = figure && figure.tableau_signes;
+  const gTsTikz = tsTikz && (!tsTikz.correction || avecCorrection) ? geometrieTableauSignes(tsTikz) : null;
+  const blocTableau = [
+    gTvTikz ? tikzTableauVariations(gTvTikz) : "",
+    gTsTikz ? tikzTableauSignes(gTsTikz, avecCorrection) : "",
+  ].filter(Boolean).join("\n\n");
   if (!figure || (Object.keys(pointsTikz).length === 0 && !aCourbesTikz && !aDroitesTikz)) return blocTableau;
   const versNum = v => (typeof v === "number" ? v : parseFloat(String(v).replace(",", ".")));
   // Bornes horizontales de référence pour les droites horizontales et les
@@ -4588,7 +4838,7 @@ function CreerQuestion({ chapitres, currentUser, currentProfile, niveauScolaire,
             <textarea className="creer-textarea" value={figureTexte} onChange={e => setFigureTexte(e.target.value)}
               placeholder={'{\n  "points": { "A": [0, 0], "B": [3, 0], "C": [2, 2.5] },\n  "segments": [["A","B"],["B","C"],["C","A"]]\n}'} />
             <div className="creer-hint">
-              Clés possibles : <code>points</code>, <code>segments</code>, <code>vecteurs</code>, <code>pointilles</code>, <code>cercles</code>, <code>marques_egalite</code>, <code>quadrillage</code>, <code>labels</code>, <code>courbes</code> (expression ou points lissés), <code>droites_horizontales</code>.
+              Clés possibles : <code>points</code>, <code>segments</code>, <code>vecteurs</code>, <code>pointilles</code>, <code>cercles</code>, <code>marques_egalite</code>, <code>quadrillage</code>, <code>labels</code>, <code>courbes</code> (expression ou points lissés), <code>droites_horizontales</code>, <code>tableau_variations</code>, <code>tableau_signes</code>.
               {mode === "aleatoire" && <> En mode aléatoire, une coordonnée peut être une chaîne à placeholder, ex. <code>"{"{x1}"}"</code>.</>}
             </div>
             {mode === "fixe" && figureTexte.trim() && (
@@ -4857,7 +5107,7 @@ function CreerQcm({ chapitres, currentUser, niveauScolaire, onFermer, onCree, qc
             <textarea className="creer-textarea" value={figureTexte} onChange={e => setFigureTexte(e.target.value)}
               placeholder={'{\n  "points": { "A": [0, 0], "B": [3, 0], "C": [2, 2.5] },\n  "segments": [["A","B"],["B","C"],["C","A"]]\n}'} />
             <div className="creer-hint">
-              Clés possibles : <code>points</code>, <code>segments</code>, <code>vecteurs</code>, <code>pointilles</code>, <code>cercles</code>, <code>marques_egalite</code>, <code>quadrillage</code>, <code>labels</code>, <code>courbes</code> (expression ou points lissés), <code>droites_horizontales</code>.
+              Clés possibles : <code>points</code>, <code>segments</code>, <code>vecteurs</code>, <code>pointilles</code>, <code>cercles</code>, <code>marques_egalite</code>, <code>quadrillage</code>, <code>labels</code>, <code>courbes</code> (expression ou points lissés), <code>droites_horizontales</code>, <code>tableau_variations</code>, <code>tableau_signes</code>.
               {mode === "aleatoire" && <> En mode aléatoire, une coordonnée peut être une chaîne à placeholder, ex. <code>"{"{x1}"}"</code>.</>}
             </div>
             {mode === "fixe" && figureTexte.trim() && (
