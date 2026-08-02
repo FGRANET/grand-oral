@@ -778,6 +778,37 @@ const CSS = `
   }
   .figure-hover-wrap:hover .figure-hover-popover { opacity: 1; pointer-events: auto; }
   .figure-hover-popover .figure-svg { max-height: 200px; margin: 0 auto; }
+  .figure-hover-popover .bloc-code { max-width: 100%; }
+  .figure-hover-popover .bloc-code-table { font-size: 10px; }
+
+  /* ── Bloc de code source (Python) ──
+     Reprend l'allure de l'environnement "codepython" des fiches LaTeX :
+     gouttière grisée avec le numéro de ligne, code à droite sur fond plus clair.
+     white-space: pre est indispensable — l'indentation EST la syntaxe en Python. */
+  .bloc-code {
+    display: inline-block; text-align: left; max-width: 100%; overflow-x: auto;
+    border: 1px solid var(--border); border-radius: 8px; flex-shrink: 0;
+  }
+  .bloc-code-table { border-collapse: collapse; font-family: var(--mono); font-size: 13px; line-height: 1.55; }
+  .bloc-code-entete {
+    background: var(--surface2); color: var(--text-muted); text-align: left;
+    font-size: 10px; letter-spacing: .06em; text-transform: uppercase;
+    padding: 3px 12px; font-weight: 600; border-bottom: 1px solid var(--border);
+  }
+  .bloc-code-num {
+    background: var(--surface2); color: var(--text-muted); border-right: 1px solid var(--border);
+    padding: 1px 8px; text-align: right; width: 1%; white-space: nowrap; user-select: none;
+  }
+  .bloc-code-ligne { background: var(--surface); color: var(--text); padding: 1px 14px; white-space: pre; }
+  .bloc-code-grand .bloc-code-table { font-size: 21px; line-height: 1.5; }
+  .bloc-code-grand .bloc-code-entete { font-size: 12px; padding: 4px 16px; }
+  .bloc-code-grand .bloc-code-num { padding: 2px 12px; }
+  .bloc-code-grand .bloc-code-ligne { padding: 2px 20px; }
+  .creer-textarea-code { font-family: var(--mono); font-size: 12.5px; white-space: pre; overflow-x: auto; min-height: 110px; }
+  .diapo-code-row {
+    display: flex; flex-direction: row; align-items: center; justify-content: center;
+    gap: 40px; flex-wrap: wrap; width: 100%; margin-top: 10px;
+  }
   .diapo-recap-reponse { font-size: 15px; color: var(--accent-light); }
 
   /* ── Import JSON de questions ── */
@@ -2488,6 +2519,152 @@ function genererTikZ(figure, avecCorrection = false) {
   const blocGeo = L.join("\n");
   return blocTableau ? blocTableau + "\n\n" + blocGeo : blocGeo;
 }
+
+// ─── Blocs de code source (Python) ────────────────────────────────────
+// Un champ "code" est un objet jsonb, sur le même modèle que "figure" :
+//   { "langage": "python", "lignes": ["a = 5", "b = 3"], "numerotees": true }
+// Deux écritures raccourcies sont acceptées à l'import et normalisées ici :
+//   "code": "a = 5\nb = 3"        (chaîne, découpée sur les sauts de ligne)
+//   "code": ["a = 5", "b = 3"]    (tableau de lignes)
+// On ne stocke jamais une chaîne unique côté rendu : le tableau de lignes est
+// la seule forme qui permette de numéroter les lignes (« que fait la ligne 3 ? »)
+// sans re-découper le texte à chaque affichage.
+function normaliserCode(code) {
+  if (!code) return null;
+  let brut = code;
+  if (typeof brut === "string") brut = { lignes: brut };
+  else if (Array.isArray(brut)) brut = { lignes: brut };
+  if (typeof brut !== "object") return null;
+
+  let lignes = brut.lignes;
+  if (typeof lignes === "string") lignes = lignes.split("\n");
+  if (!Array.isArray(lignes)) return null;
+  lignes = lignes.map(l => (l === null || l === undefined ? "" : String(l).replace(/\t/g, "    ")));
+  // Les lignes vides finales viennent presque toujours d'un copier-coller et
+  // creuseraient un trou en bas du cadre : on les retire.
+  while (lignes.length > 0 && lignes[lignes.length - 1].trim() === "") lignes.pop();
+  if (lignes.length === 0) return null;
+
+  return {
+    langage: brut.langage || "python",
+    lignes,
+    numerotees: brut.numerotees !== false,
+    debut: Number.isFinite(brut.debut) ? brut.debut : 1,
+  };
+}
+
+// Substitution des placeholders {a} à l'intérieur d'un bloc de code.
+// Volontairement distincte de substituerPlaceholders :
+//   1. les nombres sont formatés avec un POINT décimal, jamais une virgule —
+//      afficher "x = 2,5" dans un programme Python serait faux, et le cours de
+//      Seconde insiste précisément sur ce point ;
+//   2. nettoyerExpression n'est pas appliqué : ses règles (1x→x, +0→rien) sont
+//      des règles d'écriture mathématique, pas de code source ;
+//   3. {{ et }} désignent des accolades littérales Python (dictionnaires,
+//      f-strings) et traversent la substitution intactes.
+function substituerPlaceholdersCode(texte, valeurs) {
+  const src = String(texte).replace(/\\{([^{}]+)\\}/g, "{$1}");
+  // Balayage unique de gauche à droite, et non deux remplacements regex
+  // successifs : sur "d = {{'cle': {a}}}", un remplacement global de "}}"
+  // consomme les deux mauvaises accolades de "}}}" et casse le placeholder.
+  // C'est exactement l'ordre de lecture qu'applique str.format en Python.
+  let sortie = "";
+  let i = 0;
+  while (i < src.length) {
+    const c = src[i];
+    if (c === "{" && src[i + 1] === "{") { sortie += "{"; i += 2; continue; }
+    if (c === "}" && src[i + 1] === "}") { sortie += "}"; i += 2; continue; }
+    if (c === "{") {
+      const fin = src.indexOf("}", i + 1);
+      if (fin === -1) { sortie += c; i += 1; continue; }
+      const expr = src.slice(i + 1, fin).trim();
+      let valeur = null;
+      if (valeurs.hasOwnProperty(expr)) valeur = valeurs[expr];
+      else { try { valeur = evaluerExpressionSimple(expr, valeurs); } catch (e) { valeur = null; } }
+      // Un {...} non résoluble (dictionnaire vide, f-string, ensemble) est
+      // recopié tel quel plutôt que supprimé : du Python parfaitement légitime.
+      sortie += typeof valeur === "number" && isFinite(valeur) ? String(valeur) : src.slice(i, fin + 1);
+      i = fin + 1;
+      continue;
+    }
+    sortie += c;
+    i += 1;
+  }
+  return sortie;
+}
+
+// Pendant de resoudreFigure pour les blocs de code.
+function resoudreCode(code, valeurs) {
+  const normalise = normaliserCode(code);
+  if (!normalise) return null;
+  return { ...normalise, lignes: normalise.lignes.map(l => substituerPlaceholdersCode(l, valeurs)) };
+}
+
+// Rendu web/diaporama. Un <table> plutôt qu'un <pre> : c'est la seule façon
+// simple d'aligner la gouttière des numéros de ligne sur du code dont les
+// lignes ont des longueurs très différentes.
+function BlocCode({ code, grand = false }) {
+  const bloc = normaliserCode(code);
+  if (!bloc) return null;
+  const etiquette = bloc.langage === "python" ? "Code Python" : `Code ${bloc.langage}`;
+  const nbColonnes = bloc.numerotees ? 2 : 1;
+  return (
+    <div className={`bloc-code${grand ? " bloc-code-grand" : ""}`}>
+      <table className="bloc-code-table">
+        <thead>
+          <tr><th className="bloc-code-entete" colSpan={nbColonnes}>{etiquette}</th></tr>
+        </thead>
+        <tbody>
+          {bloc.lignes.map((ligne, i) => (
+            <tr key={i}>
+              {bloc.numerotees ? <td className="bloc-code-num">{bloc.debut + i}</td> : null}
+              <td className="bloc-code-ligne">{ligne === "" ? "\u00a0" : ligne}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// Échappement LaTeX spécifique au code source. echapperLatex() ne traite que
+// le % : insuffisant ici, où les noms de variables Python contiennent
+// couramment des underscores (prix_ttc) qui feraient échouer la compilation
+// avec "Missing $ inserted".
+function echapperCodeLatex(texte) {
+  return String(texte)
+    .replace(/\\/g, "\u0000")
+    .replace(/([{}$&#_%])/g, "\\$1")
+    .replace(/\^/g, "\\textasciicircum{}")
+    .replace(/~/g, "\\textasciitilde{}")
+    .replace(/\u0000/g, "\\textbackslash{}");
+}
+
+// Pendant de genererTikZ : produit le tabular numéroté attendu dans les
+// exports .tex, avec la même allure que l'environnement codepython des fiches.
+// L'indentation est restituée par \hspace* : dans un \texttt, les espaces
+// consécutifs sont fusionnés par TeX et l'indentation Python disparaîtrait.
+function genererCodeLatex(code) {
+  const bloc = normaliserCode(code);
+  if (!bloc) return "";
+  const etiquette = bloc.langage === "python" ? "Code Python" : `Code ${bloc.langage}`;
+  const L = [];
+  L.push("\\begin{center}");
+  L.push(bloc.numerotees
+    ? "\\begin{tabular}{>{\\columncolor{gray!40}}c|>{\\columncolor{gray!20}}l}"
+    : "\\begin{tabular}{>{\\columncolor{gray!20}}l}");
+  L.push(bloc.numerotees ? `\\textbf{} & \\textbf{${etiquette}} \\\\` : `\\textbf{${etiquette}} \\\\`);
+  bloc.lignes.forEach((ligne, i) => {
+    const nbEspaces = ligne.length - ligne.replace(/^ +/, "").length;
+    const retrait = nbEspaces > 0 ? `\\hspace*{${(nbEspaces * 0.6).toFixed(2)}em}` : "";
+    const corps = `\\texttt{${retrait}${echapperCodeLatex(ligne.slice(nbEspaces))}}`;
+    L.push(bloc.numerotees ? `\\textbf{${bloc.debut + i}} & ${corps} \\\\` : `${corps} \\\\`);
+  });
+  L.push("\\end{tabular}");
+  L.push("\\end{center}");
+  return L.join("\n");
+}
+
 // ─── Moteur de tirage des exercices d'application ──────────────────────
 // Formate un nombre avec virgule décimale (notation française)
 // Ex : 1.5 → "1,5"  ;  -0.333 → "-0,333"  ;  2 → "2"
@@ -2709,6 +2886,19 @@ function genererDocumentationImport(contexte, chapitres, niveauScolaire) {
   }
 
   L.push("");
+  L.push("// ── Champ \"code\" (optionnel, sur les 3 tables) ──");
+  L.push("// Affiche un bloc de code source numéroté, à l'écran comme dans l'export .tex.");
+  L.push("// Trois écritures acceptées, la 1re suffit dans la quasi-totalité des cas :");
+  L.push('//   "code": ["a = 5", "b = 3", "print(a + b)"]');
+  L.push('//   "code": "a = 5\\nb = 3\\nprint(a + b)"');
+  L.push('//   "code": { "langage": "python", "lignes": [...], "numerotees": false, "debut": 1 }');
+  L.push("// L'indentation en début de ligne est conservée telle quelle (blocs if/for).");
+  L.push("// Ne JAMAIS entourer le code de $...$ : ce n'est pas du LaTeX, et les");
+  L.push("// underscores des noms de variables (prix_ttc) sont échappés automatiquement.");
+  L.push("// En mode aléatoire, {a} est remplacé dans le code par la valeur tirée, avec");
+  L.push("// un POINT décimal (notation Python) et non une virgule. Une accolade Python");
+  L.push("// littérale (dictionnaire, f-string) doit être doublée : {{ et }}.");
+  L.push("");
   L.push("// Types de paramètre disponibles (dans \"parametres\") :");
   L.push("//   entier          -> tire un entier entre min et max");
   L.push("//   entier_non_nul  -> idem, en excluant 0");
@@ -2922,8 +3112,9 @@ function tirerQcm(qcm) {
   const choixMelanges = ordre.map(i => choix[i]);
   const bonneReponseMelangee = ordre.indexOf(qcm.bonne_reponse);
   const figure = qcm.figure ? resoudreFigure(qcm.figure, valeurs) : null;
+  const code = qcm.code ? resoudreCode(qcm.code, valeurs) : null;
 
-  return { enonce, choix: choixMelanges, bonne_reponse: bonneReponseMelangee, valeurs, figure };
+  return { enonce, choix: choixMelanges, bonne_reponse: bonneReponseMelangee, valeurs, figure, code };
 }
 
 // Tire un exercice complet à partir de son modèle stocké en base :
@@ -2938,6 +3129,7 @@ function tirerExercice(exercice) {
     reponse: substituerPlaceholders(exercice.reponse_modele, valeurs),
     valeurs,
     figure: exercice.figure ? resoudreFigure(exercice.figure, valeurs) : null,
+    code: exercice.code ? resoudreCode(exercice.code, valeurs) : null,
   };
 }
 
@@ -3463,8 +3655,9 @@ function DiapoViewer({ questions, mode, delai, nomChapitre, onFermer }) {
       {etape !== "recap" ? (
         <div className="diapo-content" onClick={avancerManuel}>
           <div className="diapo-chapitre-tag">{nomChapitre(question.chapitre_id)}</div>
-          <div className={`diapo-enonce${question.figure ? " diapo-avec-figure" : ""}`}><MathText inline={false}>{question.enonce}</MathText></div>
+          <div className={`diapo-enonce${question.figure || question.code ? " diapo-avec-figure" : ""}`}><MathText inline={false}>{question.enonce}</MathText></div>
           <FigureSVG figure={question.figure} grand correction={etape === "reponse"} />
+          <BlocCode code={question.code} grand />
           {etape === "reponse" && (
             <>
               <div className="diapo-reponse-divider"></div>
@@ -3481,6 +3674,7 @@ function DiapoViewer({ questions, mode, delai, nomChapitre, onFermer }) {
               <div className="diapo-recap-num">Question {i + 1} · {nomChapitre(q.chapitre_id)}</div>
               <div className="diapo-recap-enonce"><MathText inline={false}>{q.enonce}</MathText></div>
               <FigureSVG figure={q.figure} correction />
+              <BlocCode code={q.code} />
               <div className="diapo-recap-reponse"><MathText inline={false}>{q.reponse}</MathText></div>
             </div>
           ))}
@@ -3637,10 +3831,11 @@ function DiapoViewerQcm({ questions, mode, delai, nomChapitre, onFermer }) {
       {etape !== "recap" ? (
         <div className="diapo-content" onClick={avancerManuel}>
           <div className="diapo-chapitre-tag">{nomChapitre(question.chapitre_id)}</div>
-          <div className={`diapo-enonce${question.figure ? " diapo-avec-figure" : ""}`}><MathText inline={false}>{question.enonce}</MathText></div>
-          {question.figure ? (
+          <div className={`diapo-enonce${question.figure || question.code ? " diapo-avec-figure" : ""}`}><MathText inline={false}>{question.enonce}</MathText></div>
+          {question.figure || question.code ? (
             <div className="diapo-qcm-figure-row">
               <FigureSVG figure={question.figure} grand correction={etape === "reponse"} />
+              <BlocCode code={question.code} grand />
               <div className="diapo-qcm-choix-liste diapo-qcm-choix-liste-cote">
                 {question.choix.map((c, i) => (
                   <ChoixQcm key={i} texte={c} lettre={lettres[i]} correcte={etape === "reponse" && i === question.bonne_reponse} />
@@ -3664,6 +3859,7 @@ function DiapoViewerQcm({ questions, mode, delai, nomChapitre, onFermer }) {
               <div className="diapo-recap-num">QCM {i + 1} · {nomChapitre(q.chapitre_id)}</div>
               <div className="diapo-recap-enonce"><MathText inline={false}>{q.enonce}</MathText></div>
               <FigureSVG figure={q.figure} correction />
+              <BlocCode code={q.code} />
               <div className="diapo-recap-reponse">{lettres[q.bonne_reponse]}) <MathText>{q.choix[q.bonne_reponse]}</MathText></div>
             </div>
           ))}
@@ -3855,12 +4051,12 @@ function ImportQuestions({ currentUser, currentProfile, chapitres, niveauScolair
       ...analyse.valides.map(q => ({
         id: q.id, chapitre_id: q._chapitreId, type: q.type,
         enonce: q.enonce, reponse: q.reponse, niveau: q.niveau || 2,
-        figure: q.figure || null, prof_id: currentUser.id,
+        figure: q.figure || null, code: normaliserCode(q.code), prof_id: currentUser.id,
       })),
       ...analyse.corrections.map(q => ({
         id: q._idCorrige, chapitre_id: q._chapitreId, type: q.type,
         enonce: q.enonce, reponse: q.reponse, niveau: q.niveau || 2,
-        figure: q.figure || null, prof_id: currentUser.id,
+        figure: q.figure || null, code: normaliserCode(q.code), prof_id: currentUser.id,
       })),
     ];
     // Aléatoire → table exercices_application (id généré à l'analyse)
@@ -3877,6 +4073,7 @@ function ImportQuestions({ currentUser, currentProfile, chapitres, niveauScolair
       };
       if (q.type_calcul) ligne.type_calcul = q.type_calcul;
       if (q.figure) ligne.figure = q.figure;
+      if (normaliserCode(q.code)) ligne.code = normaliserCode(q.code);
       return ligne;
     });
 
@@ -3922,6 +4119,7 @@ function ImportQuestions({ currentUser, currentProfile, chapitres, niveauScolair
               <tr><td><code>id</code>, <code>type</code></td><td>si fixe</td><td><code>id</code> auto-corrigé s'il est absent ou déjà pris ; <code>type</code> = formule/méthode/définition/théorème/exercice</td></tr>
               <tr><td><code>enonce</code>, <code>reponse</code></td><td>si fixe</td><td>textes bruts (LaTeX entre <code>$...$</code> accepté)</td></tr>
               <tr><td><code>enonce_modele</code>, <code>reponse_modele</code>, <code>parametres</code></td><td>si aléatoire</td><td>id généré automatiquement, <code>parametres</code> = objet (voir l'exemple)</td></tr>
+              <tr><td><code>code</code></td><td>non</td><td>bloc de code source : chaîne, tableau de lignes, ou <code>{"{ langage, lignes, numerotees }"}</code></td></tr>
               <tr><td><code>niveau</code></td><td>non</td><td>2 par défaut</td></tr>
             </tbody>
           </table>
@@ -4189,7 +4387,7 @@ function ImportQcm({ currentUser, chapitres, niveauScolaire, onFermer, onImportT
       const mode = q.mode === "aleatoire" ? "aleatoire" : "fixe";
       const base = {
         chapitre_id: q._chapitreId, mode, bonne_reponse: q.bonne_reponse,
-        niveau: q.niveau || 1, figure: q.figure || null, prof_id: currentUser.id,
+        niveau: q.niveau || 1, figure: q.figure || null, code: normaliserCode(q.code), prof_id: currentUser.id,
       };
       const donnees = mode === "fixe"
         ? { ...base, enonce: q.enonce, choix: q.choix, enonce_modele: null, choix_modele: null, parametres: null }
@@ -4230,6 +4428,7 @@ function ImportQcm({ currentUser, chapitres, niveauScolaire, onFermer, onImportT
               <tr><td><code>enonce</code>, <code>choix</code></td><td>si fixe</td><td><code>choix</code> = tableau de 4 textes</td></tr>
               <tr><td><code>enonce_modele</code>, <code>choix_modele</code>, <code>parametres</code></td><td>si aléatoire</td><td><code>parametres</code> = objet (voir l'exemple)</td></tr>
               <tr><td><code>bonne_reponse</code></td><td>toujours</td><td>index 0 à 3</td></tr>
+              <tr><td><code>code</code></td><td>non</td><td>bloc de code source : chaîne, tableau de lignes, ou <code>{"{ langage, lignes, numerotees }"}</code></td></tr>
               <tr><td><code>niveau</code></td><td>non</td><td>1 par défaut</td></tr>
             </tbody>
           </table>
@@ -4646,6 +4845,11 @@ function CreerQuestion({ chapitres, currentUser, currentProfile, niveauScolaire,
   const [figureTexte, setFigureTexte] = useState(
     questionAEditer?.figure ? JSON.stringify(questionAEditer.figure, null, 2) : ""
   );
+  // Bloc de code optionnel, saisi en texte brut (pas en JSON) : on colle
+  // directement le programme Python, une ligne par ligne.
+  const [codeTexte, setCodeTexte] = useState(
+    (normaliserCode(questionAEditer?.code)?.lignes || []).join("\n")
+  );
 
   // Aperçu de la figure en mode fixe (aucun tirage nécessaire, contrairement
   // au mode aléatoire où l'aperçu passe par lancerTest ci-dessous).
@@ -4705,7 +4909,8 @@ function CreerQuestion({ chapitres, currentUser, currentProfile, niveauScolaire,
       const reponseGeneree = substituerPlaceholders(reponse, valeurs);
       const figureBrute = figureTexte.trim() ? JSON.parse(figureTexte) : null;
       const figureResolue = figureBrute ? resoudreFigure(figureBrute, valeurs) : null;
-      setTestResultat({ enonce: enonceGenere, reponse: reponseGeneree, valeurs, figure: figureResolue });
+      const codeResolu = resoudreCode(codeTexte, valeurs);
+      setTestResultat({ enonce: enonceGenere, reponse: reponseGeneree, valeurs, figure: figureResolue, code: codeResolu });
     } catch (e) {
       setTestErreur(e.message);
       setTestResultat(null);
@@ -4724,13 +4929,14 @@ function CreerQuestion({ chapitres, currentUser, currentProfile, niveauScolaire,
         return;
       }
     }
+    const codeAEnregistrer = normaliserCode(codeTexte);
 
     setEnregistrement(true);
 
     if (mode === "fixe") {
       const donnees = {
         chapitre_id: chapitreId, type, enonce: enonce.trim(),
-        reponse: reponse.trim(), niveau, figure: figureAEnregistrer,
+        reponse: reponse.trim(), niveau, figure: figureAEnregistrer, code: codeAEnregistrer,
       };
       let error;
       if (estEdition && questionAEditer._source === "base_fixe") {
@@ -4754,7 +4960,7 @@ function CreerQuestion({ chapitres, currentUser, currentProfile, niveauScolaire,
       if (estEdition && questionAEditer._source === "base_aleatoire") {
         const { error } = await supabase.from("exercices_application").update({
           chapitre_id: chapitreId, enonce_modele: enonce.trim(),
-          reponse_modele: reponse.trim(), parametres, niveau, figure: figureAEnregistrer,
+          reponse_modele: reponse.trim(), parametres, niveau, figure: figureAEnregistrer, code: codeAEnregistrer,
         }).eq("id", questionAEditer.id);
         setEnregistrement(false);
         if (error) { alert("Erreur : " + error.message); return; }
@@ -4769,7 +4975,7 @@ function CreerQuestion({ chapitres, currentUser, currentProfile, niveauScolaire,
         const id = `${prefixe}_${initiales}_EX${nn}`;
         const { error } = await supabase.from("exercices_application").insert({
           id, chapitre_id: chapitreId, enonce_modele: enonce.trim(),
-          reponse_modele: reponse.trim(), parametres, niveau, figure: figureAEnregistrer, prof_id: currentUser.id,
+          reponse_modele: reponse.trim(), parametres, niveau, figure: figureAEnregistrer, code: codeAEnregistrer, prof_id: currentUser.id,
         });
         setEnregistrement(false);
         if (error) { alert("Erreur : " + error.message); return; }
@@ -4847,6 +5053,19 @@ function CreerQuestion({ chapitres, currentUser, currentProfile, niveauScolaire,
                 : <div className="creer-test-err">JSON de la figure invalide — l'aperçu s'affichera une fois corrigé.</div>
             )}
           </div>
+          <div className="creer-field">
+            <label>Bloc de code (optionnel)</label>
+            <textarea className="creer-textarea creer-textarea-code" value={codeTexte} onChange={e => setCodeTexte(e.target.value)}
+              placeholder={"a = 5\nb = 3\nsomme = a + b\nprint(somme)"} spellCheck={false} />
+            <div className="creer-hint">
+              Programme Python collé tel quel, une instruction par ligne — l&apos;indentation est conservée.
+              Les lignes sont numérotées automatiquement.
+              {mode === "aleatoire"
+                ? <> En mode aléatoire, <code>{"{a}"}</code> est remplacé par la valeur tirée, avec un <strong>point</strong> décimal (notation Python). Pour une accolade Python littérale, la doubler : <code>{"{{"}</code> et <code>{"}}"}</code>.</>
+                : null}
+            </div>
+            {codeTexte.trim() ? <BlocCode code={codeTexte} /> : null}
+          </div>
           {mode === "aleatoire" && (
             <>
               <div className="creer-field">
@@ -4888,6 +5107,7 @@ function CreerQuestion({ chapitres, currentUser, currentProfile, niveauScolaire,
                   <div className="creer-test-result">
                     <MathText inline={false}>{testResultat.enonce}</MathText>
                     <FigureSVG figure={testResultat.figure} correction />
+                    <BlocCode code={testResultat.code} />
                     <div className="creer-test-reponse"><MathText inline={false}>{testResultat.reponse}</MathText></div>
                     <div className="creer-test-vals">Valeurs : {JSON.stringify(testResultat.valeurs)}</div>
                   </div>
@@ -4933,6 +5153,9 @@ function CreerQcm({ chapitres, currentUser, niveauScolaire, onFermer, onCree, qc
   const [enregistrement, setEnregistrement] = useState(false);
   const [figureTexte, setFigureTexte] = useState(
     qcmAEditer?.figure ? JSON.stringify(qcmAEditer.figure, null, 2) : ""
+  );
+  const [codeTexte, setCodeTexte] = useState(
+    (normaliserCode(qcmAEditer?.code)?.lignes || []).join("\n")
   );
   const figureApercuFixe = useMemo(() => {
     if (mode !== "fixe" || !figureTexte.trim()) return null;
@@ -4995,7 +5218,8 @@ function CreerQcm({ chapitres, currentUser, niveauScolaire, onFermer, onCree, qc
       const choixGeneres = choix.map(c => substituerPlaceholders(c, valeurs));
       const figureBrute = figureTexte.trim() ? JSON.parse(figureTexte) : null;
       const figureResolue = figureBrute ? resoudreFigure(figureBrute, valeurs) : null;
-      setTestResultat({ enonce: enonceGenere, choix: choixGeneres, valeurs, figure: figureResolue });
+      const codeResolu = resoudreCode(codeTexte, valeurs);
+      setTestResultat({ enonce: enonceGenere, choix: choixGeneres, valeurs, figure: figureResolue, code: codeResolu });
     } catch (e) {
       setTestErreur(e.message);
       setTestResultat(null);
@@ -5015,6 +5239,8 @@ function CreerQcm({ chapitres, currentUser, niveauScolaire, onFermer, onCree, qc
       }
     }
 
+    const codeAEnregistrer = normaliserCode(codeTexte);
+
     setEnregistrement(true);
 
     let donnees;
@@ -5022,7 +5248,7 @@ function CreerQcm({ chapitres, currentUser, niveauScolaire, onFermer, onCree, qc
       donnees = {
         chapitre_id: chapitreId, mode: "fixe",
         enonce: enonce.trim(), choix: choix.map(c => c.trim()),
-        bonne_reponse: bonneReponse, niveau, figure: figureAEnregistrer,
+        bonne_reponse: bonneReponse, niveau, figure: figureAEnregistrer, code: codeAEnregistrer,
         enonce_modele: null, choix_modele: null, parametres: null,
       };
     } else {
@@ -5030,7 +5256,7 @@ function CreerQcm({ chapitres, currentUser, niveauScolaire, onFermer, onCree, qc
       donnees = {
         chapitre_id: chapitreId, mode: "aleatoire",
         enonce_modele: enonce.trim(), choix_modele: choix.map(c => c.trim()),
-        bonne_reponse: bonneReponse, niveau, parametres, figure: figureAEnregistrer,
+        bonne_reponse: bonneReponse, niveau, parametres, figure: figureAEnregistrer, code: codeAEnregistrer,
         enonce: null, choix: null,
       };
     }
@@ -5116,6 +5342,19 @@ function CreerQcm({ chapitres, currentUser, niveauScolaire, onFermer, onCree, qc
                 : <div className="creer-test-err">JSON de la figure invalide — l'aperçu s'affichera une fois corrigé.</div>
             )}
           </div>
+          <div className="creer-field">
+            <label>Bloc de code (optionnel)</label>
+            <textarea className="creer-textarea creer-textarea-code" value={codeTexte} onChange={e => setCodeTexte(e.target.value)}
+              placeholder={"a = 5\nb = 3\nsomme = a + b\nprint(somme)"} spellCheck={false} />
+            <div className="creer-hint">
+              Programme Python collé tel quel, une instruction par ligne — l&apos;indentation est conservée.
+              Les lignes sont numérotées automatiquement.
+              {mode === "aleatoire"
+                ? <> En mode aléatoire, <code>{"{a}"}</code> est remplacé par la valeur tirée, avec un <strong>point</strong> décimal (notation Python). Pour une accolade Python littérale, la doubler : <code>{"{{"}</code> et <code>{"}}"}</code>.</>
+                : null}
+            </div>
+            {codeTexte.trim() ? <BlocCode code={codeTexte} /> : null}
+          </div>
           {mode === "aleatoire" && (
             <>
               <div className="creer-field">
@@ -5157,6 +5396,7 @@ function CreerQcm({ chapitres, currentUser, niveauScolaire, onFermer, onCree, qc
                   <div className="creer-test-result">
                     <MathText inline={false}>{testResultat.enonce}</MathText>
                     <FigureSVG figure={testResultat.figure} correction />
+                    <BlocCode code={testResultat.code} />
                     <div className="creer-test-reponse">
                       {testResultat.choix.map((c, i) => (
                         <div key={i}>{lettres[i]}) <MathText>{c}</MathText>{i === bonneReponse ? " ✓" : ""}</div>
@@ -5263,7 +5503,7 @@ function TirageAleatoire({ chapitres, onAnnuler, onTirer, niveauScolaire }) {
         const tirage = tirerExercice(ex);
         pool.push({
           id: ex.id, chapitre_id: ex.chapitre_id, type: "exercice", niveau: ex.niveau,
-          enonce: tirage.enonce, reponse: tirage.reponse, figure: tirage.figure,
+          enonce: tirage.enonce, reponse: tirage.reponse, figure: tirage.figure, code: tirage.code,
           _cle: ex.id, _aleatoire: true,
         });
       });
@@ -5473,7 +5713,7 @@ function TirageAleatoireQcm({ chapitres, onAnnuler, onTirer }) {
       const tirage = tirerQcm(q);
       return { id: q.id, chapitre_id: q.chapitre_id, niveau: q.niveau, mode: q.mode,
         enonce: tirage.enonce, choix: tirage.choix, bonne_reponse: tirage.bonne_reponse,
-        figure: tirage.figure, _cle: q.id };
+        figure: tirage.figure, code: tirage.code, _cle: q.id };
     });
 
     if (tires.length < nombre) {
@@ -6054,10 +6294,11 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
         reponse: substituerPlaceholders(exoBase.reponse_modele, valeurs),
         valeurs,
         figure: exoBase.figure ? resoudreFigure(exoBase.figure, valeurs) : null,
+        code: exoBase.code ? resoudreCode(exoBase.code, valeurs) : null,
       };
       setTiragesExercices(prev => ({ ...prev, [idExercice]: tirage }));
       setSelection(prev => prev.map(q =>
-        q.id === idExercice ? { ...q, enonce: tirage.enonce, reponse: tirage.reponse, figure: tirage.figure } : q
+        q.id === idExercice ? { ...q, enonce: tirage.enonce, reponse: tirage.reponse, figure: tirage.figure, code: tirage.code } : q
       ));
     }
   }
@@ -6084,6 +6325,7 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
         enonce: substituerPlaceholders(exoBase.enonce_modele, valeurs),
         reponse: substituerPlaceholders(exoBase.reponse_modele, valeurs),
         figure: exoBase.figure ? resoudreFigure(exoBase.figure, valeurs) : null,
+        code: exoBase.code ? resoudreCode(exoBase.code, valeurs) : null,
       };
     }
 
@@ -6107,7 +6349,7 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
           ...item,
           enonce: tirage.enonce,
           reponse: tirage.reponse,
-          figure: tirage.figure,
+          figure: tirage.figure, code: tirage.code,
           _cle: `${item.id}__${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}_${i}`,
         });
       }
@@ -6148,9 +6390,10 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
         reponse: substituerPlaceholders(exoBase.reponse_modele, valeurs),
         valeurs,
         figure: exoBase.figure ? resoudreFigure(exoBase.figure, valeurs) : null,
+        code: exoBase.code ? resoudreCode(exoBase.code, valeurs) : null,
       };
       setTiragesExercices(prev => ({ ...prev, [idExercice]: tirage }));
-      setSelection(prev => [...prev, { id: idExercice, chapitre_id: chapitreId, type: "exercice", enonce: tirage.enonce, reponse: tirage.reponse, figure: tirage.figure, niveau, _cle: idExercice, _aleatoire: true }]);
+      setSelection(prev => [...prev, { id: idExercice, chapitre_id: chapitreId, type: "exercice", enonce: tirage.enonce, reponse: tirage.reponse, figure: tirage.figure, code: tirage.code, niveau, _cle: idExercice, _aleatoire: true }]);
     }
   }
 
@@ -6210,10 +6453,11 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
           reponse: substituerPlaceholders(exoBase.reponse_modele, valeurs),
           valeurs,
           figure: exoBase.figure ? resoudreFigure(exoBase.figure, valeurs) : null,
+        code: exoBase.code ? resoudreCode(exoBase.code, valeurs) : null,
         };
       }
       nouveauxTirages[ex.id] = tirage;
-      exercicesAAjouter.push({ id: ex.id, chapitre_id: ch.id, type: "exercice", enonce: tirage.enonce, reponse: tirage.reponse, figure: tirage.figure, niveau: ex.niveau, _cle: ex.id, _aleatoire: true });
+      exercicesAAjouter.push({ id: ex.id, chapitre_id: ch.id, type: "exercice", enonce: tirage.enonce, reponse: tirage.reponse, figure: tirage.figure, code: tirage.code, niveau: ex.niveau, _cle: ex.id, _aleatoire: true });
     });
 
     if (Object.keys(nouveauxTirages).length > 0) setTiragesExercices(prev => ({ ...prev, ...nouveauxTirages }));
@@ -6237,6 +6481,9 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
     lignes.push("\\usepackage{forloop}");
     lignes.push("\\usepackage{tikz}");
     lignes.push("\\usetikzlibrary{arrows.meta, calc}");
+    // array + colortbl : nécessaires au tabular grisé des blocs de code
+    lignes.push("\\usepackage{array}");
+    lignes.push("\\usepackage{colortbl}");
     lignes.push(`\\usepackage[margin=${margeCm}]{geometry}`);
     lignes.push("\\pagestyle{fancy}");
     lignes.push("\\fancyhf{}");
@@ -6269,6 +6516,10 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
       lignes.push("");
       if (q.figure) {
         lignes.push(genererTikZ(q.figure, avecCorrige));
+        lignes.push("");
+      }
+      if (q.code) {
+        lignes.push(genererCodeLatex(q.code));
         lignes.push("");
       }
       if (avecCorrige) {
@@ -6426,6 +6677,7 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
     // Clés omises si absentes (plutôt que null) : mêmes conventions que le
     // guide d'import, et l'aller-retour export → import ne perd rien.
     if (q.figure) ligne.figure = q.figure;
+    if (q.code) ligne.code = q.code;
     return ligne;
   }
 
@@ -6440,6 +6692,7 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
     };
     if (ex.type_calcul) ligne.type_calcul = ex.type_calcul;
     if (ex.figure) ligne.figure = ex.figure;
+    if (ex.code) ligne.code = ex.code;
     return ligne;
   }
 
@@ -6775,6 +7028,7 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
                             <div className="gen-question-detail-label">Exemple de tirage</div>
                             <MathText inline={false}>{tirage.enonce}</MathText>
                             <FigureSVG figure={tirage.figure} correction />
+                            <BlocCode code={tirage.code} />
                             <div className="gen-question-detail-reponse">
                               <div className="gen-question-detail-label">Réponse</div>
                               <MathText inline={false}>{tirage.reponse}</MathText>
@@ -6879,6 +7133,12 @@ function GenerateurZone({ currentUser, currentProfile, sessionARecharger, onSess
                     <span className="figure-hover-wrap" onClick={e => e.stopPropagation()}>
                       <span className="figure-hover-badge" title="Cette question a une figure">📐</span>
                       <span className="figure-hover-popover"><FigureSVG figure={q.figure} correction /></span>
+                    </span>
+                  )}
+                  {q.code && (
+                    <span className="figure-hover-wrap" onClick={e => e.stopPropagation()}>
+                      <span className="figure-hover-badge" title="Cette question a un bloc de code">🐍</span>
+                      <span className="figure-hover-popover"><BlocCode code={q.code} /></span>
                     </span>
                   )}
                 </div>
@@ -7160,7 +7420,7 @@ function QcmZone({ currentUser, currentProfile, qcmSessionARecharger, onSessionC
           const tirage = tirerQcm(q);
           return { id: q.id, chapitre_id: q.chapitre_id, niveau: q.niveau, mode: q.mode,
             enonce: tirage.enonce, choix: tirage.choix, bonne_reponse: tirage.bonne_reponse,
-            figure: tirage.figure };
+            figure: tirage.figure, code: tirage.code };
         });
       setSelection(nouvelleSelection);
       onSessionChargee();
@@ -7176,7 +7436,7 @@ function QcmZone({ currentUser, currentProfile, qcmSessionARecharger, onSessionC
         const tirage = tirerQcm(q);
         return { id: q.id, chapitre_id: q.chapitre_id, niveau: q.niveau, mode: q.mode,
           enonce: tirage.enonce, choix: tirage.choix, bonne_reponse: tirage.bonne_reponse,
-          figure: tirage.figure };
+          figure: tirage.figure, code: tirage.code };
       });
       setSelection(prev => {
         const idsExistants = new Set(prev.map(s => s.id));
@@ -7219,7 +7479,7 @@ function QcmZone({ currentUser, currentProfile, qcmSessionARecharger, onSessionC
   function retirerAuSort(q) {
     const tirage = tirerQcm(q);
     setTiragesQcm(prev => ({ ...prev, [q.id]: tirage }));
-    setSelection(prev => prev.map(s => s.id === q.id ? { ...s, enonce: tirage.enonce, choix: tirage.choix, bonne_reponse: tirage.bonne_reponse, figure: tirage.figure } : s));
+    setSelection(prev => prev.map(s => s.id === q.id ? { ...s, enonce: tirage.enonce, choix: tirage.choix, bonne_reponse: tirage.bonne_reponse, figure: tirage.figure, code: tirage.code } : s));
   }
 
   function estSelectionne(qcmId) { return selection.some(s => s.id === qcmId); }
@@ -7256,7 +7516,7 @@ function QcmZone({ currentUser, currentProfile, qcmSessionARecharger, onSessionC
       aAjouter.push({
         id: q.id, chapitre_id: q.chapitre_id, niveau: q.niveau, mode: q.mode,
         enonce: tirage.enonce, choix: tirage.choix, bonne_reponse: tirage.bonne_reponse,
-        figure: tirage.figure, _cle: q.id,
+        figure: tirage.figure, code: tirage.code, _cle: q.id,
       });
     });
     setTiragesQcm(prev => ({ ...prev, ...nouveauxTirages }));
@@ -7275,7 +7535,7 @@ function QcmZone({ currentUser, currentProfile, qcmSessionARecharger, onSessionC
     setSelection(prev => [...prev, {
       id: q.id, chapitre_id: q.chapitre_id, niveau: q.niveau, mode: q.mode,
       enonce: tirage.enonce, choix: tirage.choix, bonne_reponse: tirage.bonne_reponse,
-      figure: tirage.figure, _cle: q.id,
+      figure: tirage.figure, code: tirage.code, _cle: q.id,
     }]);
   }
 
@@ -7311,7 +7571,7 @@ function QcmZone({ currentUser, currentProfile, qcmSessionARecharger, onSessionC
           enonce: tirage.enonce,
           choix: tirage.choix,
           bonne_reponse: tirage.bonne_reponse,
-          figure: tirage.figure,
+          figure: tirage.figure, code: tirage.code,
           _cle: `${item.id}__${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}_${i}`,
         });
       }
@@ -7514,6 +7774,9 @@ function QcmZone({ currentUser, currentProfile, qcmSessionARecharger, onSessionC
     lignes.push("\\usepackage{fancyhdr}");
     lignes.push("\\usepackage{tikz}");
     lignes.push("\\usetikzlibrary{arrows.meta, calc}");
+    // array + colortbl : nécessaires au tabular grisé des blocs de code
+    lignes.push("\\usepackage{array}");
+    lignes.push("\\usepackage{colortbl}");
     lignes.push(`\\usepackage[margin=${margeCm}]{geometry}`);
     lignes.push("\\setlength{\\parindent}{0pt}");
     lignes.push("\\setlength{\\parskip}{0pt}");
@@ -7545,13 +7808,17 @@ function QcmZone({ currentUser, currentProfile, qcmSessionARecharger, onSessionC
         lignes.push(genererTikZ(q.figure, avecCorrige));
         lignes.push("");
       }
+      if (q.code) {
+        lignes.push(genererCodeLatex(q.code));
+        lignes.push("");
+      }
       lignes.push("\\vspace{4mm}");
       lignes.push("");
       lignes.push("\\small");
       // Avec une figure au-dessus, 2 colonnes étroites rendent les choix peu
       // lisibles (l'œil reste sur la figure) : on repasse en liste pleine
       // largeur, une seule colonne, dans ce cas précis.
-      const surUneColonne = !!q.figure;
+      const surUneColonne = !!q.figure || !!q.code;
       if (!surUneColonne) lignes.push("\\begin{multicols}{2}");
       lignes.push("\\begin{enumerate}[leftmargin=2.4em, itemsep=4mm, label=$\\square$~\\alph*)]");
       q.choix.forEach((c, i) => {
@@ -7631,6 +7898,7 @@ function QcmZone({ currentUser, currentProfile, qcmSessionARecharger, onSessionC
         niveau: q.niveau,
       };
       if (q.figure) base.figure = q.figure; // sans elle, l'aller-retour perdait les QCM graphiques
+      if (q.code) base.code = q.code;
       return q.mode === "aleatoire"
         ? { ...base, enonce_modele: q.enonce_modele, choix_modele: q.choix_modele, parametres: q.parametres }
         : { ...base, enonce: q.enonce, choix: q.choix };
@@ -7895,6 +8163,12 @@ function QcmZone({ currentUser, currentProfile, qcmSessionARecharger, onSessionC
                     <span className="figure-hover-wrap" onClick={e => e.stopPropagation()}>
                       <span className="figure-hover-badge" title="Ce QCM a une figure">📐</span>
                       <span className="figure-hover-popover"><FigureSVG figure={q.figure} correction /></span>
+                    </span>
+                  )}
+                  {q.code && (
+                    <span className="figure-hover-wrap" onClick={e => e.stopPropagation()}>
+                      <span className="figure-hover-badge" title="Ce QCM a un bloc de code">🐍</span>
+                      <span className="figure-hover-popover"><BlocCode code={q.code} /></span>
                     </span>
                   )}
                 </div>
@@ -8609,6 +8883,12 @@ function RechercheZone({ onEnvoyerAutomatismes, onEnvoyerQcm }) {
                         <span className="figure-hover-popover"><FigureSVG figure={q.figure} correction /></span>
                       </span>
                     )}
+                    {q.code && (
+                      <span className="figure-hover-wrap">
+                        <span className="figure-hover-badge" title="Cette question a un bloc de code">🐍</span>
+                        <span className="figure-hover-popover"><BlocCode code={q.code} /></span>
+                      </span>
+                    )}
                     {ouverts.has("q_" + q.id) && <div className="recherche-item-reponse"><MathText inline={false}>{q.reponse}</MathText></div>}
                   </div>
                 );
@@ -8655,6 +8935,12 @@ function RechercheZone({ onEnvoyerAutomatismes, onEnvoyerQcm }) {
                       <span className="figure-hover-wrap">
                         <span className="figure-hover-badge" title="Ce QCM a une figure">📐</span>
                         <span className="figure-hover-popover"><FigureSVG figure={q.figure} correction /></span>
+                      </span>
+                    )}
+                    {q.code && (
+                      <span className="figure-hover-wrap">
+                        <span className="figure-hover-badge" title="Ce QCM a un bloc de code">🐍</span>
+                        <span className="figure-hover-popover"><BlocCode code={q.code} /></span>
                       </span>
                     )}
                     {ouverts.has("c_" + q.id) && (
