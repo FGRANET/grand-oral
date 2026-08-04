@@ -2005,10 +2005,13 @@ function sensVariationDelta(s) {
 // niveaux.
 function geometrieTableauVariations(tv) {
   const brutes = tv && Array.isArray(tv.abscisses) ? tv.abscisses : [];
-  const abscisses = brutes.map(v => String(v === undefined || v === null ? "" : v));
+  // Mêmes conversions que le tableau de signes : le SVG ne passe pas par KaTeX,
+  // les infinis et les points de suspension doivent devenir de l'Unicode ici,
+  // et sont retraduits en LaTeX par tikzTableauVariations à l'export.
+  const abscisses = brutes.map(v => texteTableauVersEcran(v));
   const n = abscisses.length;
   if (n < 2) return null;
-  const images = ((tv && tv.images) || []).map(v => String(v === undefined || v === null ? "" : v));
+  const images = ((tv && tv.images) || []).map(v => texteTableauVersEcran(v));
   const sens = (tv && tv.sens) || [];
   const niveaux = [0];
   for (let i = 0; i < n - 1; i++) niveaux.push(niveaux[i] + sensVariationDelta(sens[i]));
@@ -2021,7 +2024,7 @@ function geometrieTableauVariations(tv) {
   const titrePersonnalise = tv && typeof tv.titre === "string";
   return {
     n, abscisses, images, fractions, nom,
-    variable: (tv && tv.variable) || "x",
+    variable: texteTableauVersEcran((tv && tv.variable) || "x"),
     titre: titrePersonnalise ? tv.titre : null,
     libelle: titrePersonnalise ? tv.titre : "Variations de " + nom,
   };
@@ -2114,21 +2117,21 @@ function tikzTableauVariations(g) {
   L.push(`\\draw (0,0) rectangle (${r(largeur)},${r(hauteur)});`);
   L.push(`\\draw (${lab},0) -- (${lab},${r(hauteur)});`);
   L.push(`\\draw (0,${h2}) -- (${r(largeur)},${h2});`);
-  L.push(`\\node at (${r(lab / 2)},${r(h2 + h1 / 2)}) {$${g.variable}$};`);
+  L.push(`\\node at (${r(lab / 2)},${r(h2 + h1 / 2)}) {$${texteTableauVersTikz(g.variable)}$};`);
   if (g.libelle !== "") {
     const libelleTex = g.titre === null ? `Variations de $${g.nom}$` : g.titre;
     L.push(`\\node at (${r(lab / 2)},${r(h2 / 2)}) {\\small ${libelleTex}};`);
   }
   g.abscisses.forEach((a, i) => {
     if (a === "") return;
-    L.push(`\\node at (${xDe(i)},${r(h2 + h1 / 2)}) {$${a}$};`);
+    L.push(`\\node at (${xDe(i)},${r(h2 + h1 / 2)}) {$${texteTableauVersTikz(a)}$};`);
   });
   for (let i = 0; i < g.n - 1; i++) {
     L.push(`\\draw[-{Latex}, shorten <=10pt, shorten >=10pt] (${xDe(i)},${yDe(g.fractions[i])}) -- (${xDe(i + 1)},${yDe(g.fractions[i + 1])});`);
   }
   g.images.forEach((v, i) => {
     if (v === "" || i >= g.n) return;
-    L.push(`\\node at (${xDe(i)},${yDe(g.fractions[i])}) {$${v}$};`);
+    L.push(`\\node at (${xDe(i)},${yDe(g.fractions[i])}) {$${texteTableauVersTikz(v)}$};`);
   });
   L.push("\\end{tikzpicture}");
   L.push("\\end{center}");
@@ -2456,7 +2459,11 @@ function genererTikZ(figure, avecCorrection = false) {
       const expr = normaliserExpressionCourbe(c.expression);
       const x0 = c.xMin !== undefined ? versNum(c.xMin) : bornesX[0];
       const x1 = c.xMax !== undefined ? versNum(c.xMax) : bornesX[1];
-      const exprTikz = expr.replace(/x/g, "\\x");
+      // Parenthéser la variable est obligatoire : pgfmath applique "^" AVANT le
+      // moins unaire, donc "\\x^2" vaut -(x^2) et trace -x² sur les abscisses
+      // négatives (une parabole prend alors l'allure d'une cubique). "(\\x)^2"
+      // donne bien x². Sans effet sur les autres formes : 1/(\\x), sqrt((\\x)).
+      const exprTikz = expr.replace(/x/g, "(\\x)");
       const trace = `\\draw[thick, ${couleur}, smooth, samples=100, domain=${x0}:${x1}] plot (\\x, {${exprTikz}});`;
       // Parité avec le rendu SVG : en présence d'un quadrillage, la courbe est
       // rognée à sa fenêtre (une parabole qui file vers le haut ne déborde pas
@@ -7825,11 +7832,11 @@ function QcmZone({ currentUser, currentProfile, qcmSessionARecharger, onSessionC
         const estBonne = avecCorrige && i === q.bonne_reponse;
         const texteEchappe = echapperLatex(c);
         const texte = estBonne ? `\\textbf{${texteEchappe}}` : texteEchappe;
-        if (estBonne) {
-          lignes.push(`\\item[$\\blacksquare$~${lettres[i]})] ${texte}`);
-        } else {
-          lignes.push(`\\item ${texte}`);
-        }
+        // Libellé toujours explicite : un \item[...] ne fait pas avancer le
+        // compteur d'enumitem, si bien qu'alterner \item et \item[...] décalait
+        // la numérotation après la bonne réponse (a, b, b, c).
+        const puce = estBonne ? "\\blacksquare" : "\\square";
+        lignes.push(`\\item[$${puce}$~${lettres[i]})] ${texte}`);
         if (!surUneColonne && i === 1) lignes.push("\\columnbreak"); // force a,b à gauche / c,d à droite
       });
       lignes.push("\\end{enumerate}");
