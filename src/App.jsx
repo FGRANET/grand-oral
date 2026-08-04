@@ -1985,6 +1985,48 @@ function FigureGeoSVG({ figure, grand = false, correction = false }) {
   );
 }
 
+// ─── Typographie mathématique des tableaux SVG ─────────────────────────
+// Les tableaux sont dessinés en SVG et ne peuvent pas héberger KaTeX. Plutôt
+// que d'accepter une police d'interface qui jure avec les énoncés rendus par
+// KaTeX juste au-dessus, on reproduit sa convention : lettres en italique dans
+// la fonte KaTeX_Math, chiffres et opérateurs en romain dans KaTeX_Main. Les
+// deux sont déjà chargées par la feuille de style KaTeX injectée au démarrage,
+// et les fallbacks sérif couvrent le cas où elle n'aurait pas encore été lue.
+const POLICE_MATH_SVG = "KaTeX_Math, 'Times New Roman', Times, serif";
+const POLICE_ROMAIN_SVG = "KaTeX_Main, 'Times New Roman', Times, serif";
+
+// Longueur "visuelle" d'un libellé, exposants comptés pour ce qu'ils occupent
+// réellement : le balisage "^{ }" ne doit pas élargir la colonne des titres.
+function longueurAffichee(texte) {
+  return String(texte === undefined || texte === null ? "" : texte)
+    .replace(/\^\{([^}]*)\}/g, (m, d) => d).length;
+}
+
+function tspansMath(texte, police) {
+  const chaine = String(texte === undefined || texte === null ? "" : texte);
+  // Découpe en trois familles : exposants "^{...}", blocs de lettres, et tout
+  // le reste (chiffres, opérateurs, parenthèses, ∞, espaces).
+  const morceaux = chaine.match(/\^\{[^}]*\}|[A-Za-z]+|[^A-Za-z^]+|\^/g) || [];
+  // Les exposants sont surélevés puis rétablis par un dy inverse porté par le
+  // morceau suivant : baseline-shift reste mal supporté, dy l'est partout.
+  const saut = Math.round(police * 0.42 * 100) / 100;
+  let dyEnAttente = 0;
+  return morceaux.map((m, i) => {
+    const exposant = m.startsWith("^{");
+    const contenu = exposant ? m.slice(2, -1) : m;
+    const estLettre = /^[A-Za-z]/.test(contenu);
+    const dy = exposant ? -saut : dyEnAttente;
+    dyEnAttente = exposant ? saut : 0;
+    return (
+      <tspan key={i}
+        dy={dy === 0 ? undefined : dy}
+        fontSize={exposant ? Math.round(police * 0.72) : undefined}
+        fontFamily={estLettre ? POLICE_MATH_SVG : POLICE_ROMAIN_SVG}
+        fontStyle={estLettre ? "italic" : "normal"}>{contenu}</tspan>
+    );
+  });
+}
+
 // ─── Tableaux de variations (clé "tableau_variations") ─────────────────
 // Traduit un mot-clé de sens en variation de niveau. Le "croissant" est la
 // valeur par défaut : un sens absent ou mal orthographié donne une flèche
@@ -2071,23 +2113,23 @@ function TableauVariationsSVG({ tableau, grand = false }) {
       <rect x="0.6" y="0.6" width={largeur - 1.2} height={hauteur - 1.2} fill="none" stroke="var(--text)" strokeWidth="1.2" />
       <line x1={lab} y1="0" x2={lab} y2={hauteur} stroke="var(--text)" strokeWidth="1.2" />
       <line x1="0" y1={h1} x2={largeur} y2={h1} stroke="var(--text)" strokeWidth="1.2" />
-      <text x={lab / 2} y={yTexte(h1 / 2)} fontSize={police} fontStyle="italic" fill="var(--text)" textAnchor="middle">{g.variable}</text>
+      <text x={lab / 2} y={yTexte(h1 / 2)} fontSize={police} fill="var(--text)" textAnchor="middle" xmlSpace="preserve">{tspansMath(g.variable, police)}</text>
       {g.libelle !== "" && (
         <text x={lab / 2} y={yTexte(h1 + h2 / 2)} fontSize={policeLibelle} fill="var(--text)" textAnchor="middle">
           {g.titre === null ? <tspan>Variations de </tspan> : null}
           {g.titre === null
-            ? <tspan fontStyle="italic">{g.nom}</tspan>
+            ? <tspan fontFamily={POLICE_MATH_SVG} fontStyle="italic">{g.nom}</tspan>
             : <tspan>{g.titre}</tspan>}
         </text>
       )}
       {g.abscisses.map((a, i) => (
-        <text key={"abs" + i} x={xDe(i)} y={yTexte(h1 / 2)} fontSize={police} fill="var(--text)" textAnchor="middle">{a}</text>
+        <text key={"abs" + i} x={xDe(i)} y={yTexte(h1 / 2)} fontSize={police} fill="var(--text)" textAnchor="middle" xmlSpace="preserve">{tspansMath(a, police)}</text>
       ))}
       {fleches.map((f, i) => (
         <line key={"fle" + i} x1={f[0]} y1={f[1]} x2={f[2]} y2={f[3]} stroke="var(--text)" strokeWidth="1.4" markerEnd="url(#tabvar-fleche)" />
       ))}
       {g.images.map((v, i) => (v === "" || i >= g.n ? null : (
-        <text key={"img" + i} x={xDe(i)} y={yTexte(yDe(g.fractions[i]))} fontSize={police} fill="var(--text)" textAnchor="middle">{v}</text>
+        <text key={"img" + i} x={xDe(i)} y={yTexte(yDe(g.fractions[i]))} fontSize={police} fill="var(--text)" textAnchor="middle" xmlSpace="preserve">{tspansMath(v, police)}</text>
       )))}
     </svg>
   );
@@ -2150,12 +2192,18 @@ function texteTableauVersEcran(v) {
     .replace(/\\infty/g, "∞")
     .replace(/\\ldots|\\dots|\\cdots/g, "…")
     .replace(/\\,|\\;|\\!|\\:/g, "")
-    // Exposants : "x^2" et "x^{12}" deviennent des chiffres en exposant Unicode.
-    // Sans ça, un libellé de tableau de signes s'affichait littéralement "x^2"
-    // à l'écran (le SVG ne passe pas par KaTeX), alors que l'export PDF, lui,
-    // rendait bien x². texteTableauVersTikz fait le chemin inverse.
-    .replace(/\^\{([-\d]+)\}/g, (m, d) => [...d].map(c => EXPOSANTS_UNICODE[c] || c).join(""))
-    .replace(/\^(-?\d)/g, (m, d) => [...d].map(c => EXPOSANTS_UNICODE[c] || c).join(""))
+    // Exposants : on normalise TOUT vers la forme canonique "^{...}" — un "²"
+    // tapé directement dans le JSON y compris. C'est tspansMath qui les
+    // surélève à l'écran (les fontes KaTeX ne contiennent pas les exposants
+    // Unicode : un "²" retomberait sur une police de fallback à côté d'un "x"
+    // en KaTeX_Math), et texteTableauVersTikz les laisse passer tels quels,
+    // "^{2}" étant déjà du LaTeX valide.
+    .replace(/[\u2070\u00b9\u00b2\u00b3\u2074-\u2079\u207b]+/g,
+      m => "^{" + [...m].map(c => EXPOSANTS_LATEX[c] || c).join("") + "}")
+    .replace(/\^\{?(-?\d+)\}?/g, (m, d) => "^{" + d + "}")
+    // Vrai moins mathématique (U+2212), comme dans les cases de signe et dans
+    // le rendu KaTeX des énoncés ; texteTableauVersTikz le retransforme en "-".
+    .replace(/-/g, "\u2212")
     .replace(/\$/g, "")
     .replace(/\s{2,}/g, " ")
     .trim();
@@ -2166,11 +2214,6 @@ function texteTableauVersTikz(v) {
   return String(v === undefined || v === null ? "" : v)
     .replace(/∞/g, "\\infty")
     .replace(/…/g, "\\ldots")
-    // Exposants Unicode → LaTeX. Une suite de chiffres en exposant est
-    // regroupée en un seul "^{...}" ("x¹²" → "x^{12}"), et un "²" saisi
-    // directement dans le JSON traverse donc aussi correctement l'export.
-    .replace(/[\u2070\u00b9\u00b2\u00b3\u2074-\u2079\u207b]+/g,
-      m => "^{" + [...m].map(c => EXPOSANTS_LATEX[c] || c).join("") + "}")
     .replace(/−/g, "-")
     .replace(/\$/g, "")
     .trim();
@@ -2233,8 +2276,8 @@ function TableauSignesSVG({ tableau, grand = false, correction = false }) {
   const g = geometrieTableauSignes(tableau);
   if (!g) return null;
   const police = grand ? 19 : 13;
-  const longueurs = g.lignes.map(l => l.libelle.length);
-  longueurs.push(g.variable.length);
+  const longueurs = g.lignes.map(l => longueurAffichee(l.libelle));
+  longueurs.push(longueurAffichee(g.variable));
   const lab = Math.max(grand ? 100 : 70, Math.round(Math.max.apply(null, longueurs) * police * 0.62) + (grand ? 28 : 20));
   const pas = grand ? 118 : 86;
   const bord = grand ? 30 : 22;
@@ -2259,7 +2302,7 @@ function TableauSignesSVG({ tableau, grand = false, correction = false }) {
       if (marque === "0") {
         cases.push(<line key={`p${k}-${i}-a`} x1={x} y1={yHaut + 3} x2={x} y2={yc - trou} stroke="var(--text)" strokeWidth="0.8" strokeDasharray="3 3" opacity="0.55" />);
         cases.push(<line key={`p${k}-${i}-b`} x1={x} y1={yc + trou} x2={x} y2={yBas - 3} stroke="var(--text)" strokeWidth="0.8" strokeDasharray="3 3" opacity="0.55" />);
-        cases.push(<text key={`z${k}-${i}`} x={x} y={yTexte(yc)} fontSize={police} fill="var(--text)" textAnchor="middle">0</text>);
+        cases.push(<text key={`z${k}-${i}`} x={x} y={yTexte(yc)} fontSize={police} fontFamily={POLICE_ROMAIN_SVG} fill="var(--text)" textAnchor="middle">0</text>);
       } else if (marque === "||") {
         cases.push(<line key={`d${k}-${i}-a`} x1={x - 3} y1={yHaut} x2={x - 3} y2={yBas} stroke="var(--text)" strokeWidth="1.2" />);
         cases.push(<line key={`d${k}-${i}-b`} x1={x + 3} y1={yHaut} x2={x + 3} y2={yBas} stroke="var(--text)" strokeWidth="1.2" />);
@@ -2267,7 +2310,7 @@ function TableauSignesSVG({ tableau, grand = false, correction = false }) {
     });
     ligne.signes.forEach((signe, i) => {
       if (signe === "") return;
-      cases.push(<text key={`s${k}-${i}`} x={xIntervalle(i)} y={yTexte(yc)} fontSize={police} fill="var(--text)" textAnchor="middle">{signe}</text>);
+      cases.push(<text key={`s${k}-${i}`} x={xIntervalle(i)} y={yTexte(yc)} fontSize={police} fontFamily={POLICE_ROMAIN_SVG} fill="var(--text)" textAnchor="middle">{signe}</text>);
     });
   });
   return (
@@ -2279,14 +2322,14 @@ function TableauSignesSVG({ tableau, grand = false, correction = false }) {
       {g.lignes.map((ligne, k) => (
         <line key={`h${k}`} x1="0" y1={hautDe(k + 1)} x2={largeur} y2={hautDe(k + 1)} stroke="var(--text)" strokeWidth="1.2" />
       ))}
-      <text x={lab / 2} y={yTexte(centreDe(0))} fontSize={police} fontStyle="italic" fill="var(--text)" textAnchor="middle">{g.variable}</text>
+      <text x={lab / 2} y={yTexte(centreDe(0))} fontSize={police} fill="var(--text)" textAnchor="middle" xmlSpace="preserve">{tspansMath(g.variable, police)}</text>
       {g.bornes.map((b, i) => {
         const interieure = i > 0 && i < g.n - 1;
         if (b === "" || (interieure && g.bornesACompleter && !correction)) return null;
-        return <text key={`b${i}`} x={xDe(i)} y={yTexte(centreDe(0))} fontSize={police} fill="var(--text)" textAnchor="middle">{b}</text>;
+        return <text key={`b${i}`} x={xDe(i)} y={yTexte(centreDe(0))} fontSize={police} fill="var(--text)" textAnchor="middle" xmlSpace="preserve">{tspansMath(b, police)}</text>;
       })}
       {g.lignes.map((ligne, k) => (ligne.libelle === "" ? null : (
-        <text key={`l${k}`} x={lab / 2} y={yTexte(centreDe(k + 1))} fontSize={police} fill="var(--text)" textAnchor="middle">{ligne.libelle}</text>
+        <text key={`l${k}`} x={lab / 2} y={yTexte(centreDe(k + 1))} fontSize={police} fill="var(--text)" textAnchor="middle" xmlSpace="preserve">{tspansMath(ligne.libelle, police)}</text>
       )))}
       {cases}
     </svg>
@@ -2299,8 +2342,8 @@ function TableauSignesSVG({ tableau, grand = false, correction = false }) {
 function tikzTableauSignes(g, correction = false) {
   const r = n => Math.round(n * 100) / 100;
   const bord = 0.55, hLigne = 0.85;
-  const longueurs = g.lignes.map(l => l.libelle.length);
-  longueurs.push(g.variable.length);
+  const longueurs = g.lignes.map(l => longueurAffichee(l.libelle));
+  longueurs.push(longueurAffichee(g.variable));
   const lab = Math.max(1.7, r(Math.max.apply(null, longueurs) * 0.22 + 0.7));
   const pas = Math.max(1.4, Math.min(2.4, (15 - lab - 2 * bord) / Math.max(1, g.n - 1)));
   const largeur = r(lab + 2 * bord + (g.n - 1) * pas);
