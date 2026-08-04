@@ -2142,11 +2142,20 @@ function tikzTableauVariations(g) {
 // Le rendu SVG ne passe pas par KaTeX : les quelques commandes LaTeX qu'on ne
 // peut pas éviter dans un tableau de signes (les infinis, surtout) sont
 // traduites en Unicode pour l'écran, et retraduites en LaTeX à l'export.
+const EXPOSANTS_UNICODE = { "0": "\u2070", "1": "\u00b9", "2": "\u00b2", "3": "\u00b3", "4": "\u2074", "5": "\u2075", "6": "\u2076", "7": "\u2077", "8": "\u2078", "9": "\u2079", "-": "\u207b" };
+const EXPOSANTS_LATEX = Object.fromEntries(Object.entries(EXPOSANTS_UNICODE).map(([k, u]) => [u, k]));
+
 function texteTableauVersEcran(v) {
   return String(v === undefined || v === null ? "" : v)
     .replace(/\\infty/g, "∞")
     .replace(/\\ldots|\\dots|\\cdots/g, "…")
     .replace(/\\,|\\;|\\!|\\:/g, "")
+    // Exposants : "x^2" et "x^{12}" deviennent des chiffres en exposant Unicode.
+    // Sans ça, un libellé de tableau de signes s'affichait littéralement "x^2"
+    // à l'écran (le SVG ne passe pas par KaTeX), alors que l'export PDF, lui,
+    // rendait bien x². texteTableauVersTikz fait le chemin inverse.
+    .replace(/\^\{([-\d]+)\}/g, (m, d) => [...d].map(c => EXPOSANTS_UNICODE[c] || c).join(""))
+    .replace(/\^(-?\d)/g, (m, d) => [...d].map(c => EXPOSANTS_UNICODE[c] || c).join(""))
     .replace(/\$/g, "")
     .replace(/\s{2,}/g, " ")
     .trim();
@@ -2157,6 +2166,11 @@ function texteTableauVersTikz(v) {
   return String(v === undefined || v === null ? "" : v)
     .replace(/∞/g, "\\infty")
     .replace(/…/g, "\\ldots")
+    // Exposants Unicode → LaTeX. Une suite de chiffres en exposant est
+    // regroupée en un seul "^{...}" ("x¹²" → "x^{12}"), et un "²" saisi
+    // directement dans le JSON traverse donc aussi correctement l'export.
+    .replace(/[\u2070\u00b9\u00b2\u00b3\u2074-\u2079\u207b]+/g,
+      m => "^{" + [...m].map(c => EXPOSANTS_LATEX[c] || c).join("") + "}")
     .replace(/−/g, "-")
     .replace(/\$/g, "")
     .trim();
